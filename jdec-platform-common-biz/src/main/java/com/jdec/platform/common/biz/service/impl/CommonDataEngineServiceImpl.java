@@ -358,7 +358,11 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                         Map.Entry::getValue));
 
         if ("apply-change".equals(menuDetailQueryReq.getBtnType())) {
-            queryModel = QueryModel.CHANGE_REQUEST;
+            if (dynamicDetailQueryReq.getChangeRequestId() <= 0) {
+                queryModel = QueryModel.CHANGE_REQUEST;
+            } else {
+                queryModel = QueryModel.VIEW;
+            }
         } else if ("change".equals(menuDetailQueryReq.getBtnType())) {
             // 变更走新建权限
             queryModel = QueryModel.CREATE;
