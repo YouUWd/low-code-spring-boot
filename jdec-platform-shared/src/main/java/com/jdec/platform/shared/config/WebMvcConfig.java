@@ -43,7 +43,6 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .addPathPatterns("/api/data-engine/**")
                 .excludePathPatterns(
                         "/api/config/auth/**",
-                        "/api/common/files/**",
                         "/api/config/init/**",
                         "/api/permission/*/check-current-user"); // 系统初始化：无需 X-Project-No 上下文
     }
