@@ -24,7 +24,7 @@ public interface SysMenuHeaderApi {
      * {@code virId} 不再出现在生成侧，历史记录自然被丢弃，无需额外处理。
      *
      * @param menuId 菜单ID
-     * @return 菜单表头树的根节点
+     * @return 菜单表头树的根节点；入参菜单不存在、或整树裁剪后无节点时返回 {@code null}；关联的详情菜单记录缺失时报错提示「未关联详情菜单」
      */
     SysMenuHeaderResp getMenuHeaderTree(Long menuId);
 
@@ -39,9 +39,10 @@ public interface SysMenuHeaderApi {
      *
      * <p>入参 {@code menuId} 为列表菜单ID，内部先按统一规则解析表头归属菜单ID（「页面」类型取关联的详情菜单ID，「表」等其它类型取菜单ID 自身）再读取。
      *
-     * <p>该接口不做落库；无已勾选配置时返回空（header 为 null）。
+     * <p>该接口不做落库；{@code menuId} 非必传，为空时不查库直接返回空；入参菜单不存在、或无已勾选配置时同样返回空（{@code header} 为
+     * null）；仅当菜单关联了详情菜单（{@code detailId} 有值）却查不到该详情菜单记录时，才报错提示「未关联详情菜单」。
      *
-     * @param menuId 菜单ID
+     * @param menuId 菜单ID，可为空
      * @return 多级列头展示结构
      */
     MenuHeaderDisplayResp getMenuHeaderDisplay(Long menuId);
