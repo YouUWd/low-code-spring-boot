@@ -17,7 +17,6 @@ import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import java.util.List;
-import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -25,8 +24,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestMethod;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 公共业务数据聚合控制器 (基于菜单的数据隔离、动态列表与详情聚合) */
@@ -179,12 +176,7 @@ public class CommonAggregateController {
         }
     }
 
-    @RequestMapping(
-            value = {
-                "/menu/{menuId}/changes/{changeId}/read",
-                "/menu/{menuId}/change/{changeId}/read"
-            },
-            method = {RequestMethod.POST, RequestMethod.PUT})
+    @PostMapping("/menu/{menuId}/change/{changeId}/read")
     @Operation(
             summary = "基于菜单 ID 将指定变更申请单设置为已读",
             description = "将 ${primaryTable}_change 表中指定 changeId 的记录更新为已读状态 (read_status=1)")
@@ -202,29 +194,6 @@ public class CommonAggregateController {
                     ex);
             throw ex;
         }
-    }
-
-    @RequestMapping(
-            value = {"/menu/{menuId}/changes/read", "/menu/{menuId}/change/read"},
-            method = {RequestMethod.POST, RequestMethod.PUT})
-    @Operation(
-            summary = "基于菜单 ID 将指定变更申请单设置为已读 (请求体或参数传参)",
-            description = "支持通过 Query 参数 changeId 或 JSON 请求体 { \"changeId\": 123 } 传入变更单 ID")
-    public ApiResponse<Boolean> markChangeAsReadFromBody(
-            @PathVariable Long menuId,
-            @RequestParam(required = false) Long changeId,
-            @RequestBody(required = false) Map<String, Object> body) {
-        Long targetChangeId = changeId;
-        if (targetChangeId == null && body != null) {
-            Object idVal = body.get("changeId");
-            if (idVal == null) {
-                idVal = body.get("id");
-            }
-            if (idVal != null) {
-                targetChangeId = Long.valueOf(idVal.toString());
-            }
-        }
-        return markChangeAsRead(menuId, targetChangeId);
     }
 
     @PostMapping("/menu/{menuId}/active-toggle")

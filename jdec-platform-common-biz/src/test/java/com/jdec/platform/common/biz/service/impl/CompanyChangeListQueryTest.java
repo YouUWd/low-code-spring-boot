@@ -596,34 +596,6 @@ class CompanyChangeListQueryTest {
     }
 
     @Test
-    @DisplayName("测试 Controller 端点 markChangeAsRead 与 markChangeAsReadFromBody 成功委托 Service")
-    void testControllerMarkChangeAsRead() {
-        CommonAggregateService mockService = mock(CommonAggregateService.class);
-        CommonAggregateController testController = new CommonAggregateController(mockService);
-
-        when(mockService.markChangeAsRead(100L, 50L)).thenReturn(true);
-
-        // 1. 路径变量调用
-        ApiResponse<Boolean> resp1 = testController.markChangeAsRead(100L, 50L);
-        assertNotNull(resp1);
-        assertEquals(200, resp1.getStatus());
-        assertTrue(resp1.getData());
-
-        // 2. RequestBody 传参调用 (Map 携带 changeId)
-        ApiResponse<Boolean> resp2 =
-                testController.markChangeAsReadFromBody(100L, null, Map.of("changeId", 50L));
-        assertNotNull(resp2);
-        assertEquals(200, resp2.getStatus());
-        assertTrue(resp2.getData());
-
-        // 3. RequestParam 传参调用
-        ApiResponse<Boolean> resp3 = testController.markChangeAsReadFromBody(100L, 50L, null);
-        assertNotNull(resp3);
-        assertEquals(200, resp3.getStatus());
-        assertTrue(resp3.getData());
-    }
-
-    @Test
     @DisplayName("测试 Service 标记已读: 未读记录成功更新 read_status=1 并返回 true")
     void testServiceMarkChangeAsRead_unreadRecord_executesUpdate() {
         Long menuId = 200L;
