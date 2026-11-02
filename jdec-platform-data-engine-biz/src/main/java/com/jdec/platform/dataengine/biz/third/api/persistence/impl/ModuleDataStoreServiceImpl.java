@@ -555,7 +555,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
         changeApplyData.put("id", changeId);
         changeApplyData.put("registration_by", createdBy);
 
-        ChangeApplyEvent event = new ChangeApplyEvent(null);
+        ChangeApplyEvent event = new ChangeApplyEvent(ChangeApplyEvent.class);
         event.setBizMap(changeApplyData);
         event.setRootModuleInfo(rootModule.getModuleInfo());
         event.setLoginUser(UserContext.getLoginUser());
