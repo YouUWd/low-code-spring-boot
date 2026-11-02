@@ -59,7 +59,6 @@ jdec:
       primary: mysql
       config_center: config_center
       school: school
-      config_engine: config_engine
       company: company
 # ===== MyBatis-Plus 开发模式 =====
 mybatis-plus:
