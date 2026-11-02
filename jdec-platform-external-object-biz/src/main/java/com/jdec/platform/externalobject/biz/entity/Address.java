@@ -95,6 +95,10 @@ public class Address extends Model<Address> {
     @TableField("deleted")
     private Integer deleted;
 
+    /** 电子邮箱 */
+    @TableField("email")
+    private String email;
+
     public static final String ID = "id";
 
     public static final String BUSINESS_NO = "business_no";
