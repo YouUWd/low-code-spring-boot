@@ -197,6 +197,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                             : MenuActionBundle.none();
             return assembleMenuDataResp(
                     headerRoot,
+                    queryPersonalizeFlagQuietly(menuId),
                     rootModulePerm,
                     buildEmptyModuleDataNode(rootModuleId, menuId),
                     emptyActions.getGlobalActions(),
@@ -257,6 +258,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         return assembleMenuDataResp(
                 headerRoot,
+                queryPersonalizeFlagQuietly(menuId),
                 rootModulePerm,
                 rootNode,
                 actions.getGlobalActions(),
@@ -319,7 +321,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                             .total(0L)
                             .record(Collections.emptyList())
                             .build();
-            return assembleMenuDataResp(prunedHeader, null, rootNode, null, null, null, null);
+            return assembleMenuDataResp(prunedHeader, null, null, rootNode, null, null, null, null);
         }
 
         String changeTable = primaryTable + "_change";
@@ -372,7 +374,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 total,
                 recordItems.size());
 
-        return assembleMenuDataResp(prunedHeader, null, rootNode, null, null, null, null);
+        return assembleMenuDataResp(prunedHeader, null, null, rootNode, null, null, null, null);
     }
 
     @Override
@@ -387,7 +389,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 resolveTargetModuleContext(
                         req, rootModuleId, rootMenuId, moduleTree, moduleToMenuMap);
 
-        List<MenuTableSpec> reqTables = req != null ? req.getTables() : null;
+        List<MenuTableSpec> reqTables = req.getTables();
         List<TableSpec> tableSpecs =
                 PhysicalQueryMapper.toTableSpecs(
                         reqTables, moduleTree, openMenuApi::getModuleIdByMenuId);
@@ -396,14 +398,10 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         reqTables, moduleTree, openMenuApi::getModuleIdByMenuId);
         List<FilterItem> finalFilters =
                 PhysicalQueryMapper.toFlatFilters(
-                        req != null ? req.getFilters() : null,
-                        moduleTree,
-                        openMenuApi::getModuleIdByMenuId);
+                        req.getFilters(), moduleTree, openMenuApi::getModuleIdByMenuId);
         List<SortItem> finalSorts =
                 PhysicalQueryMapper.toFlatSorts(
-                        req != null ? req.getSorts() : null,
-                        moduleTree,
-                        openMenuApi::getModuleIdByMenuId);
+                        req.getSorts(), moduleTree, openMenuApi::getModuleIdByMenuId);
 
         Long roleId = UserContext.getRoleId();
         PrimaryFilterResult filterResult =
@@ -1229,6 +1227,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
     private MenuDataResp assembleMenuDataResp(
             MenuHeaderColumnResp headerRoot,
+            Integer personalizeFlag,
             ModulePermissionDTO rootModulePerm,
             ModuleDataNode dataNode,
             List<ActionButtonDTO> globalActions,
@@ -1246,6 +1245,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         return MenuDataResp.builder()
                 .header(headerRoot)
+                .personalizeFlag(personalizeFlag)
                 .modulePermission(permission)
                 .globalActions(globalActions)
                 .approvalActions(approvalRows)
@@ -1253,6 +1253,18 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 .interactionActions(interactionActions)
                 .data(dataNode)
                 .build();
+    }
+
+    private Integer queryPersonalizeFlagQuietly(Long menuId) {
+        if (menuId == null) {
+            return 0;
+        }
+        try {
+            return openMenuApi.isPersonalizeEnabled(menuId) ? 1 : 0;
+        } catch (Exception ex) {
+            log.debug("获取菜单个性化标识失败: menuId={}, err={}", menuId, ex.getMessage());
+            return 0;
+        }
     }
 
     private MenuHeaderColumnResp queryHeaderRootQuietly(Long menuId, Long roleId) {

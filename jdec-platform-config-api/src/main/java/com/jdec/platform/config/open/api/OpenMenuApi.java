@@ -31,4 +31,14 @@ public interface OpenMenuApi {
      * @return 菜单ID，未找到时返回 null
      */
     Long getMenuIdByModuleId(Long moduleId);
+
+    /**
+     * 根据菜单ID 查询当前菜单是否开启了个性化
+     *
+     * <p>对应 {@code sys_menu.personalize_flag}：1-开启，0 或 null-未开启。
+     *
+     * @param menuId 菜单ID
+     * @return true: 开启个性化; false: 未开启或菜单不存在
+     */
+    boolean isPersonalizeEnabled(Long menuId);
 }

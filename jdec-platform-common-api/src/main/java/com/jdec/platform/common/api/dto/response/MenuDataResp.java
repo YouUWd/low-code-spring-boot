@@ -27,6 +27,9 @@ public class MenuDataResp implements Serializable {
     @Schema(description = "菜单多级列头展示配置 (来源自 UserMenuHeaderApi)")
     private MenuHeaderColumnResp header;
 
+    @Schema(description = "是否开启个性化.0:否 1:是")
+    private Integer personalizeFlag;
+
     @Schema(description = "模块权限汇总 (1-有权限, 0-无权限)")
     private ModuleSimplePermissionDTO modulePermission;
 

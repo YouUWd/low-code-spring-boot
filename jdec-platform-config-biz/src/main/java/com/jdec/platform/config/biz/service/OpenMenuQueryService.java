@@ -61,6 +61,13 @@ public class OpenMenuQueryService implements OpenMenuApi {
         return menu != null ? menu.getId() : null;
     }
 
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public boolean isPersonalizeEnabled(Long menuId) {
+        SysMenu menu = selectMenuById(menuId);
+        return menu != null && Integer.valueOf(1).equals(menu.getPersonalizeFlag());
+    }
+
     /** 取库中菜单记录（数据隔离：subject_id + project_no），id 为空或查不到返回 {@code null} */
     private SysMenu selectMenuById(Long id) {
         if (id == null) {
