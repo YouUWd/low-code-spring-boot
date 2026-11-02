@@ -19,6 +19,7 @@ public interface CustomButtonProvider {
      *   <li>{@code "*"} 或 {@code "*:*"}：全局匹配
      *   <li>{@code "company:*"}：匹配指定项目下的所有模块
      *   <li>{@code "company:COMPANY-ROOT"}：匹配指定项目下的指定模块编码
+     *   <li>{@code "COMPANY-ROOT|WBDX"}：使用 {@code '|'} 分隔支持同时匹配多个模块编码或项目规则
      * </ul>
      */
     default String target() {
@@ -36,15 +37,32 @@ public interface CustomButtonProvider {
         if ("*".equals(target) || "*:*".equals(target)) {
             return true;
         }
-        if (ctx == null) {
+        if (ctx == null || target == null || target.isBlank()) {
             return false;
         }
-        String pattern = ctx.projectNo() + ":" + ctx.moduleCode();
-        if (target.equalsIgnoreCase(pattern)) {
-            return true;
-        }
-        if (target.equalsIgnoreCase(ctx.projectNo() + ":*")) {
-            return true;
+
+        // 原生支持 '|' 分隔多个匹配规则，如 "COMPANY-ROOT|WBDX" 或 "company:M1|company:M2"
+        for (String singleTarget : target.split("\\|")) {
+            String rule = singleTarget.trim();
+            if (rule.isEmpty()) {
+                continue;
+            }
+            if ("*".equals(rule) || "*:*".equals(rule)) {
+                return true;
+            }
+            String pattern = ctx.projectNo() + ":" + ctx.moduleCode();
+            if (rule.equalsIgnoreCase(pattern)) {
+                return true;
+            }
+            if (ctx.projectNo() != null && rule.equalsIgnoreCase(ctx.projectNo() + ":*")) {
+                return true;
+            }
+            if (ctx.moduleCode() != null) {
+                if (rule.equalsIgnoreCase(ctx.moduleCode())
+                        || rule.equalsIgnoreCase("*:" + ctx.moduleCode())) {
+                    return true;
+                }
+            }
         }
         return false;
     }
