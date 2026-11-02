@@ -85,6 +85,8 @@ public class ExternalObjectChangeReqFormProcessor
                 paramMap.put(
                         "created_by", userDetailResp != null ? userDetailResp.getUserName() : "");
                 sb.append(userDetailResp != null ? userDetailResp.getUserName() : "|");
+                messageReceiverList.add(
+                        userDetailResp != null ? userDetailResp.getShortName() : "");
             }
             Long registrationBy = (Long) event.getBizMap().get("registration_by");
             if (registrationBy != null) {
@@ -98,6 +100,10 @@ public class ExternalObjectChangeReqFormProcessor
                 sb.append(
                         registrationByUserDetailResp != null
                                 ? registrationByUserDetailResp.getUserName()
+                                : "");
+                messageReceiverList.add(
+                        registrationByUserDetailResp != null
+                                ? registrationByUserDetailResp.getShortName()
                                 : "");
             }
             String messageTemplate = template;
