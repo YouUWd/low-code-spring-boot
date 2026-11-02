@@ -176,6 +176,26 @@ public class CommonAggregateController {
         }
     }
 
+    @PostMapping("/menu/{menuId}/change/{changeId}/read")
+    @Operation(
+            summary = "基于菜单 ID 将指定变更申请单设置为已读",
+            description = "将 ${primaryTable}_change 表中指定 changeId 的记录更新为已读状态 (read_status=1)")
+    public ApiResponse<Boolean> markChangeAsRead(
+            @PathVariable Long menuId, @PathVariable Long changeId) {
+        try {
+            Boolean result = commonAggregateService.markChangeAsRead(menuId, changeId);
+            return ApiResponse.success(result);
+        } catch (Exception ex) {
+            log.error(
+                    "Common aggregate markChangeAsRead failed: menuId={}, changeId={}, err={}",
+                    menuId,
+                    changeId,
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
     @PostMapping("/menu/{menuId}/active-toggle")
     @Operation(
             summary = "基于菜单 ID 批量更新单据启停业务状态",

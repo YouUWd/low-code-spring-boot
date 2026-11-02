@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.request.SaveUserMenuHeaderReq;
+import com.jdec.platform.common.api.dto.request.SaveUserMenuHeaderWidthReq;
 import com.jdec.platform.common.biz.header.entity.UserMenuHeader;
 import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
 import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
@@ -50,6 +51,24 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
 
     /** 有审批链标记 */
     private static final Integer HAS_APPROVE_YES = 1;
+
+    /** 表头节点类型：菜单 */
+    private static final Integer NODE_TYPE_MENU = 0;
+
+    /** 表头节点类型：字段 */
+    private static final Integer NODE_TYPE_FIELD = 1;
+
+    /** 表头节点已勾选标记（只有已勾选的列在列表可见，也才允许拖动列宽） */
+    private static final Integer CHECKED_YES = 1;
+
+    /** 列宽下限(px) */
+    private static final int WIDTH_MIN = 1;
+
+    /** 菜单节点虚拟id 前缀：MENU_菜单ID（与 config 侧生成规则一致） */
+    private static final String VIR_ID_PREFIX_MENU = "MENU";
+
+    /** 字段节点虚拟id 前缀：Field_字段ID（与 config 侧生成规则一致） */
+    private static final String VIR_ID_PREFIX_FIELD = "Field";
 
     /** 表头节点列（别名与行模型属性同名，保证记录精准映射到 {@link UserMenuHeader}） */
     private static final List<Field<?>> USER_NODE_COLUMNS =
@@ -292,6 +311,93 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
     }
 
     @Override
+    public void saveUserMenuHeaderWidth(SaveUserMenuHeaderWidthReq req) {
+        if (req == null || req.getMenuId() == null) {
+            throw new BusinessException("菜单ID不能为空");
+        }
+        if (req.getNodeType() == null || req.getSourceId() == null) {
+            throw new BusinessException("节点类型与来源ID不能为空");
+        }
+        if (req.getWidth() == null || req.getWidth() < WIDTH_MIN) {
+            throw new BusinessException("列宽必须为正整数(px)");
+        }
+
+        // 列宽是个人的展示偏好，用户与角色一律取当前请求上下文
+        Long userId = UserContext.getUserId();
+        if (userId == null) {
+            throw new BusinessException("未获取到当前登录用户");
+        }
+
+        // 用户表头记录按表头归属菜单ID 存放，将前端传入的列表菜单ID 转换后再读写
+        Long headerMenuId = openMenuHeaderApi.resolveHeaderMenuId(req.getMenuId());
+        String virId = buildVirId(req.getNodeType(), req.getSourceId());
+        DSLContext dsl = jooqDataContextFactory.getContext();
+        List<UserMenuHeader> stored = selectUserNodes(dsl, userId, headerMenuId);
+
+        UserMenuHeader storedNode = matchUserNode(stored, virId, req.getDataIndex());
+        if (storedNode != null) {
+            // 命中该列已保存记录：节点类型与勾选状态都以库中记录为准（不由前端声明决定），只更新宽度
+            checkResizable(storedNode.getNodeType(), storedNode.getChecked());
+            updateUserNodeWidth(dsl, storedNode, req.getWidth());
+            log.debug(
+                    "保存用户个性化表头列宽：userId={}, menuId={}, virId={}, id={}, width={}",
+                    userId,
+                    headerMenuId,
+                    storedNode.getVirId(),
+                    storedNode.getId(),
+                    req.getWidth());
+            return;
+        }
+
+        // 该列还没有用户记录：整棵树未个性化，或个性化后模块侧新增 / 系统表头后来才勾选的列，
+        // 统一按「用户表头查询」接口的同一口径取值（默认树为骨架 + 已有个性化按 virId 逐节点叠加）
+        SysMenuHeaderResp sourceTree =
+                openMenuHeaderApi.getMenuHeaderTree(req.getMenuId(), UserContext.getRoleId());
+        if (sourceTree == null) {
+            throw new BusinessException("当前角色在该菜单下没有可用的表头配置");
+        }
+        SysMenuHeaderResp tree = mergeUserNodes(sourceTree, toMapByVirId(stored));
+        SysMenuHeaderResp target = findTreeNode(tree, virId, req.getDataIndex());
+        if (target == null) {
+            throw new BusinessException("表头节点不存在：" + virId);
+        }
+        checkResizable(target.getNodeType(), target.getChecked());
+        // 宽度直接设进树节点，落库时随该节点一起写入
+        target.setWidth(req.getWidth());
+
+        if (stored.isEmpty()) {
+            // 首次个性化：整棵用户表头树落库（与保存接口提交整棵树同一口径），目标列宽度一并写入
+            SaveUserMenuHeaderReq saveReq = toSaveNode(tree);
+            saveReq.setUserId(userId);
+            saveReq.setMenuId(req.getMenuId());
+            saveUserMenuHeader(saveReq);
+            log.debug(
+                    "首次个性化并保存列宽：userId={}, menuId={}, virId={}, width={}",
+                    userId,
+                    headerMenuId,
+                    target.getVirId(),
+                    req.getWidth());
+        } else {
+            // 已有个性化记录：只补插该列一条记录，其余节点保持原有记录不动
+            insertUserNode(
+                    dsl,
+                    toSaveNode(target),
+                    headerMenuId,
+                    userId,
+                    AppContext.getSubjectId(),
+                    AppContext.getProjectNo(),
+                    userId,
+                    LocalDateTime.now());
+            log.debug(
+                    "补插用户表头列并保存列宽：userId={}, menuId={}, virId={}, width={}",
+                    userId,
+                    headerMenuId,
+                    target.getVirId(),
+                    req.getWidth());
+        }
+    }
+
+    @Override
     public void resetUserMenuHeader(Long userId, Long menuId) {
         if (userId == null || menuId == null) {
             throw new BusinessException("用户ID与菜单ID不能为空");
@@ -385,6 +491,38 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
     }
 
     /**
+     * 按主键只更新该记录的列宽（其余展示配置保持原值）
+     *
+     * <p>数据隔离：{@code id + user_id + menu_id + subject_id + project_no}，记录已被其它请求删除/换绑时更新不命中并抛出提示。
+     */
+    private void updateUserNodeWidth(DSLContext dsl, UserMenuHeader storedNode, Integer width) {
+        int updated =
+                dsl.update(DSL.table(DSL.name(TABLE_USER_MENU_HEADER)))
+                        .set(DSL.field(DSL.name("width")), width)
+                        .set(DSL.field(DSL.name("updated_by")), UserContext.getUserId())
+                        .set(DSL.field(DSL.name("updated_date")), LocalDateTime.now())
+                        .where(
+                                DSL.field(DSL.name("id"))
+                                        .eq(storedNode.getId())
+                                        .and(
+                                                DSL.field(DSL.name("user_id"))
+                                                        .eq(storedNode.getUserId()))
+                                        .and(
+                                                DSL.field(DSL.name("menu_id"))
+                                                        .eq(storedNode.getMenuId()))
+                                        .and(
+                                                DSL.field(DSL.name("subject_id"))
+                                                        .eq(AppContext.getSubjectId()))
+                                        .and(
+                                                DSL.field(DSL.name("project_no"))
+                                                        .eq(AppContext.getProjectNo())))
+                        .execute();
+        if (updated == 0) {
+            throw new BusinessException("列宽保存失败，请刷新后重试");
+        }
+    }
+
+    /**
      * 批量删除用户表头节点（整棵树同步：库中多出、前端本次未提交的节点）
      *
      * <p>数据隔离：{@code id} 集合 + {@code user_id + menu_id + subject_id + project_no}。
@@ -438,6 +576,32 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         }
     }
 
+    /**
+     * 表头树节点转保存请求节点：展示配置原样下移（层级/模块/展示名仍不落库），根节点的 userId 与列表菜单ID 由调用方补齐
+     *
+     * <p>不携带主键 {@code id}：走这里的都是库里没有该列记录的场景，整树落库按 {@code vir_id} 匹配即可。
+     */
+    private SaveUserMenuHeaderReq toSaveNode(SysMenuHeaderResp node) {
+        SaveUserMenuHeaderReq req = new SaveUserMenuHeaderReq();
+        req.setVirId(node.getVirId());
+        req.setNodeType(node.getNodeType());
+        req.setSourceId(node.getSourceId());
+        req.setDataIndex(node.getDataIndex());
+        req.setColors(node.getColors());
+        req.setWidth(node.getWidth());
+        req.setSorted(node.getSorted());
+        req.setSearchType(node.getSearchType());
+        req.setEllipsis(node.getEllipsis());
+        req.setFixed(node.getFixed());
+        req.setChecked(node.getChecked());
+        req.setSortValue(node.getSortValue());
+        List<SysMenuHeaderResp> children = node.getChildren();
+        if (children != null) {
+            req.setChildren(children.stream().map(this::toSaveNode).collect(Collectors.toList()));
+        }
+        return req;
+    }
+
     // ==================== 可用节点池 ====================
 
     /**
@@ -462,6 +626,24 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         for (SysMenuHeaderResp child : children) {
             indexByVirId(child, nodeByVirId);
         }
+    }
+
+    /**
+     * 按虚拟id 从表头树中定位节点，未命中时按字段索引兜底比对
+     *
+     * <p>树与库中的 {@code data_index} 都可能是「表名.字段名」或带模块ID 前缀的「模块ID.表名.字段名」，比对前统一去前缀。
+     */
+    private SysMenuHeaderResp findTreeNode(SysMenuHeaderResp tree, String virId, String dataIndex) {
+        Map<String, SysMenuHeaderResp> nodesByVirId = indexByVirId(tree);
+        SysMenuHeaderResp node = nodesByVirId.get(virId);
+        if (node != null || !StringUtils.hasText(dataIndex)) {
+            return node;
+        }
+        String expected = stripModulePrefix(dataIndex);
+        return nodesByVirId.values().stream()
+                .filter(item -> expected.equalsIgnoreCase(stripModulePrefix(item.getDataIndex())))
+                .findFirst()
+                .orElse(null);
     }
 
     // ==================== 与默认表头树的合并 ====================
@@ -558,6 +740,36 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
             nodesByVirId.putIfAbsent(node.getVirId(), node);
         }
         return nodesByVirId;
+    }
+
+    /** 按虚拟id 从已保存记录中定位目标列，未命中时按字段索引兜底比对（同样先去模块ID 前缀） */
+    private UserMenuHeader matchUserNode(
+            List<UserMenuHeader> stored, String virId, String dataIndex) {
+        UserMenuHeader node = toMapByVirId(stored).get(virId);
+        if (node != null || !StringUtils.hasText(dataIndex)) {
+            return node;
+        }
+        String expected = stripModulePrefix(dataIndex);
+        return stored.stream()
+                .filter(item -> expected.equalsIgnoreCase(stripModulePrefix(item.getDataIndex())))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /** 节点虚拟id：菜单 {@code MENU_菜单ID}，字段 {@code Field_字段ID}，与生成侧规则一致 */
+    private static String buildVirId(Integer nodeType, Long sourceId) {
+        String prefix = NODE_TYPE_MENU.equals(nodeType) ? VIR_ID_PREFIX_MENU : VIR_ID_PREFIX_FIELD;
+        return prefix + "_" + sourceId;
+    }
+
+    /** 只有「字段」且已勾选（{@code checked=1}）的列才能设置列宽：菜单节点无列宽概念，未勾选的列列表上不展示 */
+    private static void checkResizable(Integer nodeType, Integer checked) {
+        if (!NODE_TYPE_FIELD.equals(nodeType)) {
+            throw new BusinessException("仅字段列支持设置列宽");
+        }
+        if (!CHECKED_YES.equals(checked)) {
+            throw new BusinessException("该列未勾选显示，不能设置列宽");
+        }
     }
 
     /**

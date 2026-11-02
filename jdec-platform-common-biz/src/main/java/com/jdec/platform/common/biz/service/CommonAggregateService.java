@@ -80,6 +80,15 @@ public interface CommonAggregateService {
     MenuChangeCountResp getChangeCountByMenu(Long menuId);
 
     /**
+     * 基于菜单 ID 将指定变更申请单设置为已读 (read_status = 1)
+     *
+     * @param menuId 菜单 ID
+     * @param changeId 变更单 ID
+     * @return 是否成功设置为已读
+     */
+    Boolean markChangeAsRead(Long menuId, Long changeId);
+
+    /**
      * 基于菜单 ID 批量更新单据启停业务状态
      *
      * <p>根据 business_no 批量更新：启用是将 11 改为 99，停用是将 99 改为 11，不更改其他状态的数据。

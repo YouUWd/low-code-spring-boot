@@ -507,6 +507,32 @@ public class SysConfigCategoryService implements SysConfigCategoryApi {
 
     @Override
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public List<SysConfigItemResp> getConfigItemsByCategoryAlias(String categoryAlias) {
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+        List<SysConfigItem> items =
+                itemMapper.selectList(
+                        Wrappers.<SysConfigItem>lambdaQuery()
+                                .eq(SysConfigItem::getCategoryAlias, categoryAlias)
+                                .eq(SysConfigItem::getProjectNo, projectNo)
+                                .eq(SysConfigItem::getSubjectId, subjectId)
+                                .orderByAsc(SysConfigItem::getSort)
+                                .orderByAsc(SysConfigItem::getId));
+        if (CollectionUtils.isEmpty(items)) {
+            return Collections.emptyList();
+        }
+        return items.stream()
+                .map(
+                        item -> {
+                            SysConfigItemResp resp = new SysConfigItemResp();
+                            BeanUtils.copyProperties(item, resp);
+                            return resp;
+                        })
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public SysConfigItemResp getConfigItemsByValue(String categoryAlias, String itemValue) {
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();

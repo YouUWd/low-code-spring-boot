@@ -2,6 +2,7 @@ package com.jdec.platform.common.biz.controller;
 
 import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.request.SaveUserMenuHeaderReq;
+import com.jdec.platform.common.api.dto.request.SaveUserMenuHeaderWidthReq;
 import com.jdec.platform.config.api.SysBusinessTypeApi;
 import com.jdec.platform.config.api.dto.response.SearchConfigItemResp;
 import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
@@ -87,6 +88,33 @@ public class CommonMenuHeaderController {
                     "Common menu-header saveUserMenuHeader failed: userId={}, menuId={}, err={}",
                     req == null ? null : req.getUserId(),
                     req == null ? null : req.getMenuId(),
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
+    @PostMapping("/width")
+    @Operation(
+            summary = "保存列表列宽（拖动列宽）",
+            description =
+                    "单列定位：按 nodeType + sourceId 拼虚id（菜单 MENU_菜单ID / 字段 Field_字段ID，与表头节点返回的 sourceId 同源），"
+                            + "dataIndex 仅在虚id 未命中时做兜底比对；用户与角色取当前登录上下文，无需前端传递。"
+                            + "该用户在此菜单下的 user_menu_header 没有任何记录时，先按表头查询接口同一口径生成用户表头树，"
+                            + "校验目标列为字段且 checked=1 后整棵树落库（首次用户个性化），同时将宽度写到该列记录；"
+                            + "已有记录且命中该列记录时，以库中记录为准校验（仅 nodeType 为字段且 checked=1 可设宽），只更新该记录的 width；"
+                            + "已有记录但该列无记录（模块侧新增、或系统表头后来才勾选）时，按合并后的表头树取值校验，仅补插该列一条记录并写入宽度；"
+                            + "落库归属菜单与数据隔离口径同保存/查询接口（menu_id 取表头归属菜单ID，按 userId + menuId + subjectId + projectNo）")
+    public ApiResponse<Void> saveUserMenuHeaderWidth(@RequestBody SaveUserMenuHeaderWidthReq req) {
+        try {
+            userMenuHeaderApi.saveUserMenuHeaderWidth(req);
+            return ApiResponse.success();
+        } catch (Exception ex) {
+            log.error(
+                    "Common menu-header saveUserMenuHeaderWidth failed: menuId={}, nodeType={}, sourceId={}, err={}",
+                    req == null ? null : req.getMenuId(),
+                    req == null ? null : req.getNodeType(),
+                    req == null ? null : req.getSourceId(),
                     ex.getMessage(),
                     ex);
             throw ex;

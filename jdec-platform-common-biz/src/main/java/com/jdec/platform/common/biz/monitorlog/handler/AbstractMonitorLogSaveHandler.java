@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.common.api.dto.request.MonitorLogSaveReq;
 import com.jdec.platform.common.biz.monitorlog.entity.MonitorLog;
 import com.jdec.platform.shared.exception.BusinessException;
+import com.jdec.platform.shared.utils.JsonValueUtils;
 import java.time.LocalDateTime;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -43,13 +44,18 @@ public abstract class AbstractMonitorLogSaveHandler implements MonitorLogSaveHan
         return entity;
     }
 
-    /** 对象序列化为 JSON 字符串，空值返回 null（避免库中写入 "null"） */
+    /**
+     * 对象序列化为 JSON 字符串，空值返回 null（避免库中写入 "null"）。
+     *
+     * <p>序列化前先做结构化归一化：调用方若已把对象序列化成 JSON 文本（如 remark 传的是 {@code JSONUtil.toJsonStr}
+     * 的结果），直接序列化会多套一层引号转义，落库成 JSON 字符串标量而非 JSON 对象。
+     */
     private String toJson(Object value, String field) {
         if (value == null) {
             return null;
         }
         try {
-            return objectMapper.writeValueAsString(value);
+            return objectMapper.writeValueAsString(JsonValueUtils.parseStructuredText(value));
         } catch (Exception e) {
             log.error("监控日志 {} 序列化失败: type={}, value={}", field, supportType(), value, e);
             throw new BusinessException("监控日志保存失败：日志内容格式不正确");

@@ -39,7 +39,7 @@ public interface OpenMenuHeaderApi {
      *
      * @param menuId 列表菜单ID
      * @param roleId 角色ID，为空时不做字段权限过滤
-     * @return 菜单表头树的根节点；整树裁剪后为空时返回 {@code null}
+     * @return 菜单表头树的根节点；入参菜单不存在、或整树裁剪后为空时返回 {@code null}
      */
     SysMenuHeaderResp getMenuHeaderTree(Long menuId, Long roleId);
 
@@ -53,7 +53,7 @@ public interface OpenMenuHeaderApi {
      * @param menuId 列表菜单ID
      * @param roleId 角色ID，为空时不做字段权限过滤
      * @param scope 字段权限过滤范围，为空时按 {@link MenuFieldPermissionScope#VIEW_ONLY} 处理
-     * @return 菜单表头树的根节点；整树裁剪后为空时返回 {@code null}
+     * @return 菜单表头树的根节点；入参菜单不存在、或整树裁剪后为空时返回 {@code null}；关联的详情菜单记录缺失时报错提示「未关联详情菜单」
      */
     SysMenuHeaderResp getMenuHeaderTree(Long menuId, Long roleId, MenuFieldPermissionScope scope);
 
@@ -74,7 +74,8 @@ public interface OpenMenuHeaderApi {
      *
      * <p>与 {@code SysMenuHeaderApi#getMenuHeaderDisplay} 同一套逻辑：先取「菜单/字段生成 + {@code sys_menu_header}
      * 已保存展示配置」 合并后的完整树（结构动态生成），只输出已勾选（{@code checked=1}）的列并保留其祖先菜单节点；无已勾选配置时返回空（{@code header} 为
-     * null）。
+     * null）。{@code menuId} 非必传，为空时不查库直接返回空；入参菜单不存在时同样返回空，仅当菜单关联了详情菜单（{@code detailId}
+     * 有值）却查不到该详情菜单记录时，才报错提示「未关联详情菜单」；三个重载同此规则。
      *
      * @param menuId 列表菜单ID，内部按 {@link #resolveHeaderMenuId(Long)} 解析出表头归属菜单ID 后读取
      * @return 多级列头展示结构
@@ -101,7 +102,8 @@ public interface OpenMenuHeaderApi {
      * {@code scope} 决定（查看/申请/编辑的任意组合，见 {@link MenuFieldPermissionScope}），而非固定 {@code view=1}；{@code
      * scope} 为空时回退 {@link MenuFieldPermissionScope#VIEW_ONLY}。
      *
-     * @param menuId 列表菜单ID，内部按 {@link #resolveHeaderMenuId(Long)} 解析出表头归属菜单ID 后读取
+     * @param menuId 列表菜单ID，可为空（为空时不查库、直接返回空展示结构），非空时按 {@link #resolveHeaderMenuId(Long)}
+     *     解析出表头归属菜单ID 后读取
      * @param roleId 角色ID，为空时不做字段权限过滤
      * @param scope 字段权限过滤范围，为空时按 {@link MenuFieldPermissionScope#VIEW_ONLY} 处理
      * @return 多级列头展示结构

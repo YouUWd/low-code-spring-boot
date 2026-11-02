@@ -42,6 +42,9 @@ public class UserDetailResp {
     @Schema(description = "手机")
     private String phone;
 
+    @Schema(description = "对应企业微信简称")
+    private String shortName;
+
     @Schema(description = "性别")
     private Integer sex;
 

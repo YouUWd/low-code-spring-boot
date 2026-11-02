@@ -116,14 +116,16 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
 
         // 入参为列表菜单ID，表头记录归属其绑定的详情菜单；菜单实体一并加载并透传给生成侧，避免生成侧重复查库
         SysMenu menu = selectMenuById(menuId);
+        // 入参菜单在模块侧已不存在（菜单已删除，或传入的不是菜单ID）：纯查询接口不报错，整棵表头按空处理
         if (menu == null) {
-            throw new BusinessException("菜单不存在");
+            return null;
         }
         Long headerMenuId = resolveHeaderMenuId(menu);
         SysMenu headerMenu =
                 headerMenuId.equals(menu.getId()) ? menu : selectMenuById(headerMenuId);
+        // 仅当菜单已关联详情菜单（detailId 有值）却查不到该详情菜单记录时报错提示「未关联详情菜单」：属菜单数据不一致，不静默返回空
         if (headerMenu == null) {
-            throw new BusinessException("菜单不存在");
+            throw new BusinessException("未关联详情菜单");
         }
 
         // 生成侧：以表头归属菜单为根，递归全部子级菜单，取各菜单绑定模块下的字段（effectiveRoleId 非空时按字段权限过滤）
@@ -278,12 +280,14 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
     @Override
     public MenuHeaderDisplayResp getMenuHeaderDisplay(
             Long menuId, Long roleId, MenuFieldPermissionScope scope) {
+        // 菜单ID 非必传：未传时不查库，直接返回空的展示结构
         if (menuId == null) {
-            throw new BusinessException("菜单ID不能为空");
+            return new MenuHeaderDisplayResp();
         }
 
         // 展示结构由生成侧动态给出：取「菜单/字段生成 + sys_menu_header 已保存展示配置」合并后的完整树，
         // 再只保留已勾选（checked=1）的列及其祖先菜单节点，不依赖表记录中的父子关系
+        // 建树返回 null（入参菜单不存在、整树裁剪后无节点）时，组装结果同样为空展示结构
         return buildMenuHeaderDisplay(getMenuHeaderTree(menuId, roleId, scope));
     }
 

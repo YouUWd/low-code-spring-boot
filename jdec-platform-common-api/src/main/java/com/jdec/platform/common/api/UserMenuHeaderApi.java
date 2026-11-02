@@ -1,6 +1,7 @@
 package com.jdec.platform.common.api;
 
 import com.jdec.platform.common.api.dto.request.SaveUserMenuHeaderReq;
+import com.jdec.platform.common.api.dto.request.SaveUserMenuHeaderWidthReq;
 import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
 import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
 
@@ -78,6 +79,24 @@ public interface UserMenuHeaderApi {
      * @param req 用户个性化表头配置节点树（根节点需带 userId 与 menuId）
      */
     void saveUserMenuHeader(SaveUserMenuHeaderReq req);
+
+    /**
+     * 保存单列列宽（列表拖动列宽）
+     *
+     * <p>定位列：入参 {@code nodeType} + {@code sourceId} 按生成侧同一规则拼出 {@code virId}（菜单 {@code MENU_菜单ID} /
+     * 字段 {@code Field_字段ID}）去 {@code user_menu_header} 命中记录，未命中时用 {@code dataIndex}
+     * 兜底比对；用户与角色取当前请求上下文。
+     *
+     * <ul>
+     *   <li>该用户在此菜单下没有任何记录（数据隔离 {@code user_id + menu_id + subject_id + project_no}）：先按 {@code
+     *       getUserMenuHeaderTree} 的口径生成用户表头树，校验目标列为字段且已勾选后，将整棵树落库（首次个性化）， 目标列宽度一并写入；
+     *   <li>已有记录且命中目标列记录：以库中记录为准校验（节点类型为字段、{@code checked=1}），只更新该记录的 {@code width}；
+     *   <li>已有记录但目标列无记录（模块侧新增、或系统表头后来才勾选的列）：按合并后的用户表头树取值校验，仅补插该列记录并写入宽度， 其余节点保持原有个性化记录不变。
+     * </ul>
+     *
+     * @param req 列宽请求（列表菜单ID + 节点类型 + 来源ID + 字段索引 + 列宽）
+     */
+    void saveUserMenuHeaderWidth(SaveUserMenuHeaderWidthReq req);
 
     /**
      * 恢复默认表头：删除该用户在指定列表菜单下的个性化表头配置

@@ -303,12 +303,37 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         PhysicalQueryMapper.ensureChangeColumnsInHeader(headerRoot, primaryTable, rootModuleId);
         MenuHeaderColumnResp prunedHeader = PhysicalQueryMapper.pruneHeaderToFirstLevel(headerRoot);
 
+        // 仅查询原单主表创建人是当前登录人的变更单
+        List<Long> myPrimaryIds = fetchUserCreatedPrimaryTableIds(primaryTable, userId);
+        if (CollectionUtils.isEmpty(myPrimaryIds)) {
+            log.info(
+                    "[ChangeQuery-Empty] 当前用户在原单主表无创建记录，直接返回空变更单列表: menuId={}, userId={}, primaryTable={}",
+                    menuId,
+                    userId,
+                    primaryTable);
+            ModuleDataNode rootNode =
+                    ModuleDataNode.builder()
+                            .moduleId(rootModuleId)
+                            .menuId(menuId)
+                            .total(0L)
+                            .record(Collections.emptyList())
+                            .build();
+            return assembleMenuDataResp(prunedHeader, null, rootNode, null, null, null, null);
+        }
+
         String changeTable = primaryTable + "_change";
         List<String> targetColumns =
                 PhysicalQueryMapper.collectChangeTargetColumns(
                         prunedHeader, moduleTree, primaryTable);
         List<FilterItem> singleFilters =
                 PhysicalQueryMapper.buildChangeFilters(req, moduleTree, primaryTable, changeTable);
+        singleFilters.add(
+                FilterItem.builder()
+                        .tableName(changeTable)
+                        .columnName("source_id")
+                        .operator("IN")
+                        .value(myPrimaryIds)
+                        .build());
         List<SortItem> singleSorts =
                 PhysicalQueryMapper.buildChangeSorts(req, moduleTree, primaryTable);
 
@@ -620,11 +645,23 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             return MenuChangeCountResp.of(enableChange, 0L);
         }
 
+        Long userId = getEffectiveUserId();
+        List<Long> myPrimaryIds = fetchUserCreatedPrimaryTableIds(primaryTable, userId);
+        if (CollectionUtils.isEmpty(myPrimaryIds)) {
+            return MenuChangeCountResp.of(enableChange, 0L);
+        }
+
         String changeTable = primaryTable + "_change";
         List<FilterItem> filters =
                 List.of(
                         FilterItem.eq(changeTable, "deleted", (byte) 0),
-                        FilterItem.eq(changeTable, "read_status", 0));
+                        FilterItem.eq(changeTable, "read_status", 0),
+                        FilterItem.builder()
+                                .tableName(changeTable)
+                                .columnName("source_id")
+                                .operator("IN")
+                                .value(myPrimaryIds)
+                                .build());
         Long unreadCount =
                 dataApi.countSingleTable(
                         SingleTableQueryReq.builder()
@@ -633,6 +670,99 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                                 .build());
 
         return MenuChangeCountResp.of(enableChange, unreadCount);
+    }
+
+    @Override
+    public Boolean markChangeAsRead(Long menuId, Long changeId) {
+        if (menuId == null) {
+            throw new IllegalArgumentException("菜单 ID 不能为空");
+        }
+        if (changeId == null) {
+            throw new IllegalArgumentException("变更单 ID 不能为空");
+        }
+
+        Long rootModuleId = getModuleIdByMenuOrThrow(menuId);
+        ModuleTreeDTO moduleTree =
+                configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
+        ModuleInfo rootModuleInfo = moduleTree != null ? moduleTree.getModule(rootModuleId) : null;
+        int enableChange =
+                (rootModuleInfo != null && rootModuleInfo.getEnableChange() != null)
+                        ? rootModuleInfo.getEnableChange()
+                        : 0;
+        if (enableChange != 1) {
+            throw new BusinessException("当前菜单对应模块未开启变更申请功能 (enableChange != 1)");
+        }
+
+        String primaryTable = moduleTree != null ? moduleTree.getPrimaryTable() : null;
+        if (primaryTable == null || primaryTable.isBlank()) {
+            throw new BusinessException("原单根模块主表未配置，无法推导变更表名: moduleId=" + rootModuleId);
+        }
+
+        Long userId = getEffectiveUserId();
+        List<Long> myPrimaryIds = fetchUserCreatedPrimaryTableIds(primaryTable, userId);
+        if (CollectionUtils.isEmpty(myPrimaryIds)) {
+            log.warn(
+                    "[ChangeRead-Denied] 当前用户在原单主表无创建记录，无权操作此变更单: menuId={}, userId={}, changeId={}",
+                    menuId,
+                    userId,
+                    changeId);
+            throw new BusinessException("变更单不存在或当前用户无权操作: changeId=" + changeId);
+        }
+
+        String changeTable = primaryTable + "_change";
+        List<Map<String, Object>> exists =
+                dataApi.querySingleTableList(
+                        SingleTableQueryReq.builder()
+                                .tableName(changeTable)
+                                .columns(List.of("id", "read_status"))
+                                .filters(
+                                        List.of(
+                                                FilterItem.eq(changeTable, "id", changeId),
+                                                FilterItem.builder()
+                                                        .tableName(changeTable)
+                                                        .columnName("source_id")
+                                                        .operator("IN")
+                                                        .value(myPrimaryIds)
+                                                        .build(),
+                                                FilterItem.eq(changeTable, "deleted", (byte) 0)))
+                                .build());
+        if (CollectionUtils.isEmpty(exists)) {
+            log.warn(
+                    "[ChangeRead-NotFound] 未找到匹配的变更单或当前用户无权操作: menuId={}, changeId={}, userId={}",
+                    menuId,
+                    changeId,
+                    userId);
+            throw new BusinessException("变更单不存在或当前用户无权操作: changeId=" + changeId);
+        }
+
+        Object currentReadStatus = exists.get(0).get("read_status");
+        if (currentReadStatus != null && Integer.parseInt(currentReadStatus.toString()) == 1) {
+            log.info(
+                    "[ChangeRead-AlreadyRead] 变更单已经是已读状态，直接返回成功: menuId={}, changeId={}",
+                    menuId,
+                    changeId);
+            return true;
+        }
+
+        Table<?> table = resolveTable(changeTable);
+        DSLContext dsl = jooqDataContextFactory.getContext();
+        int updatedRows =
+                dsl.update(table)
+                        .set(DSL.field(DSL.name("read_status"), Byte.class), (byte) 1)
+                        .set(DSL.field(DSL.name("updated_by")), UserContext.getOperateUserId())
+                        .set(DSL.field(DSL.name("updated_date")), LocalDateTime.now())
+                        .where(DSL.field(DSL.name("id"), Long.class).eq(changeId))
+                        .and(DSL.field(DSL.name("source_id"), Long.class).in(myPrimaryIds))
+                        .and(DSL.field(DSL.name("deleted"), Byte.class).eq((byte) 0))
+                        .execute();
+
+        log.info(
+                "[ChangeRead-Finish] 变更单标记已读成功: menuId={}, changeId={}, changeTable={}, 影响行数={}",
+                menuId,
+                changeId,
+                changeTable,
+                updatedRows);
+        return updatedRows > 0;
     }
 
     @Override
@@ -1185,6 +1315,52 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
     private Long getEffectiveUserId() {
         return UserContext.isMockLogin() ? UserContext.getMockUserId() : UserContext.getUserId();
+    }
+
+    /** 查询指定主表中创建人是指定有效用户的物理记录主键 ID 集合 */
+    private List<Long> fetchUserCreatedPrimaryTableIds(String primaryTable, Long userId) {
+        if (primaryTable == null || primaryTable.isBlank() || userId == null) {
+            return Collections.emptyList();
+        }
+        try {
+            List<Map<String, Object>> records =
+                    dataApi.querySingleTableList(
+                            SingleTableQueryReq.builder()
+                                    .tableName(primaryTable)
+                                    .columns(Collections.singletonList("id"))
+                                    .filters(
+                                            List.of(
+                                                    FilterItem.eq(
+                                                            primaryTable, "created_by", userId),
+                                                    FilterItem.eq(
+                                                            primaryTable, "deleted", (byte) 0)))
+                                    .build());
+            if (CollectionUtils.isEmpty(records)) {
+                return Collections.emptyList();
+            }
+            List<Long> ids = new ArrayList<>(records.size());
+            for (Map<String, Object> map : records) {
+                if (map != null && map.get("id") != null) {
+                    Object idVal = map.get("id");
+                    if (idVal instanceof Number num) {
+                        ids.add(num.longValue());
+                    } else {
+                        try {
+                            ids.add(Long.parseLong(String.valueOf(idVal)));
+                        } catch (NumberFormatException ignored) {
+                        }
+                    }
+                }
+            }
+            return ids;
+        } catch (Exception ex) {
+            log.warn(
+                    "查询主表当前登录人创建的记录 ID 失败: table={}, userId={}, err={}",
+                    primaryTable,
+                    userId,
+                    ex.getMessage());
+            return Collections.emptyList();
+        }
     }
 
     private Table<?> resolveTable(String tableName) {
