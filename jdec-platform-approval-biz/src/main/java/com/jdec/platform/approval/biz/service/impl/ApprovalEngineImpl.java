@@ -940,14 +940,14 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 payload);
 
         // 回调更新业务状态
-        ApprovalStatusCallBackReq backReq = new ApprovalStatusCallBackReq();
+        /*ApprovalStatusCallBackReq backReq = new ApprovalStatusCallBackReq();
         backReq.setBusinessStatus(approvalBusiness.getStatusValue());
         backReq.setVersionNo(approvalBusiness.getVersionNo());
         backReq.setDataId(approvalBusiness.getRecordId());
         backReq.setModuleId(approvalBusiness.getModuleId());
         backReq.setRegistrationTime(LocalDateTime.now());
         backReq.setIsTermination(false);
-        dataEngineApi.processApprovalStatus(backReq);
+        dataEngineApi.processApprovalStatus(backReq);*/
     }
 
     // 新建业务发起草稿申请------------------------------------------------------------------------
@@ -1022,7 +1022,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 payload);
 
         // 回调更新业务状态
-        ApprovalStatusCallBackReq backReq = new ApprovalStatusCallBackReq();
+        /*ApprovalStatusCallBackReq backReq = new ApprovalStatusCallBackReq();
         backReq.setBusinessStatus(approvalBusiness.getStatusValue());
         backReq.setVersionNo(approvalBusiness.getVersionNo());
         backReq.setDataId(approvalBusiness.getRecordId());
@@ -1030,7 +1030,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setRegistrationTime(LocalDateTime.now());
         backReq.setIsCurrentStepFinish(false);
         backReq.setIsTermination(false);
-        dataEngineApi.processApprovalStatus(backReq);
+        dataEngineApi.processApprovalStatus(backReq);*/
     }
 
     // 变更业务发起草稿申请------------------------------------------------------------------------
@@ -1145,7 +1145,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 payload);
 
         // 回调更新业务状态
-        ApprovalStatusCallBackReq backReq = new ApprovalStatusCallBackReq();
+        /*ApprovalStatusCallBackReq backReq = new ApprovalStatusCallBackReq();
         backReq.setBusinessStatus(approvalBusiness.getStatusValue());
         backReq.setVersionNo(approvalBusiness.getVersionNo());
         backReq.setDataId(approvalBusiness.getRecordId());
@@ -1153,7 +1153,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setRegistrationTime(LocalDateTime.now());
         backReq.setIsCurrentStepFinish(false);
         backReq.setIsTermination(false);
-        dataEngineApi.processApprovalStatus(backReq);
+        dataEngineApi.processApprovalStatus(backReq);*/
     }
 
     // 新建业务发起审批申请------------------------------------------------------------------------
@@ -1260,7 +1260,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setDataId(approvalBusiness.getRecordId());
         backReq.setModuleId(approvalBusiness.getModuleId());
         backReq.setRegistrationTime(LocalDateTime.now());
-        backReq.setIsCurrentStepFinish(false);
+        backReq.setIsCurrentStepFinish(true);
         backReq.setIsTermination(false);
         dataEngineApi.processApprovalStatus(backReq);
         approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
@@ -1420,7 +1420,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setDataId(approvalBusiness.getRecordId());
         backReq.setModuleId(approvalBusiness.getModuleId());
         backReq.setRegistrationTime(LocalDateTime.now());
-        backReq.setIsCurrentStepFinish(false);
+        backReq.setIsCurrentStepFinish(true);
         backReq.setIsTermination(false);
         dataEngineApi.processApprovalStatus(backReq);
         approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
