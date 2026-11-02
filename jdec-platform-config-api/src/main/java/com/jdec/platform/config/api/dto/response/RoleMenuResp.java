@@ -39,6 +39,9 @@ public class RoleMenuResp implements Serializable {
     @Schema(description = "关联模块id")
     private Long moduleId;
 
+    @Schema(description = "是否开启个性化.0:否 1:是")
+    private Integer personalizeFlag;
+
     @Schema(description = "排序")
     private Integer sortOrder;
 

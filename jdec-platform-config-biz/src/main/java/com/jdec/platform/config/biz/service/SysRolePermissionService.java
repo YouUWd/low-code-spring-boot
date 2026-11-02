@@ -140,6 +140,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
                             resp.setParam(menu.getParam());
                             resp.setMenuType(menu.getMenuType());
                             resp.setStructuralType(menu.getStructuralType());
+                            resp.setPersonalizeFlag(menu.getPersonalizeFlag());
                             resp.setCategory(menu.getCategory());
                             resp.setImgDefault(menu.getImgDefault());
                             resp.setImgActive(menu.getImgActive());
@@ -788,7 +789,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
      *   <li>主体级全选（subject_check_all=1）：该主体下全部数据，输出该主体一条配置、业务名称为空
      * </ul>
      *
-     * 其余情况按主体拆分，业务名称取该主体的勾选值。
+     * <p>其余情况按主体拆分，业务名称取该主体的勾选值。
      */
     private List<DataRightConfigResp.DataConfig> buildDataConfigs(
             String columnName, List<SysRoleDataPermission> records) {
