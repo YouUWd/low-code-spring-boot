@@ -25,6 +25,7 @@ public interface InteractionButtonProvider {
      *   <li>{@code "*"} 或 {@code "*:*"}：全局匹配
      *   <li>{@code "company:*"}：匹配指定项目下的所有模块
      *   <li>{@code "company:COMPANY-ROOT"}：匹配指定项目下的指定模块编码
+     *   <li>{@code "COMPANY-ROOT|WBDX"}：使用 {@code '|'} 分隔支持同时匹配多个模块编码或项目规则
      * </ul>
      */
     default String target() {
@@ -42,20 +43,31 @@ public interface InteractionButtonProvider {
         if ("*".equals(target) || "*:*".equals(target)) {
             return true;
         }
-        if (ctx == null) {
+        if (ctx == null || target == null || target.isBlank()) {
             return false;
         }
-        String pattern = ctx.getProjectNo() + ":" + ctx.getModuleCode();
-        if (target.equalsIgnoreCase(pattern)) {
-            return true;
-        }
-        if (target.equalsIgnoreCase(ctx.getProjectNo() + ":*")) {
-            return true;
-        }
-        if (ctx.getModuleCode() != null) {
-            if (target.equalsIgnoreCase(ctx.getModuleCode())
-                    || target.equalsIgnoreCase("*:" + ctx.getModuleCode())) {
+
+        // 原生支持 '|' 分隔多个匹配规则，如 "COMPANY-ROOT|WBDX" 或 "company:M1|company:M2"
+        for (String singleTarget : target.split("\\|")) {
+            String rule = singleTarget.trim();
+            if (rule.isEmpty()) {
+                continue;
+            }
+            if ("*".equals(rule) || "*:*".equals(rule)) {
                 return true;
+            }
+            String pattern = ctx.getProjectNo() + ":" + ctx.getModuleCode();
+            if (rule.equalsIgnoreCase(pattern)) {
+                return true;
+            }
+            if (ctx.getProjectNo() != null && rule.equalsIgnoreCase(ctx.getProjectNo() + ":*")) {
+                return true;
+            }
+            if (ctx.getModuleCode() != null) {
+                if (rule.equalsIgnoreCase(ctx.getModuleCode())
+                        || rule.equalsIgnoreCase("*:" + ctx.getModuleCode())) {
+                    return true;
+                }
             }
         }
         return false;
