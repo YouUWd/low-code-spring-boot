@@ -17,13 +17,7 @@ public class BasicSaveModel implements Serializable {
 
     private Long roleId;
 
-    private Long realUserId;
-
     private Long userId;
-
-    private Long mockUserId;
-
-    private String hrefUrl;
 
     private String projectNo;
 

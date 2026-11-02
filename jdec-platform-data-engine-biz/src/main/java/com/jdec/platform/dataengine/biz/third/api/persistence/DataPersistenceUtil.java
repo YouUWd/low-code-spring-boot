@@ -68,6 +68,14 @@ public class DataPersistenceUtil {
         return status;
     }
 
+    public static Long getTableRowCreatedByWithTabName(Map<String, Object> record, String tabName) {
+        Object obj =
+                record.get(
+                        getFullFieldName(tabName, CommonConstant.TABLE_DEFAULT_CREATED_BY_FIELD));
+        Long userId = obj instanceof Number num ? num.longValue() : null;
+        return userId;
+    }
+
     public static Boolean getTableRowDeletedFlagWithTabName(
             Map<String, Object> record, String tabName) {
         Object obj =

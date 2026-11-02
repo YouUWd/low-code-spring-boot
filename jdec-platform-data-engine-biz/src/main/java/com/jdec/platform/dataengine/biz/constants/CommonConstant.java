@@ -78,6 +78,8 @@ public interface CommonConstant {
 
     String TABLE_DEFAULT_UPDATE_BY_FIELD = "updated_by";
 
+    String TABLE_DEFAULT_CREATED_BY_FIELD = "created_by";
+
     String TABLE_DEFAULT_UPDATED_DATE_FIELD = "updated_date";
 
     String TABLE_DEFAULT_ACTIVE_FIELD = "active";
