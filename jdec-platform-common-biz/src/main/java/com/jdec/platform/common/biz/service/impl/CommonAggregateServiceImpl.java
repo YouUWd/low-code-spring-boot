@@ -125,7 +125,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 userId,
                 roleId);
 
-        MenuHeaderColumnResp headerRoot = getHeaderDisplayOrThrow(userId, menuId, roleId);
+        MenuHeaderColumnResp headerRoot =
+                getHeaderDisplayOrThrow(UserContext.getUserId(), menuId, roleId);
         Long rootModuleId = headerRoot.getModuleId();
         ModuleTreeDTO moduleTree =
                 configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);

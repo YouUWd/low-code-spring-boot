@@ -622,6 +622,7 @@ public class AuthServiceImpl implements AuthApi {
                 .category(menu.getCategory())
                 .imgDefault(menu.getImgDefault())
                 .imgActive(menu.getImgActive())
+                .personalizeFlag(menu.getPersonalizeFlag())
                 .moduleId(menu.getModuleId())
                 .sortOrder(menu.getSortOrder())
                 .showed(menu.getShowed())
