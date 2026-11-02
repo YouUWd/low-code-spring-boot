@@ -869,6 +869,7 @@ public class SysUserService implements SysUserApi {
                 .workNumber(sysUser.getWorkNumber())
                 .userAvatar(sysUser.getUserAvatar())
                 .phone(sysUser.getPhone())
+                .shortName(sysUser.getShortName())
                 .sex(sysUser.getSex())
                 .companyName(sysUser.getCompanyName())
                 .departName(sysUser.getDepartName())
