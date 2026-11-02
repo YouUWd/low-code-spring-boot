@@ -2,10 +2,12 @@ package com.jdec.platform.common.biz.listener.changeform.impl;
 
 import cn.hutool.core.date.DatePattern;
 import cn.hutool.core.date.DateUtil;
+import com.jdec.platform.config.api.SysConfigCategoryApi;
 import com.jdec.platform.config.api.SysUserApi;
 import com.jdec.platform.config.api.SysWechatTemplateApi;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.request.SendWechatMessageReq;
+import com.jdec.platform.config.api.dto.response.SysConfigItemResp;
 import com.jdec.platform.config.api.dto.response.UserDetailResp;
 import com.jdec.platform.dataengine.api.event.ChangeApplyEvent;
 import com.jdec.platform.shared.context.AppContext;
@@ -27,6 +29,8 @@ public class ExternalObjectChangeReqFormProcessor
     private final SysUserApi sysUserApi;
 
     private final SysWechatTemplateApi sysWechatTemplateApi;
+
+    private final SysConfigCategoryApi sysConfigCategoryApi;
 
     private static final String template =
             """
@@ -53,8 +57,32 @@ public class ExternalObjectChangeReqFormProcessor
             AppContext.setContext(event.getProjectNo(), event.getSubjectId());
             UserContext.setLoginUser(event.getLoginUser());
 
+            List<SysConfigItemResp> sysConfigItemResps =
+                    sysConfigCategoryApi.getConfigItemsByCategoryAlias("domainConfig");
+
+            SysConfigItemResp sysConfigItemResp =
+                    sysConfigItemResps.stream()
+                            .filter(x -> x.getLabel().equals("前端域名"))
+                            .findFirst()
+                            .orElse(null);
+
+            // http://192.168.2.14:5175/externalDetail/17?btnType=apply-change&changeRequestId=24
             Map<String, String> paramMap = new HashMap<>();
-            paramMap.put("url", "");
+
+            Long id =
+                    event.getBizMap().get("id") != null ? (Long) event.getBizMap().get("id") : null;
+            Long sourceId =
+                    event.getBizMap().get("source_id") != null
+                            ? (Long) event.getBizMap().get("source_id")
+                            : null;
+            String url =
+                    "http://"
+                            + sysConfigItemResp.getValue()
+                            + "externalDetail/"
+                            + sourceId
+                            + "?btnType=apply-change&changeRequestId="
+                            + id;
+            paramMap.put("url", url);
             paramMap.put(
                     "business_no",
                     event.getBizMap().get("business_no") != null
@@ -106,6 +134,7 @@ public class ExternalObjectChangeReqFormProcessor
                                 ? registrationByUserDetailResp.getShortName()
                                 : "");
             }
+            paramMap.put("message_receiver", sb.toString());
             String messageTemplate = template;
             for (String k : paramMap.keySet()) {
                 messageTemplate = messageTemplate.replace(k, paramMap.get(k));
