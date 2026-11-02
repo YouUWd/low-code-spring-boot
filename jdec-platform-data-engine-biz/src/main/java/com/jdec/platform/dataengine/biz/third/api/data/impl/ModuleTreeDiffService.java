@@ -104,7 +104,13 @@ public class ModuleTreeDiffService {
 
                     // 对比row字段，生成changeList，挂在recordItem（和row平级）
                     Map<String, Map<String, Object>> changeList =
-                            buildRowChangeList(oldRow, rowNode, currentChangeMap);
+                            buildRowChangeList(
+                                    oldRow,
+                                    rowNode,
+                                    currentChangeMap,
+                                    "pre",
+                                    "current",
+                                    "currentOld");
                     if (changeList.size() > 0) {
                         recordItem.setChangeList(changeList);
                         recordItem.setChangeType("改");
@@ -195,7 +201,11 @@ public class ModuleTreeDiffService {
     private static Map<String, Map<String, Object>> buildRowChangeList(
             Map<String, Object> oldRow,
             Map<String, Object> newRow,
-            Map<String, VersionSnapShot> currentChangeMap) {
+            Map<String, VersionSnapShot> currentChangeMap,
+            String preKey,
+            String currentKey,
+            String currentOldKey) {
+
         Map<String, Map<String, Object>> changeList = new HashMap<>();
         if (Objects.isNull(newRow)) {
             return changeList;
@@ -216,8 +226,8 @@ public class ModuleTreeDiffService {
 
             // 值相同跳过，只记录变更字段
             if (Objects.nonNull(oldRow) && !isEqual(newVal, oldVal)) {
-                versionCompareItem.put("pre", oldVal);
-                versionCompareItem.put("current", newVal);
+                versionCompareItem.put(preKey, oldVal);
+                versionCompareItem.put(currentKey, newVal);
                 addVersionItem = true;
             }
             if (Objects.nonNull(currentChangeMap.get(fieldKey))) {
@@ -233,24 +243,24 @@ public class ModuleTreeDiffService {
                                         Object currentOld =
                                                 OBJECT_MAPPER.readTree(
                                                         changeObj.getFirstSnapshot());
-                                        versionCompareItem.put("currentOld", currentOld);
+                                        versionCompareItem.put(currentOldKey, currentOld);
                                     } else {
                                         versionCompareItem.put(
-                                                "currentOld", changeObj.getFirstSnapshot());
+                                                currentOldKey, changeObj.getFirstSnapshot());
                                     }
-                                    versionCompareItem.put("current", newVal);
+                                    versionCompareItem.put(currentKey, newVal);
                                     addVersionItem = true;
                                 }
                             } else {
                                 if (isJsonStr(changeObj.getSecondSnapshot())) {
                                     Object currentOld =
                                             OBJECT_MAPPER.readTree(changeObj.getSecondSnapshot());
-                                    versionCompareItem.put("currentOld", currentOld);
+                                    versionCompareItem.put(currentOldKey, currentOld);
                                 } else {
                                     versionCompareItem.put(
-                                            "currentOld", changeObj.getSecondSnapshot());
+                                            currentOldKey, changeObj.getSecondSnapshot());
                                 }
-                                versionCompareItem.put("current", newVal);
+                                versionCompareItem.put(currentKey, newVal);
                                 addVersionItem = true;
                             }
                         } else {
@@ -258,12 +268,12 @@ public class ModuleTreeDiffService {
                                 if (isJsonStr(changeObj.getFirstSnapshot())) {
                                     Object currentOld =
                                             OBJECT_MAPPER.readTree(changeObj.getFirstSnapshot());
-                                    versionCompareItem.put("currentOld", currentOld);
+                                    versionCompareItem.put(currentOldKey, currentOld);
                                 } else {
                                     versionCompareItem.put(
-                                            "currentOld", changeObj.getFirstSnapshot());
+                                            currentOldKey, changeObj.getFirstSnapshot());
                                 }
-                                versionCompareItem.put("current", newVal);
+                                versionCompareItem.put(currentKey, newVal);
                                 addVersionItem = true;
                             }
                         }
@@ -641,7 +651,12 @@ public class ModuleTreeDiffService {
                                 // 对比row字段，生成changeList，挂在recordItem（和row平级）
                                 changeList.putAll(
                                         buildRowChangeList(
-                                                rowRawData, changeContentMap, currentChangeMap));
+                                                rowRawData,
+                                                changeContentMap,
+                                                currentChangeMap,
+                                                "original",
+                                                "change",
+                                                ""));
                                 recordItem.setChangeType("改");
                             } else if ("INSERT".equals(action)) {
                                 recordItem.setChangeType("新");
