@@ -31,7 +31,8 @@ public class SysMenuHeaderController {
                             + "层级(parentId)/模块(moduleId)/展示名(label) 均按模块侧动态生成，实时反映菜单与模块绑定，菜单改绑模块后历史节点自然被丢弃；"
                             + "再与 sys_menu_header 已保存的展示配置按 virId 合并"
                             + "（两边都有以表记录覆写展示项、仅表中有丢弃、仅生成侧有取生成侧默认值）。"
-                            + "纯查询接口，不落库：递归子菜单生成的节点不带主键id")
+                            + "纯查询接口，不落库：递归子菜单生成的节点不带主键id；菜单ID 必传，但入参菜单在模块侧已不存在时不报错，返回空；"
+                            + "仅当菜单关联了详情菜单（detailId 有值）却查不到该详情菜单记录时，才报错提示「未关联详情菜单」")
     public ApiResponse<SysMenuHeaderResp> tree(
             @Parameter(description = "菜单ID", example = "1") @RequestParam Long menuId) {
         return ApiResponse.success(sysMenuHeaderApi.getMenuHeaderTree(menuId));
@@ -43,9 +44,13 @@ public class SysMenuHeaderController {
             description =
                     "根据菜单ID先取「菜单/字段生成 + sys_menu_header 已保存展示配置」合并后的完整树（菜单ID 先按统一规则解析出表头归属菜单ID 再读取），"
                             + "结构性内容（层级/模块/展示名）按模块侧动态生成，模块侧已删除的菜单/字段不再返回；"
-                            + "按多级列头展示格式返回：只输出已勾选（checked=1）的列，其祖先菜单节点一并保留用于组装多级列头；无已勾选配置时 header 为空")
+                            + "按多级列头展示格式返回：只输出已勾选（checked=1）的列，其祖先菜单节点一并保留用于组装多级列头；无已勾选配置时 header 为空；"
+                            + "菜单ID 非必传，未传时不查库，直接返回空（header 为空）；入参菜单不存在时同样返回空，"
+                            + "仅当菜单关联了详情菜单（detailId 有值）却查不到该详情菜单记录时，才报错提示「未关联详情菜单」")
     public ApiResponse<MenuHeaderDisplayResp> display(
-            @Parameter(description = "菜单ID", example = "1") @RequestParam Long menuId) {
+            @Parameter(description = "菜单ID，非必传；未传时返回空", example = "1")
+                    @RequestParam(required = false)
+                    Long menuId) {
         return ApiResponse.success(sysMenuHeaderApi.getMenuHeaderDisplay(menuId));
     }
 }

@@ -13,7 +13,7 @@ import org.springframework.stereotype.Component;
  * <p>核心契约：
  *
  * <ul>
- *   <li>目标模块标识：{@code COMPANY-ROOT} (模块 ID: 1001)；
+ *   <li>目标模块标识：支持使用 {@code '|'} 分隔多个模块编码（如 {@code COMPANY-ROOT|WBDX}）；
  *   <li>继承自 {@link DefaultInteractionButtonProvider}，默认继承通用全局按钮能力；
  *   <li>在全局按钮中排除 {@code edit_company_reg_status}，定制业务在其本身的 Provider ({@link #addRowButtons}) 中独立处理；
  *   <li>定制业务规则：只有当前角色具备权限且单据处于【启用状态 (99)】或【取消状态 (-99)】时，才为该行添加修改登记状态按钮。
@@ -23,11 +23,8 @@ import org.springframework.stereotype.Component;
 @Order(10)
 public class CompanyInteractionButtonProvider extends DefaultInteractionButtonProvider {
 
-    /** 目标模块标识：COMPANY-ROOT (外部对象管理) */
-    public static final String MODULE_CODE_COMPANY_ROOT = "COMPANY-ROOT";
-
-    /** 目标模块 ID：1001 (外部对象) */
-    public static final Long MODULE_ID_COMPANY_ROOT = 1001L;
+    /** 目标模块标识：支持 '|' 分隔多个模块编码（如 COMPANY-ROOT|WBDX） */
+    public static final String MODULE_CODE_COMPANY_ROOT = "COMPANY-ROOT|WBDX";
 
     /** 目标互动权限编码：修改登记状态 */
     public static final String PERMISSION_EDIT_COMPANY_REG_STATUS = "edit_company_reg_status";
@@ -41,15 +38,6 @@ public class CompanyInteractionButtonProvider extends DefaultInteractionButtonPr
     @Override
     public String target() {
         return MODULE_CODE_COMPANY_ROOT;
-    }
-
-    @Override
-    public boolean supports(InteractionActionContext ctx) {
-        if (ctx == null) {
-            return false;
-        }
-        return MODULE_CODE_COMPANY_ROOT.equalsIgnoreCase(ctx.getModuleCode())
-                || MODULE_ID_COMPANY_ROOT.equals(ctx.getRootModuleId());
     }
 
     /** 将 edit_company_reg_status 排除在全局按钮之外，转由本 Provider 自行按行定制处理 */

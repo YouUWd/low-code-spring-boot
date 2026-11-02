@@ -9,6 +9,7 @@ import com.jdec.platform.dataengine.api.dto.request.BusinessFormStatusReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.ChangeApplySaveResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
+import com.jdec.platform.dataengine.api.event.ChangeApplyEvent;
 import com.jdec.platform.dataengine.biz.dto.ChangeItemDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleDataStoreDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
@@ -461,6 +462,14 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                                 .get(structureRootModuleId)
                                 .getModuleInfo()
                                 .getPrimaryTable());
+
+        Long createdBy =
+                DataPersistenceUtil.getTableRowCreatedByWithTabName(
+                        detailData.getRecord().get(0).getRow(),
+                        moduleCacheMap
+                                .get(structureRootModuleId)
+                                .getModuleInfo()
+                                .getPrimaryTable());
         String changeTable = rootModule.getModuleInfo().getPrimaryTable() + "_change";
 
         Set<String> columnInfoRespList =
@@ -543,6 +552,16 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
         resp.setDataId(rootModuleMainTableDataId);
         resp.setChangeApplyId(changeId);
 
+        changeApplyData.put("id", changeId);
+        changeApplyData.put("registration_by", createdBy);
+
+        ChangeApplyEvent event = new ChangeApplyEvent(ChangeApplyEvent.class);
+        event.setBizMap(changeApplyData);
+        event.setRootModuleInfo(rootModule.getModuleInfo());
+        event.setLoginUser(UserContext.getLoginUser());
+        event.setSubjectId(AppContext.getSubjectId());
+        event.setProjectNo(AppContext.getProjectNo());
+        applicationEventPublisher.publishEvent(event);
         return resp;
     }
 }

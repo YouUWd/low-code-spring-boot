@@ -76,11 +76,22 @@ public class SysFileService implements SysFileApi {
             throw new BusinessException(500, "OSS 服务异常: " + e.getMessage());
         }
 
-        // 2. 构造记录并持久化到业务库的 business_file 表 (由 ProjectAwareRoutingDataSource 依据
+        // 2. 如果未传递 X-Project-No，说明无业务项目归属，不保存数据库记录
+        String projectNo = AppContext.getProjectNo();
+        if (!StringUtils.hasText(projectNo)) {
+            log.info("未传递 X-Project-No，跳过保存 business_file 记录: objectKey={}", objectKey);
+            return SysFileUploadResp.builder()
+                    .name(baseName)
+                    .fileExt(ext)
+                    .objectKey(objectKey)
+                    .build();
+        }
+
+        // 3. 构造记录并持久化到业务库的 business_file 表 (由 ProjectAwareRoutingDataSource 依据
         // projectNo 自动路由)
         BusinessFile businessFile =
                 BusinessFile.builder()
-                        .projectNo(AppContext.getProjectNo())
+                        .projectNo(projectNo)
                         .subjectId(
                                 AppContext.getSubjectId() != null ? AppContext.getSubjectId() : 0L)
                         .menuId(menuId)
@@ -101,7 +112,7 @@ public class SysFileService implements SysFileApi {
         } catch (Exception ex) {
             log.error(
                     "保存文件上传记录到业务数据库失败: projectNo={}, bucket={}, objectKey={}, err={}",
-                    AppContext.getProjectNo(),
+                    projectNo,
                     ossProperties.getBucketName(),
                     objectKey,
                     ex.getMessage(),

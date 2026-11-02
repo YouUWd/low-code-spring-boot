@@ -14,5 +14,10 @@
             <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-shared</artifactId>
         </dependency>
+
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-config-api</artifactId>
+        </dependency>
     </dependencies>
 </project>
