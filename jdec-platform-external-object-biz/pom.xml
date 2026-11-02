@@ -26,6 +26,11 @@
             <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-common-api</artifactId>
         </dependency>
+        <!-- 系统配置 config 模块 -->
+        <dependency>
+            <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-config-api</artifactId>
+        </dependency>
         <!-- 业务校验器注册中心 -->
         <dependency>
             <groupId>com.jdec</groupId>

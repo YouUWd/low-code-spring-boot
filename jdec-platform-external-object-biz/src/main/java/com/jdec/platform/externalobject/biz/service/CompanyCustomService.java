@@ -1,6 +1,8 @@
 package com.jdec.platform.externalobject.biz.service;
 
+import com.jdec.platform.externalobject.api.dto.request.CompanyBadgeNumReq;
 import com.jdec.platform.externalobject.api.dto.request.CompanyRegStatusUpdateReq;
+import java.util.Map;
 
 /** 外部对象特定业务定制服务接口 */
 public interface CompanyCustomService {
@@ -19,4 +21,6 @@ public interface CompanyCustomService {
      * @param req 修改登记状态请求体 (通过单据物理主键 id 定位)
      */
     void updateRegStatus(CompanyRegStatusUpdateReq req);
+
+    Map<Long, Long> getMenuNum(CompanyBadgeNumReq req);
 }

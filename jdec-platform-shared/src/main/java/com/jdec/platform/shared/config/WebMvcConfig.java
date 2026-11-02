@@ -41,6 +41,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .addPathPatterns("/api/permission/**")
                 .addPathPatterns("/api/monitorlog/**")
                 .addPathPatterns("/api/data-engine/**")
+                .addPathPatterns("/api/company/custom/**")
                 .excludePathPatterns(
                         "/api/config/auth/**",
                         "/api/config/init/**",
