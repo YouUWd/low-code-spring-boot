@@ -1,6 +1,8 @@
 package com.jdec.platform.externalobject.biz.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.SysMenuApi;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
@@ -10,6 +12,7 @@ import com.jdec.platform.externalobject.api.ExternalObjectRealtimeValidateApi;
 import com.jdec.platform.externalobject.api.dto.request.CompanyBadgeNumReq;
 import com.jdec.platform.externalobject.api.dto.request.CompanyRegStatusUpdateReq;
 import com.jdec.platform.externalobject.api.dto.request.ExternalObjectRealtimeValidateReq;
+import com.jdec.platform.externalobject.api.dto.response.CompanyTreeNodeResp;
 import com.jdec.platform.externalobject.api.dto.response.ExternalObjectRealtimeValidateResp;
 import com.jdec.platform.externalobject.biz.entity.*;
 import com.jdec.platform.externalobject.biz.mapper.*;
@@ -21,15 +24,13 @@ import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 /** 外部对象特定业务定制服务实现类 */
 @Slf4j
@@ -249,5 +250,237 @@ public class CompanyCustomServiceImpl implements CompanyCustomService {
         if (validateResp != null && !validateResp.valid()) {
             throw new BusinessException(validateResp.message());
         }
+    }
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
+    private record ParentMeta(String value, Integer versionNo, String label) {}
+
+    @Override
+    public CompanyTreeNodeResp getCompanyTree(Long id) {
+        if (id == null) {
+            throw new IllegalArgumentException("单据 ID 不能为空");
+        }
+
+        // 1. 获取当前单据作为锚点
+        Info current = infoMapper.selectById(id);
+        if (current == null || (current.getDeleted() != null && current.getDeleted() != 0)) {
+            throw new BusinessException("未找到对应的外部对象单据记录");
+        }
+
+        // 2. 节点池：Key 为 "business_no:version_no"
+        Map<String, Info> pool = new LinkedHashMap<>();
+        String currentKey = buildNodeKey(current.getBusinessNo(), current.getVersionNo());
+        pool.put(currentKey, current);
+
+        // 3. 向上追溯所有祖先节点，获取顶级根节点
+        Info topRoot = traceAncestors(current, pool);
+
+        // 4. 从顶级根节点向下收集所有子孙节点
+        traceDescendants(topRoot, current, pool);
+
+        // 5. 内存统一组装为完整公司树
+        return assembleCompanyTree(pool, currentKey, topRoot);
+    }
+
+    private Info traceAncestors(Info current, Map<String, Info> pool) {
+        Info pointer = current;
+        Set<String> visited = new HashSet<>();
+        visited.add(buildNodeKey(pointer.getBusinessNo(), pointer.getVersionNo()));
+
+        while (true) {
+            ParentMeta parentMeta = parseParentId(pointer.getParentId());
+            if (parentMeta == null
+                    || !StringUtils.hasText(parentMeta.value())
+                    || parentMeta.versionNo() == null) {
+                return pointer;
+            }
+
+            LambdaQueryWrapper<Info> queryWrapper =
+                    new LambdaQueryWrapper<Info>()
+                            .eq(Info::getBusinessNo, parentMeta.value())
+                            .eq(Info::getVersionNo, parentMeta.versionNo())
+                            .eq(Info::getDeleted, 0);
+            Info parent = infoMapper.selectOne(queryWrapper);
+            if (parent == null) {
+                return pointer;
+            }
+
+            String pKey = buildNodeKey(parent.getBusinessNo(), parent.getVersionNo());
+            if (!visited.add(pKey)) {
+                log.warn("检测到父级企业版本循环引用: {}", pKey);
+                return parent;
+            }
+
+            pool.put(pKey, parent);
+            pointer = parent;
+        }
+    }
+
+    private void traceDescendants(Info topRoot, Info currentSingle, Map<String, Info> pool) {
+        List<Info> currentLevel = Collections.singletonList(topRoot);
+        Set<String> visitedBizNos = new HashSet<>();
+        if (StringUtils.hasText(topRoot.getBusinessNo())) {
+            visitedBizNos.add(topRoot.getBusinessNo());
+        }
+
+        while (!CollectionUtils.isEmpty(currentLevel)) {
+            List<String> parentBizNos =
+                    currentLevel.stream()
+                            .map(Info::getBusinessNo)
+                            .filter(StringUtils::hasText)
+                            .distinct()
+                            .collect(Collectors.toList());
+
+            if (CollectionUtils.isEmpty(parentBizNos)) {
+                break;
+            }
+
+            List<Info> candidates = infoMapper.selectCandidatesByParentBizNos(parentBizNos);
+            if (CollectionUtils.isEmpty(candidates)) {
+                break;
+            }
+
+            Map<String, List<Info>> childGroup =
+                    candidates.stream().collect(Collectors.groupingBy(Info::getBusinessNo));
+
+            List<Info> nextLevel = new ArrayList<>();
+
+            for (Info parentNode : currentLevel) {
+                for (List<Info> versions : childGroup.values()) {
+                    Info selectedChild = pickBestVersion(versions, currentSingle);
+                    if (selectedChild == null) {
+                        continue;
+                    }
+                    ParentMeta childParentMeta = parseParentId(selectedChild.getParentId());
+
+                    if (childParentMeta != null
+                            && parentNode.getBusinessNo().equals(childParentMeta.value())
+                            && parentNode.getVersionNo() != null
+                            && parentNode.getVersionNo().equals(childParentMeta.versionNo())) {
+
+                        String childKey =
+                                buildNodeKey(
+                                        selectedChild.getBusinessNo(),
+                                        selectedChild.getVersionNo());
+                        if (!pool.containsKey(childKey)) {
+                            pool.put(childKey, selectedChild);
+                            if (visitedBizNos.add(selectedChild.getBusinessNo())) {
+                                nextLevel.add(selectedChild);
+                            }
+                        }
+                    }
+                }
+            }
+
+            currentLevel = nextLevel;
+        }
+    }
+
+    private Info pickBestVersion(List<Info> versions, Info currentSingle) {
+        if (CollectionUtils.isEmpty(versions)) {
+            return null;
+        }
+        for (Info v : versions) {
+            if (v.getId() != null && v.getId().equals(currentSingle.getId())) {
+                return v;
+            }
+        }
+        return versions.stream()
+                .filter(v -> Integer.valueOf(STATUS_ACTIVE).equals(v.getBusinessStatus()))
+                .max(Comparator.comparingInt(v -> v.getVersionNo() != null ? v.getVersionNo() : 0))
+                .orElseGet(
+                        () ->
+                                versions.stream()
+                                        .max(
+                                                Comparator.comparingInt(
+                                                        v ->
+                                                                v.getVersionNo() != null
+                                                                        ? v.getVersionNo()
+                                                                        : 0))
+                                        .orElse(versions.get(0)));
+    }
+
+    private CompanyTreeNodeResp assembleCompanyTree(
+            Map<String, Info> pool, String currentKey, Info topRoot) {
+        if (CollectionUtils.isEmpty(pool)) {
+            return null;
+        }
+
+        Map<String, CompanyTreeNodeResp> respMap = new LinkedHashMap<>();
+        for (Map.Entry<String, Info> entry : pool.entrySet()) {
+            Info info = entry.getValue();
+            boolean isCur = entry.getKey().equals(currentKey);
+            CompanyTreeNodeResp nodeResp =
+                    CompanyTreeNodeResp.builder()
+                            .id(info.getId())
+                            .businessNo(info.getBusinessNo())
+                            .versionNo(info.getVersionNo())
+                            .companyName(info.getCompanyName())
+                            .businessStatus(info.getBusinessStatus())
+                            .regStatus(info.getRegStatus())
+                            .nature(info.getNature())
+                            .isCurrent(isCur)
+                            .parentId(info.getParentId())
+                            .children(new ArrayList<>())
+                            .build();
+            respMap.put(entry.getKey(), nodeResp);
+        }
+
+        String topRootKey = buildNodeKey(topRoot.getBusinessNo(), topRoot.getVersionNo());
+        CompanyTreeNodeResp root = respMap.get(topRootKey);
+
+        for (CompanyTreeNodeResp node : respMap.values()) {
+            ParentMeta parentMeta = parseParentId(node.getParentId());
+            String parentKey =
+                    (parentMeta != null
+                                    && StringUtils.hasText(parentMeta.value())
+                                    && parentMeta.versionNo() != null)
+                            ? buildNodeKey(parentMeta.value(), parentMeta.versionNo())
+                            : null;
+
+            CompanyTreeNodeResp parentNode = (parentKey != null) ? respMap.get(parentKey) : null;
+            if (parentNode != null && parentNode != node) {
+                parentNode.getChildren().add(node);
+            } else if (root == null) {
+                root = node;
+            }
+        }
+
+        return root != null ? root : respMap.values().iterator().next();
+    }
+
+    private ParentMeta parseParentId(String parentIdJson) {
+        if (!StringUtils.hasText(parentIdJson)
+                || "null".equalsIgnoreCase(parentIdJson.trim())
+                || "{}".equals(parentIdJson.trim())
+                || "[]".equals(parentIdJson.trim())) {
+            return null;
+        }
+        try {
+            JsonNode node = OBJECT_MAPPER.readTree(parentIdJson);
+            if (node == null || !node.isObject()) {
+                return null;
+            }
+            JsonNode valueNode = node.get("value");
+            String value =
+                    (valueNode != null && !valueNode.isNull()) ? valueNode.asText().trim() : null;
+            if (!StringUtils.hasText(value)) {
+                return null;
+            }
+            JsonNode verNode = node.get("version_no");
+            Integer versionNo = (verNode != null && verNode.isNumber()) ? verNode.asInt() : null;
+            JsonNode labelNode = node.get("label");
+            String label =
+                    (labelNode != null && !labelNode.isNull()) ? labelNode.asText().trim() : null;
+            return new ParentMeta(value, versionNo, label);
+        } catch (Exception e) {
+            log.warn("解析 parent_id 异常: {}, err={}", parentIdJson, e.getMessage());
+            return null;
+        }
+    }
+
+    private String buildNodeKey(String businessNo, Integer versionNo) {
+        return (businessNo != null ? businessNo : "") + ":" + (versionNo != null ? versionNo : 0);
     }
 }
