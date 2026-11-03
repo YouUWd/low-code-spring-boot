@@ -5,6 +5,7 @@ import com.jdec.platform.config.api.dto.request.RoleSubjectReq;
 import com.jdec.platform.config.api.dto.request.RoleUserReq;
 import com.jdec.platform.config.api.dto.request.SaveRoleUserReq;
 import com.jdec.platform.config.biz.audit.dto.AuditLogSendContext;
+import com.jdec.platform.config.biz.audit.util.AuditRemarkUtil;
 import com.jdec.platform.config.biz.entity.SysUser;
 import com.jdec.platform.shared.enums.EffectiveTypeEnum;
 import java.time.LocalDate;
@@ -316,7 +317,7 @@ public class RoleApprovalLogService {
         try {
             // 构建 logRemark
             Map<String, Object> remarkMap = new LinkedHashMap<>();
-            remarkMap.put("change", moduleActions);
+            remarkMap.put("change", AuditRemarkUtil.wrapChange(moduleActions));
             String remark = JSONUtil.toJsonStr(remarkMap);
 
             // 构建 controlName（单据操作名称）

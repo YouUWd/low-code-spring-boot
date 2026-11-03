@@ -4,6 +4,7 @@ import cn.hutool.json.JSONUtil;
 import com.jdec.platform.config.api.dto.request.CreateWechatTemplateParamReq;
 import com.jdec.platform.config.api.dto.request.UpdateWechatTemplateParamReq;
 import com.jdec.platform.config.biz.audit.dto.AuditLogSendContext;
+import com.jdec.platform.config.biz.audit.util.AuditRemarkUtil;
 import com.jdec.platform.config.biz.entity.SysDataSnapshot;
 import com.jdec.platform.config.biz.entity.SysModule;
 import com.jdec.platform.config.biz.entity.SysModuleField;
@@ -32,7 +33,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  *
  * <pre>
  * {
- *   "change": [{
+ *   "change": {"sub": [{
  *     "name": "消息模板参数设置",
  *     "mId": "",
  *     "actions": {
@@ -366,7 +367,7 @@ public class SysWechatTemplateParamLogService {
         try {
             // 构建 logRemark
             Map<String, Object> remarkMap = new LinkedHashMap<>();
-            remarkMap.put("change", moduleActions);
+            remarkMap.put("change", AuditRemarkUtil.wrapChange(moduleActions));
             String remark = JSONUtil.toJsonStr(remarkMap);
 
             // 构建 controlName（单据操作名称）

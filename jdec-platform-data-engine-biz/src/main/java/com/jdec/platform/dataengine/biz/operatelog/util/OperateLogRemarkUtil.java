@@ -1,6 +1,5 @@
 package com.jdec.platform.dataengine.biz.operatelog.util;
 
-import cn.hutool.core.collection.CollectionUtil;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -40,6 +39,9 @@ public class OperateLogRemarkUtil {
 
     /** remark 中字段明细数组的键名 */
     private static final String COLUMNS_KEY = "columns";
+
+    /** 主模块字段变更平铺数组的键名（元素为字段明细对象，非 columns 包裹） */
+    private static final String MAIN_KEY = "main";
 
     /** 字段明细中的字段英文名键名（表名.列名） */
     private static final String FIELD_KEY = "field";
@@ -104,7 +106,11 @@ public class OperateLogRemarkUtil {
             String comment) {
         OperateLogRemarkDTO remark =
                 operateLogRemarkConverter.convert(oldData, newData, moduleCacheMap, menuId);
-        boolean hasChange = remark != null && CollectionUtil.isNotEmpty(remark.getChange());
+        boolean hasChange =
+                remark != null
+                        && remark.getChange() != null
+                        && (remark.getChange().getMain() != null
+                                || remark.getChange().getSub() != null);
         boolean hasComment = StringUtils.isNotBlank(comment);
         // 无字段变更且无审批原因，调用方据此跳过日志记录
         if (!hasChange && !hasComment) {
@@ -147,26 +153,25 @@ public class OperateLogRemarkUtil {
             JsonNode columns = object.get(COLUMNS_KEY);
             if (columns != null && columns.isArray()) {
                 for (JsonNode element : columns) {
-                    if (!(element instanceof ObjectNode column)) {
-                        continue;
-                    }
-                    JsonNode field = column.get(FIELD_KEY);
-                    String fieldIndex = field != null && field.isTextual() ? field.asText() : null;
-                    boolean cloud =
-                            fieldIndex != null && extras.cloudFieldIndexes().contains(fieldIndex);
-                    column.put(CLOUD_KEY, cloud ? CLOUD_YES : CLOUD_NO);
-                    String businessTypeCode =
-                            fieldIndex != null ? extras.businessTypeCodes().get(fieldIndex) : null;
-                    if (StringUtils.isNotBlank(businessTypeCode)) {
-                        column.put(BUSINESS_TYPE_CODE_KEY, businessTypeCode);
-                    }
+                    fillColumnExtrasColumn(element, extras);
+                }
+            }
+            // 主模块字段变更（main 为字段明细对象数组，非 columns 包裹）
+            JsonNode main = object.get(MAIN_KEY);
+            if (main != null && main.isArray()) {
+                for (JsonNode element : main) {
+                    fillColumnExtrasColumn(element, extras);
                 }
             }
             List<String> names = new ArrayList<>();
             object.fieldNames().forEachRemaining(names::add);
             for (String name : names) {
-                // old/newer 为字段值原文（可能是数组/对象），不做字段扩展信息的递归
-                if (OLD_KEY.equals(name) || NEWER_KEY.equals(name)) {
+                // old/newer 为字段值原文（可能是数组/对象），不做字段扩展信息的递归；
+                // columns/main 已单独处理，不再递归
+                if (OLD_KEY.equals(name)
+                        || NEWER_KEY.equals(name)
+                        || COLUMNS_KEY.equals(name)
+                        || MAIN_KEY.equals(name)) {
                     continue;
                 }
                 fillColumnExtras(object.get(name), extras);
@@ -175,6 +180,22 @@ public class OperateLogRemarkUtil {
             for (JsonNode element : node) {
                 fillColumnExtras(element, extras);
             }
+        }
+    }
+
+    /** 给单个字段明细对象补充 cloud 标记与 businessTypeCode（取自 sys_field 配置） */
+    private void fillColumnExtrasColumn(JsonNode node, FieldColumnExtras extras) {
+        if (!(node instanceof ObjectNode column)) {
+            return;
+        }
+        JsonNode field = column.get(FIELD_KEY);
+        String fieldIndex = field != null && field.isTextual() ? field.asText() : null;
+        boolean cloud = fieldIndex != null && extras.cloudFieldIndexes().contains(fieldIndex);
+        column.put(CLOUD_KEY, cloud ? CLOUD_YES : CLOUD_NO);
+        String businessTypeCode =
+                fieldIndex != null ? extras.businessTypeCodes().get(fieldIndex) : null;
+        if (StringUtils.isNotBlank(businessTypeCode)) {
+            column.put(BUSINESS_TYPE_CODE_KEY, businessTypeCode);
         }
     }
 

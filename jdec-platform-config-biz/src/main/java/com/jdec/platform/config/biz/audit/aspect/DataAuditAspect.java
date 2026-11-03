@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.biz.audit.dto.*;
 import com.jdec.platform.config.biz.audit.service.AuditLogSendService;
 import com.jdec.platform.config.biz.audit.util.AuditLogFormatter;
+import com.jdec.platform.config.biz.audit.util.AuditRemarkUtil;
 import com.jdec.platform.config.biz.audit.util.JsonDiffUtil;
 import com.jdec.platform.config.biz.entity.SysDataSnapshot;
 import com.jdec.platform.config.biz.service.SysDataSnapshotService;
@@ -708,7 +709,7 @@ public class DataAuditAspect {
 
             if (moduleActions != null && !moduleActions.isEmpty()) {
                 Map<String, Object> remarkMap = new HashMap<>();
-                remarkMap.put("change", moduleActions);
+                remarkMap.put("change", AuditRemarkUtil.wrapChange(moduleActions));
                 remark = JSONUtil.toJsonStr(remarkMap);
             }
         }
