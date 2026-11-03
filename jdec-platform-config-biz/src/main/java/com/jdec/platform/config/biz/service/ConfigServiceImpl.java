@@ -524,6 +524,7 @@ public class ConfigServiceImpl implements ConfigApi {
                 .tableName(f.getTableName())
                 .columnName(f.getColumnName())
                 .displayName(f.getDisplayName())
+                .bizKeyOrder(f.getBizKeyOrder())
                 .sortOrder(f.getSortOrder())
                 .status(f.getStatus())
                 .build();
