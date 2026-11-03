@@ -514,6 +514,7 @@ public class SysFieldService implements SysFieldApi {
                                                 .businessTypeCode(config.getBusinessTypeCode())
                                                 .businessTypeName(config.getBusinessTypeName())
                                                 .unitColumnName(config.getUnitColumnName())
+                                                .refer(config.getRefer())
                                                 .encrypted(config.getEncrypted())
                                                 .dataRightFlag(config.getDataRightFlag())
                                                 .combineInfo(
@@ -540,7 +541,7 @@ public class SysFieldService implements SysFieldApi {
                                                                         && !columnComment.isEmpty()
                                                                 ? columnComment
                                                                 : colName)
-                                                .encrypted(0)
+                                                .refer(0)
                                                 .encrypted(0)
                                                 .fieldValues(Collections.emptyList())
                                                 .modules(
