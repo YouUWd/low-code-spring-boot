@@ -6,6 +6,7 @@ import com.jdec.platform.config.biz.audit.dto.AuditLogSendContext;
 import com.jdec.platform.config.biz.audit.dto.FieldDiff;
 import com.jdec.platform.config.biz.audit.dto.ModuleAction;
 import com.jdec.platform.config.biz.audit.util.AuditLogFormatter;
+import com.jdec.platform.config.biz.audit.util.AuditRemarkUtil;
 import com.jdec.platform.config.biz.audit.util.JsonDiffUtil;
 import com.jdec.platform.config.biz.entity.SysDataSnapshot;
 import com.jdec.platform.config.biz.service.SysDataSnapshotService;
@@ -431,7 +432,7 @@ public class DataAuditService {
      * 记录数据变更审计（使用自定义remark JSON）
      *
      * <p>适用场景：需要自定义 logRemark 格式的复杂审计场景，如权限变更审计。 remarkJson 需为合法的 JSON
-     * 字符串，格式如：{"change":[{"name":"角色名","mId":"","actions":[...]}]}
+     * 字符串，格式如：{"change":{"sub":[{"name":"角色名","mId":"","actions":[...]}]}}
      *
      * @param module 业务模块
      * @param subModule 业务子模块
@@ -497,7 +498,7 @@ public class DataAuditService {
 
             if (moduleActions != null && !moduleActions.isEmpty()) {
                 Map<String, Object> remarkMap = new HashMap<>();
-                remarkMap.put("change", moduleActions);
+                remarkMap.put("change", AuditRemarkUtil.wrapChange(moduleActions));
                 remark = JSONUtil.toJsonStr(remarkMap);
             }
         }

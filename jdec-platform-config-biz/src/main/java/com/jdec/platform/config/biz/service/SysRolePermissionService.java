@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.SysRolePermissionApi;
 import com.jdec.platform.config.api.dto.request.*;
 import com.jdec.platform.config.api.dto.response.*;
+import com.jdec.platform.config.biz.audit.util.AuditRemarkUtil;
 import com.jdec.platform.config.biz.entity.*;
 import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.config.open.api.OpenRolePermissionApi;
@@ -1594,7 +1595,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
      * <p>构建标准审计日志格式：
      *
      * <pre>
-     * {"change":[{"name":"角色名","mId":"","actions":[{"i/d":[{"name":"前缀-权限类型","columns":[{"name":"","old":"","newer":"permissionPaths拼接","field":""}]}]}]}]}
+     * {"change":{"sub":[{"name":"角色名","mId":"","actions":[{"i/d":[{"name":"前缀-权限类型","columns":[{"name":"","old":"","newer":"permissionPaths拼接","field":""}]}]}]}]}}
      * </pre>
      *
      * @param roleId 角色ID
@@ -1676,7 +1677,8 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
 
             // 构建完整的 logRemark
             Map<String, Object> remarkMap = new LinkedHashMap<>();
-            remarkMap.put("change", Collections.singletonList(moduleAction));
+            remarkMap.put(
+                    "change", AuditRemarkUtil.wrapChange(Collections.singletonList(moduleAction)));
             String remarkJson = JSONUtil.toJsonStr(remarkMap);
 
             // 5. 发送审计日志

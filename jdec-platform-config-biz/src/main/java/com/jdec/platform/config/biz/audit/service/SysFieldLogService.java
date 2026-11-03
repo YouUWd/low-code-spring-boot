@@ -5,6 +5,7 @@ import cn.hutool.json.JSONUtil;
 import com.jdec.platform.config.api.dto.request.SysFieldSaveReq;
 import com.jdec.platform.config.api.dto.request.SysFieldValueSaveReq;
 import com.jdec.platform.config.biz.audit.dto.AuditLogSendContext;
+import com.jdec.platform.config.biz.audit.util.AuditRemarkUtil;
 import com.jdec.platform.config.biz.audit.util.JsonDiffUtil;
 import com.jdec.platform.config.biz.entity.SysField;
 import com.jdec.platform.config.biz.entity.SysFieldValue;
@@ -33,7 +34,7 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  *
  * <pre>
  * {
- *   "change": [{
+ *   "change": {"sub": [{
  *     "name": "字段配置",
  *     "mId": "",
  *     "actions": {
@@ -399,7 +400,7 @@ public class SysFieldLogService {
         try {
             // 构建 logRemark
             Map<String, Object> remarkMap = new LinkedHashMap<>();
-            remarkMap.put("change", moduleActions);
+            remarkMap.put("change", AuditRemarkUtil.wrapChange(moduleActions));
             String remark = JSONUtil.toJsonStr(remarkMap);
 
             // 构建 controlName（单据操作名称）

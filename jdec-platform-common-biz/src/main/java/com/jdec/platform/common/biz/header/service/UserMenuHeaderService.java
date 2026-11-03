@@ -52,6 +52,12 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
     /** 有审批链标记 */
     private static final Integer HAS_APPROVE_YES = 1;
 
+    /** 初始化标识：尚未进行任何表头设置（sys_menu_header 与 user_menu_header 均无记录） */
+    private static final Integer INITIALIZED_YES = 1;
+
+    /** 初始化标识：非初始化（已存在系统或用户表头配置） */
+    private static final Integer INITIALIZED_NO = 0;
+
     /** 表头节点类型：菜单 */
     private static final Integer NODE_TYPE_MENU = 0;
 
@@ -113,12 +119,20 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         Map<String, UserMenuHeader> userNodesByVirId =
                 toMapByVirId(
                         selectUserNodes(jooqDataContextFactory.getContext(), userId, headerMenuId));
-        if (userNodesByVirId.isEmpty()) {
+        // 初始化标识：sys_menu_header 与 user_menu_header 两张表都没有任何记录时才是初始化状态，否则为非初始化
+        boolean sysEmpty =
+                tree.getInitialized() != null && INITIALIZED_YES.equals(tree.getInitialized());
+        boolean userEmpty = userNodesByVirId.isEmpty();
+        Integer initialized = (sysEmpty && userEmpty) ? INITIALIZED_YES : INITIALIZED_NO;
+        tree.setInitialized(initialized);
+        if (userEmpty) {
             return tree;
         }
 
         // 以默认树节点集合为骨架合并：用户有则覆盖展示配置，用户没有则保留默认值
-        return mergeUserNodes(tree, userNodesByVirId);
+        SysMenuHeaderResp merged = mergeUserNodes(tree, userNodesByVirId);
+        merged.setInitialized(initialized);
+        return merged;
     }
 
     @Override
@@ -145,23 +159,35 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         // 本次展示的层级关系一律取该树动态结构；角色对该菜单无任何权限时该树为 null
         SysMenuHeaderResp sourceTree = openMenuHeaderApi.getMenuHeaderTree(menuId, roleId, scope);
         if (sourceTree == null) {
-            return new MenuHeaderDisplayResp();
+            // 角色对该菜单无权限 / 无可用节点：两张表均未取到可用配置，视为初始化状态
+            return MenuHeaderDisplayResp.builder().initialized(INITIALIZED_YES).build();
         }
         Map<String, SysMenuHeaderResp> sourceByVirId = indexByVirId(sourceTree);
 
         // 读取该用户在该菜单下已保存的个性化表头节点（数据隔离：user_id + menu_id + subject_id + project_no），
         // 按虚拟id 建索引；仅保留默认树中仍存在的节点（模块侧已删除的菜单/字段不返回给前端）
+        List<UserMenuHeader> rawUserNodes =
+                selectUserNodes(jooqDataContextFactory.getContext(), userId, headerMenuId);
         Map<String, UserMenuHeader> storedByVirId =
                 toMapByVirId(
-                        selectUserNodes(jooqDataContextFactory.getContext(), userId, headerMenuId)
-                                .stream()
+                        rawUserNodes.stream()
                                 .filter(node -> sourceByVirId.containsKey(node.getVirId()))
                                 .collect(Collectors.toList()));
+
+        // 初始化标识：sys_menu_header 与 user_menu_header 两张表都没有任何记录时才是初始化状态，否则为非初始化
+        boolean sysEmpty =
+                sourceTree.getInitialized() != null
+                        && INITIALIZED_YES.equals(sourceTree.getInitialized());
+        boolean userEmpty = rawUserNodes.isEmpty();
+        Integer initialized = (sysEmpty && userEmpty) ? INITIALIZED_YES : INITIALIZED_NO;
 
         // 以默认树为骨架逐节点合并后再组装多级列头：用户有记录的节点取用户配置（用户未勾选即隐藏），
         // 用户没有记录的节点（模块侧新增、或系统表头后来才勾选的列）回落到系统默认配置，
         // 与「用户表头查询」接口 getUserMenuHeaderTree 的合并口径保持一致
-        return openMenuHeaderApi.buildMenuHeaderDisplay(mergeUserNodes(sourceTree, storedByVirId));
+        MenuHeaderDisplayResp resp =
+                openMenuHeaderApi.buildMenuHeaderDisplay(mergeUserNodes(sourceTree, storedByVirId));
+        resp.setInitialized(initialized);
+        return resp;
     }
 
     /**
