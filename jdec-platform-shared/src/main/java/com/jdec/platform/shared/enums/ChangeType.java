@@ -1,5 +1,8 @@
 package com.jdec.platform.shared.enums;
 
+import java.util.HashMap;
+import java.util.Map;
+
 /**
  * 配置变更类型枚举
  *
@@ -40,6 +43,14 @@ public enum ChangeType {
     private final String code;
     private final String description;
 
+    private static final Map<String, ChangeType> CODE_MAP = new HashMap<>();
+
+    static {
+        for (ChangeType type : values()) {
+            CODE_MAP.put(type.code, type);
+        }
+    }
+
     ChangeType(String code, String description) {
         this.code = code;
         this.description = description;
@@ -51,5 +62,15 @@ public enum ChangeType {
 
     public String getDescription() {
         return description;
+    }
+
+    /**
+     * 根据 code 反查枚举（发布侧使用 {@link #getCode()} 写入 Redis channel）
+     *
+     * @param code 变更类型编码
+     * @return 对应的枚举，未匹配时返回 null
+     */
+    public static ChangeType fromCode(String code) {
+        return code == null ? null : CODE_MAP.get(code);
     }
 }
