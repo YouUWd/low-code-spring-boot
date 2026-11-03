@@ -198,7 +198,7 @@ public class CompanyCustomServiceImpl implements CompanyCustomService {
                 return basicInfoMapper.selectCount(basicInfoLambdaQueryWrapper);
             case "COMPANY-MEMBER", "w_rygc":
                 LambdaQueryWrapper<Member> memberLambdaQueryWrapper = new LambdaQueryWrapper<>();
-                memberLambdaQueryWrapper.eq(Member::getType, "EMPLOYEE");
+                memberLambdaQueryWrapper.in(Member::getType, "employee", "员工");
                 memberLambdaQueryWrapper.eq(Member::getCompanyId, id);
                 return memberMapper.selectCount(memberLambdaQueryWrapper);
             case "COMPANY-MEMBER-V", "W_L_LXR":
