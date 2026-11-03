@@ -58,6 +58,9 @@ public class OperateLogRemarkConverter {
     /** 多值字段（数组）展示文本的拼接分隔符 */
     private static final String MULTI_VALUE_SEPARATOR = ",";
 
+    /** 字段旧值为 null 时，生成 remark 使用的占位字符串 */
+    private static final String NULL_OLD_PLACEHOLDER = "--";
+
     /** 结构化字段值（引用/词云回填的对象）取展示文本时按顺序匹配的名称属性 */
     private static final List<String> DISPLAY_TEXT_KEYS =
             List.of("name", "displayName", "display_name", "label", "text", "title", "value");
@@ -357,7 +360,7 @@ public class OperateLogRemarkConverter {
             columns.add(
                     ColumnChangeLogDTO.builder()
                             .name(field != null ? field.getDisplayName() : null)
-                            .old(oldValue)
+                            .old(nullToPlaceholder(oldValue))
                             .newer(newerValue)
                             .field(fullFieldName)
                             .fieldId(fieldIdByFullName(module, fullFieldName))
@@ -511,6 +514,11 @@ public class OperateLogRemarkConverter {
         return new BigDecimal(number.toString());
     }
 
+    /** 字段旧值为 null 时返回占位字符串 {@code "--"}，便于前端渲染空旧值 */
+    private Object nullToPlaceholder(Object value) {
+        return value == null ? NULL_OLD_PLACEHOLDER : value;
+    }
+
     /** null、空白字符串、JSON null/空白文本视为同一空值，避免未改动字段因 null/"" 差异进入 remark */
     private boolean isBlankValue(Object value) {
         if (value instanceof JsonNode node) {
@@ -541,7 +549,7 @@ public class OperateLogRemarkConverter {
                 columns.add(
                         ColumnChangeLogDTO.builder()
                                 .name(field != null ? field.getDisplayName() : null)
-                                .old(oldValue)
+                                .old(nullToPlaceholder(oldValue))
                                 .newer("")
                                 .field(DataPersistenceUtil.getFullFieldName(primaryTable, column))
                                 .fieldId(fieldIdByColumn(module, primaryTable, column))
