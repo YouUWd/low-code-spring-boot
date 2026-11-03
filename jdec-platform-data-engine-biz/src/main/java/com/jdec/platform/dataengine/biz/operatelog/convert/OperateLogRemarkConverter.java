@@ -11,6 +11,7 @@ import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.operatelog.dto.ActionChangeLogDTO;
+import com.jdec.platform.dataengine.biz.operatelog.dto.ChangeLogStructure;
 import com.jdec.platform.dataengine.biz.operatelog.dto.ColumnChangeLogDTO;
 import com.jdec.platform.dataengine.biz.operatelog.dto.ModuleChangeLogDTO;
 import com.jdec.platform.dataengine.biz.operatelog.dto.OperateLogRemarkDTO;
@@ -83,17 +84,78 @@ public class OperateLogRemarkConverter {
             Map<Long, SysModuleCombineInfo> moduleCacheMap,
             Long menuId) {
 
-        List<ModuleChangeLogDTO> change = new ArrayList<>();
+        ChangeLogStructure change = null;
         if (newData != null
                 && newData.getModuleId() != null
                 && CollectionUtil.isNotEmpty(moduleCacheMap)) {
+            // 顶层模块即主模块：其自身字段变更平铺到 main；其下所有平级子模块提取为 sub 数组
             ModuleChangeLogDTO root =
                     buildModuleChange(oldData, newData, moduleCacheMap, menuId, new HashMap<>());
             if (root != null) {
-                change.add(root);
+                change =
+                        ChangeLogStructure.builder()
+                                .main(extractMainColumns(root))
+                                .sub(extractDirectSubModules(root))
+                                .build();
             }
         }
         return OperateLogRemarkDTO.builder().change(change).build();
+    }
+
+    /**
+     * 抽取主模块（顶层模块）下的全部平级子模块，作为 {@code sub} 数组；主模块自身字段对比已平铺到 main， 不在此重复出现。子模块内部仍可通过其自身的 {@code
+     * children} 继续嵌套更深层级模块。
+     *
+     * <p>主模块的子模块数据挂在各数据行的 {@code children} 下（数据行按主键对齐，子模块为行级归属），
+     * 故需遍历主模块新增/更新/删除行，汇总其行下子模块；主模块无任何子模块变更时返回 null（不输出空数组）。
+     */
+    private List<ModuleChangeLogDTO> extractDirectSubModules(ModuleChangeLogDTO root) {
+        List<ModuleChangeLogDTO> sub = new ArrayList<>();
+        ActionChangeLogDTO actions = root.getActions();
+        if (actions != null) {
+            collectRowChildren(actions.getI(), sub);
+            collectRowChildren(actions.getU(), sub);
+            collectRowChildren(actions.getD(), sub);
+        }
+        return sub.isEmpty() ? null : sub;
+    }
+
+    private void collectRowChildren(List<RowChangeLogDTO> rows, List<ModuleChangeLogDTO> target) {
+        if (CollectionUtil.isEmpty(rows)) {
+            return;
+        }
+        for (RowChangeLogDTO row : rows) {
+            if (CollectionUtil.isNotEmpty(row.getChildren())) {
+                target.addAll(row.getChildren());
+            }
+        }
+    }
+
+    /**
+     * 抽取主模块（顶层模块）自身的字段变更，平铺为 {@code main} 列表；主模块不展示唯一值字段（行名），仅保留字段级对比。
+     *
+     * <p>只取主模块自身行的 columns，不含其下子模块的字段变更；主模块无字段变更时返回 null（不输出空数组）。
+     */
+    private List<ColumnChangeLogDTO> extractMainColumns(ModuleChangeLogDTO root) {
+        List<ColumnChangeLogDTO> main = new ArrayList<>();
+        ActionChangeLogDTO actions = root.getActions();
+        if (actions != null) {
+            collectRowColumns(actions.getI(), main);
+            collectRowColumns(actions.getU(), main);
+            collectRowColumns(actions.getD(), main);
+        }
+        return main.isEmpty() ? null : main;
+    }
+
+    private void collectRowColumns(List<RowChangeLogDTO> rows, List<ColumnChangeLogDTO> target) {
+        if (CollectionUtil.isEmpty(rows)) {
+            return;
+        }
+        for (RowChangeLogDTO row : rows) {
+            if (CollectionUtil.isNotEmpty(row.getColumns())) {
+                target.addAll(row.getColumns());
+            }
+        }
     }
 
     private ModuleChangeLogDTO buildModuleChange(
