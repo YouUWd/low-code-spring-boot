@@ -153,3 +153,8 @@ config:
 
 monitor-center:
   base-url: http://localhost:5009
+
+app:
+  company:
+    business-no: P260812103331
+
