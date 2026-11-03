@@ -11,7 +11,6 @@ import com.jdec.platform.dataengine.biz.dto.ChangeItemDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleRowNodeDataDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleTreeNodeDataDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
-import com.jdec.platform.dataengine.biz.third.api.data.impl.ModuleTreeDiffService;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -1544,7 +1543,8 @@ public class ModuleTreeDataUtils {
             Object newValue = rowNew.get(key);
             Object dbValue = rowBase.get(key);
             // 没有修改
-            boolean isEqual = ModuleTreeDiffService.isEqual(newValue, dbValue);
+            // ModuleTreeDiffService.isEqual(newValue, dbValue);
+            boolean isEqual = DataPersistenceUtil.isEqualValue(newValue, dbValue);
             if (isEqual) {
                 continue;
             }

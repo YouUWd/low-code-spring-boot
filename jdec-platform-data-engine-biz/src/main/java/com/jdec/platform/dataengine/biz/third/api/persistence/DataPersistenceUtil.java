@@ -424,19 +424,7 @@ public class DataPersistenceUtil {
                 // json 字符串
                 try {
                     Object o = JsonUtil.json2Obj(strVal, Object.class);
-                    if (o instanceof List list) {
-                        list.stream()
-                                .forEach(
-                                        x -> {
-                                            if (x instanceof Map m) {
-                                                REMOVAL_WORD_FIELDS.stream()
-                                                        .forEach(y -> m.remove(y));
-                                            }
-                                        });
-
-                    } else if (o instanceof Map map) {
-                        REMOVAL_WORD_FIELDS.stream().forEach(y -> map.remove(y));
-                    }
+                    removalWordFields(o);
                     JsonUtil.obj2Json(o);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
@@ -471,17 +459,7 @@ public class DataPersistenceUtil {
         try {
             txt = JsonUtil.obj2Json(value);
             Object o = JsonUtil.json2Obj(txt, Object.class);
-            if (o instanceof List list) {
-                list.stream()
-                        .forEach(
-                                x -> {
-                                    if (x instanceof Map m) {
-                                        REMOVAL_WORD_FIELDS.stream().forEach(y -> m.remove(y));
-                                    }
-                                });
-            } else if (o instanceof Map map) {
-                REMOVAL_WORD_FIELDS.stream().forEach(y -> map.remove(y));
-            }
+            removalWordFields(o);
             txt = JsonUtil.obj2Json(o);
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
@@ -500,6 +478,19 @@ public class DataPersistenceUtil {
         //
         //        // 6. 其他POJO对象，转json字符串
         //        return writeJson(value);
+    }
+
+    public static void removalWordFields(Object value) {
+        if (value == null) {
+            return;
+        }
+
+        if (value instanceof List) {
+            ((List) value).stream().forEach(x -> removalWordFields(x));
+        } else if (value instanceof Map) {
+            REMOVAL_WORD_FIELDS.stream().forEach(y -> ((Map) value).remove(y));
+            ((Map) value).forEach((key, val) -> removalWordFields(val));
+        }
     }
 
     public static RowChangeDTO combineRowChanges(
