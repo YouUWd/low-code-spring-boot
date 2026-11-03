@@ -153,7 +153,11 @@ public class ModuleTreeDiffService {
                         index.computeIfAbsent(moduleId, k -> new ConcurrentHashMap<>());
                 for (RecordDataDTO recordItem : recordArr) {
                     Map<String, Object> rowNode = recordItem.getRow();
-                    if (rowNode == null) continue;
+                    // 虚模块时不跳过，继续递归子模块
+                    if (rowNode == null
+                            && StringUtils.isNotBlank(sysModuleInfo.getPrimaryTable())) {
+                        continue;
+                    }
                     String businessNoPk = extractRowBusinessNo(rowNode, primaryTable);
                     if (StringUtils.isNotBlank(businessNoPk)) {
                         recordMap.put(businessNoPk, recordItem);
@@ -173,6 +177,9 @@ public class ModuleTreeDiffService {
 
     /** 从row中提取主键：查找key以 .business_no 结尾的字段，例如 info.business_no、basic_info.business_no */
     private String extractRowBusinessNo(Map<String, Object> rowNode, String tableName) {
+        if (Objects.isNull(rowNode)) {
+            return "";
+        }
         Object primaryTableId = rowNode.get(tableName + "." + "business_no");
 
         if (Objects.nonNull(primaryTableId)) {
@@ -184,6 +191,9 @@ public class ModuleTreeDiffService {
 
     /** 从row中提取主键：查找key以 .id 结尾的字段，例如 info.id、basic_info.id */
     private Long extractRowPk(Map<String, Object> rowNode, String tableName) {
+        if (Objects.isNull(rowNode)) {
+            return null;
+        }
         Object primaryTableId = rowNode.get(tableName + "." + "id");
 
         if (Objects.nonNull(primaryTableId)) {
