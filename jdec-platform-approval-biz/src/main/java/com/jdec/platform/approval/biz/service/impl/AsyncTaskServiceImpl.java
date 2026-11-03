@@ -313,10 +313,7 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
     private void sendWechatMessageById(Long templateId, ApprovalProcessDTO approvalProcessDTO) {
         WechatTemplateEntryResp template = sysWechatTemplateApi.getTemplateById(templateId);
         String content = formatWechatMessage(template, approvalProcessDTO);
-        List<String> userIds =
-                getSendUserList(approvalProcessDTO, templateId).stream()
-                        .map(String::valueOf)
-                        .toList();
+        List<String> userIds = getSendUserList(approvalProcessDTO, templateId);
         SendWechatMessageReq sendWechatMessageReq = new SendWechatMessageReq();
         sendWechatMessageReq.setMessageTitle(template.getTemplateTitle());
         sendWechatMessageReq.setMessageType("markdown");
@@ -338,10 +335,7 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
                         approvalProcessDTO.getModuleId(),
                         triggerType);
         String content = formatWechatMessage(template, approvalProcessDTO);
-        List<String> userIds =
-                getSendUserList(approvalProcessDTO, template.getId()).stream()
-                        .map(String::valueOf)
-                        .toList();
+        List<String> userIds = getSendUserList(approvalProcessDTO, template.getId());
         SendWechatMessageReq sendWechatMessageReq = new SendWechatMessageReq();
         sendWechatMessageReq.setMessageTitle(template.getTemplateTitle());
         sendWechatMessageReq.setMessageType("markdown");
@@ -504,12 +498,12 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
     }
 
     // 获取消息接收人列表------------------------------------------------------------------
-    private Set<Long> getSendUserList(ApprovalProcessDTO approvalProcessDTO, Long templateId) {
+    private List<String> getSendUserList(ApprovalProcessDTO approvalProcessDTO, Long templateId) {
         // 1. 查询微信模板
         WechatTemplateDetailResp sysWeChatTemplate =
                 sysWechatTemplateApi.getTemplateById(templateId);
         if (sysWeChatTemplate == null) {
-            return Collections.emptySet();
+            return new ArrayList<>();
         }
 
         Set<Long> userList = new HashSet<>();
@@ -594,7 +588,15 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
         // 6. 二维数组扁平化 + 去重
         //        List<Object> result = userList.stream().flatMap(List::stream).distinct().toList();
 
-        return userList;
+        List<String> result = new ArrayList<>();
+        for (Long userId : userList) {
+            UserDetailResp resp = sysUserApi.getUserDetailByUserId(userId);
+            if (Objects.nonNull(resp)) {
+                result.add(resp.getPhone());
+            }
+        }
+
+        return result;
     }
 
     // 根据审批规则获取可操作用户ID列表-----------------------------------------------------------------
