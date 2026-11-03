@@ -45,7 +45,8 @@ public class ChangeRequestDataMergeAndCompareProcessImpl implements DetailDataPr
                     CollectionUtils.isEmpty(preVersionData) ? null : preVersionData.get(0),
                     currentVersionMap,
                     context.getModuleTree(),
-                    context.getId());
+                    context.getId(),
+                    context.getProjectTableRelationsDTO());
         }
     }
 

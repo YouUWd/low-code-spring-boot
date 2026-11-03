@@ -6,15 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
-import com.jdec.platform.config.api.dto.common.ModuleInfo;
-import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
+import com.jdec.platform.config.api.dto.common.*;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
-import com.jdec.platform.dataengine.api.dto.model.SysModuleInfo;
-import com.jdec.platform.dataengine.biz.config.service.DataModuleConfigService;
 import com.jdec.platform.dataengine.biz.dto.VersionSnapShot;
-import com.jdec.platform.shared.context.AppContext;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.text.ParseException;
@@ -48,9 +43,8 @@ public class ModuleTreeDiffService {
                     "created_by",
                     "updated_by",
                     "created_date",
-                    "updated_date");
-
-    private final DataModuleConfigService dataModuleConfigService;
+                    "updated_date",
+                    "source_id");
 
     /**
      * 入口：对比两棵模块树，【新树】原地增加 changeList
@@ -61,11 +55,19 @@ public class ModuleTreeDiffService {
     public void diffModuleTree(
             NestedModuleDataDTO oldTree,
             NestedModuleDataDTO newTree,
-            Map<Long, Map<Long, Map<String, VersionSnapShot>>> currentVersionMap) {
+            Map<Long, Map<Long, Map<String, VersionSnapShot>>> currentVersionMap,
+            ProjectTableRelationsDTO projectTableRelationsDTO,
+            ModuleTreeDTO moduleTreeDTO) {
         // 构建旧树 moduleId -> recordMap(业务id -> recordNode)
         Map<Long, Map<String, RecordDataDTO>> oldModuleRecordMap =
-                buildOldModuleRecordIndex(oldTree);
-        recursiveDiff(oldTree, newTree, oldModuleRecordMap, currentVersionMap);
+                buildOldModuleRecordIndex(oldTree, moduleTreeDTO);
+        recursiveDiff(
+                oldTree,
+                newTree,
+                oldModuleRecordMap,
+                currentVersionMap,
+                projectTableRelationsDTO,
+                moduleTreeDTO);
     }
 
     /** 递归处理模块节点 */
@@ -73,17 +75,27 @@ public class ModuleTreeDiffService {
             NestedModuleDataDTO oldNode,
             NestedModuleDataDTO newNode,
             Map<Long, Map<String, RecordDataDTO>> oldModuleRecordMap,
-            Map<Long, Map<Long, Map<String, VersionSnapShot>>> currentVersionMap) {
+            Map<Long, Map<Long, Map<String, VersionSnapShot>>> currentVersionMap,
+            ProjectTableRelationsDTO projectTableRelationsDTO,
+            ModuleTreeDTO moduleTreeDTO) {
         if (Objects.isNull(newNode)) {
             return;
         }
         Long moduleId = newNode.getModuleId();
 
-        SysModuleInfo sysModuleInfo =
-                dataModuleConfigService.getModuleCompleteById(
-                        AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
+        // 当前模块（作为父模块）的元数据
+        ModuleInfo parentModuleInfo = moduleTreeDTO.getModule(moduleId);
 
-        String primaryTable = sysModuleInfo.getPrimaryTable();
+        String primaryTable = parentModuleInfo.getPrimaryTable();
+
+        // 该模块涉及的所有物理表名（主表 + 从表）
+        Set<String> parentModuleTables =
+                parentModuleInfo.getFields().stream()
+                        .map(ModuleFieldDTO::getTableName)
+                        .collect(Collectors.toSet());
+
+        Set<String> excludeRelateKeys =
+                buildExcludeRelateKey(parentModuleTables, projectTableRelationsDTO);
 
         // 获取旧模块下所有record：business_no -> record节点
         Map<String, RecordDataDTO> oldRecordMap =
@@ -120,7 +132,8 @@ public class ModuleTreeDiffService {
                                     currentChangeMap,
                                     "pre",
                                     "current",
-                                    "currentOld");
+                                    "currentOld",
+                                    excludeRelateKeys);
                     if (changeList.size() > 0) {
                         if (changeList.containsKey("preChangeFlag")) {
                             log.debug("该行数据与上个版本对比有变化，标记为改。");
@@ -137,29 +150,50 @@ public class ModuleTreeDiffService {
                 List<NestedModuleDataDTO> childrenNode = recordItem.getChildren();
                 if (!CollectionUtils.isEmpty(childrenNode)) {
                     for (NestedModuleDataDTO childModule : childrenNode) {
-                        recursiveDiff(oldNode, childModule, oldModuleRecordMap, currentVersionMap);
+                        recursiveDiff(
+                                oldNode,
+                                childModule,
+                                oldModuleRecordMap,
+                                currentVersionMap,
+                                projectTableRelationsDTO,
+                                moduleTreeDTO);
                     }
                 }
             }
         }
     }
 
+    private Set<String> buildExcludeRelateKey(
+            Set<String> parentModuleTables, ProjectTableRelationsDTO projectTableRelationsDTO) {
+        Set<String> excludeKeys = new HashSet<>();
+        for (String parentTable : parentModuleTables) {
+            List<TableRelationDTO> relations =
+                    projectTableRelationsDTO.findRelationsByTable(parentTable);
+            for (TableRelationDTO relation : relations) {
+                excludeKeys.add(relation.getJoinTable() + "." + relation.getJoinField());
+            }
+        }
+        return excludeKeys;
+    }
+
     /** 构建旧树索引：moduleId -> Map<业务主键, recordNode> */
     private Map<Long, Map<String, RecordDataDTO>> buildOldModuleRecordIndex(
-            NestedModuleDataDTO root) {
+            NestedModuleDataDTO root, ModuleTreeDTO moduleTreeDTO) {
         Map<Long, Map<String, RecordDataDTO>> index = new ConcurrentHashMap<>();
-        traverseOldTree(root, index);
+        traverseOldTree(root, index, moduleTreeDTO);
         return index;
     }
 
     private void traverseOldTree(
-            NestedModuleDataDTO node, Map<Long, Map<String, RecordDataDTO>> index) {
+            NestedModuleDataDTO node,
+            Map<Long, Map<String, RecordDataDTO>> index,
+            ModuleTreeDTO moduleTreeDTO) {
         if (Objects.isNull(node)) return;
         Long moduleId = node.getModuleId();
-        SysModuleInfo sysModuleInfo =
-                dataModuleConfigService.getModuleCompleteById(
-                        AppContext.getProjectNo(), AppContext.getSubjectId(), moduleId);
-        String primaryTable = sysModuleInfo.getPrimaryTable();
+
+        ModuleInfo moduleInfo = moduleTreeDTO.getModule(moduleId);
+
+        String primaryTable = moduleInfo.getPrimaryTable();
         if (moduleId != null) {
             List<RecordDataDTO> recordArr = node.getRecord();
             if (!CollectionUtils.isEmpty(recordArr)) {
@@ -168,8 +202,7 @@ public class ModuleTreeDiffService {
                 for (RecordDataDTO recordItem : recordArr) {
                     Map<String, Object> rowNode = recordItem.getRow();
                     // 虚模块时不跳过，继续递归子模块
-                    if (rowNode == null
-                            && StringUtils.isNotBlank(sysModuleInfo.getPrimaryTable())) {
+                    if (rowNode == null && StringUtils.isNotBlank(moduleInfo.getPrimaryTable())) {
                         continue;
                     }
                     String businessNoPk = extractRowBusinessNo(rowNode, primaryTable);
@@ -181,7 +214,7 @@ public class ModuleTreeDiffService {
                     List<NestedModuleDataDTO> childrenNode = recordItem.getChildren();
                     if (!CollectionUtils.isEmpty(childrenNode)) {
                         for (NestedModuleDataDTO child : childrenNode) {
-                            traverseOldTree(child, index);
+                            traverseOldTree(child, index, moduleTreeDTO);
                         }
                     }
                 }
@@ -228,7 +261,8 @@ public class ModuleTreeDiffService {
             Map<String, VersionSnapShot> currentChangeMap,
             String preKey,
             String currentKey,
-            String currentOldKey) {
+            String currentOldKey,
+            Set<String> excludeRelateKeys) {
 
         Map<String, Map<String, Object>> changeList = new HashMap<>();
         if (Objects.isNull(newRow)) {
@@ -241,8 +275,16 @@ public class ModuleTreeDiffService {
         while (newFields.hasNext()) {
             Map.Entry<String, Object> entry = newFields.next();
             String fieldKey = entry.getKey();
-            // 非业务字段跳过对比
-            if (EXCLUDE_FIELDS.stream().anyMatch(fieldKey::endsWith)) {
+            String[] columnName = fieldKey.split("\\.");
+            if (columnName.length == 2 && StringUtils.isNotBlank(columnName[1])) {
+                // 非业务字段跳过对比
+                if (EXCLUDE_FIELDS.stream().anyMatch(columnName[1]::equals)) {
+                    continue;
+                }
+            }
+
+            // 关联外键不参与对比
+            if (excludeRelateKeys.contains(fieldKey)) {
                 continue;
             }
             Object newVal = entry.getValue();
@@ -559,8 +601,10 @@ public class ModuleTreeDiffService {
             NestedModuleDataDTO oldTree,
             Map<String, Map<String, Map<String, List<Map<String, Object>>>>> currentVersionMap,
             ModuleTreeDTO moduleTreeDTO,
-            Long rootModuleId) {
-        recursiveMergeData(oldTree, currentVersionMap, moduleTreeDTO, rootModuleId);
+            Long rootModuleId,
+            ProjectTableRelationsDTO projectTableRelationsDTO) {
+        recursiveMergeData(
+                oldTree, currentVersionMap, moduleTreeDTO, rootModuleId, projectTableRelationsDTO);
     }
 
     /**
@@ -586,7 +630,8 @@ public class ModuleTreeDiffService {
             NestedModuleDataDTO oldTree,
             Map<String, Map<String, Map<String, List<Map<String, Object>>>>> currentVersionMap,
             ModuleTreeDTO moduleTreeDTO,
-            Long parentPrimaryTablerowId) {
+            Long parentPrimaryTablerowId,
+            ProjectTableRelationsDTO projectTableRelationsDTO) {
         if (Objects.isNull(oldTree)) {
             return;
         }
@@ -600,6 +645,9 @@ public class ModuleTreeDiffService {
                 parentModuleInfo.getFields().stream()
                         .map(ModuleFieldDTO::getTableName)
                         .collect(Collectors.toSet());
+
+        Set<String> excludeRelateKeys =
+                buildExcludeRelateKey(parentModuleTables, projectTableRelationsDTO);
 
         // 主表名，用于从 row 中提取行主键（xxx.id）
         String primaryTable = parentModuleInfo.getPrimaryTable();
@@ -690,7 +738,8 @@ public class ModuleTreeDiffService {
                                                 currentChangeMap,
                                                 "original",
                                                 "change",
-                                                ""));
+                                                "",
+                                                excludeRelateKeys));
                                 recordItem.setChangeType("改");
                             } else if ("INSERT".equals(action)) {
                                 recordItem.setChangeType("新");
@@ -825,7 +874,11 @@ public class ModuleTreeDiffService {
                                                 .toList());
                         // 递归处理子模块，传入当前模块行主键作为其父级主键
                         recursiveMergeData(
-                                childModule, currentVersionMap, moduleTreeDTO, primaryTablerowId);
+                                childModule,
+                                currentVersionMap,
+                                moduleTreeDTO,
+                                primaryTablerowId,
+                                projectTableRelationsDTO);
                     }
                 }
             }

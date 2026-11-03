@@ -41,7 +41,9 @@ public class CurrentVersionCompareDataProcessServiceImpl implements DetailDataPr
         moduleTreeDiffService.diffModuleTree(
                 CollectionUtils.isEmpty(preVersionData) ? null : preVersionData.get(0),
                 records.get(0),
-                currentVersionMap);
+                currentVersionMap,
+                context.getProjectTableRelationsDTO(),
+                context.getModuleTree());
     }
 
     private List<NestedModuleDataDTO> getPreVersionData(DataIntegrationContext context) {

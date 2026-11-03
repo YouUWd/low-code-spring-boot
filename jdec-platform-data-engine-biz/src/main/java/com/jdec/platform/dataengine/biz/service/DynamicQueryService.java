@@ -184,6 +184,9 @@ public class DynamicQueryService {
                 ModuleTreeDTO moduleTreeDTO =
                         configApi.getModuleTree(AppContext.getProjectNo(), null, rootNode.getId());
 
+                ProjectTableRelationsDTO projectTableRelationsDTO =
+                        configApi.getProjectTableRelations(AppContext.getProjectNo());
+
                 DataIntegrationContext dataIntegrationContext =
                         DataIntegrationContext.builder()
                                 .moduleId(dynamicDetailQueryReq.getModuleId())
@@ -194,6 +197,7 @@ public class DynamicQueryService {
                                 .changeRequestId(dynamicDetailQueryReq.getChangeRequestId())
                                 .preVersionData(preVersionResultList)
                                 .moduleTree(moduleTreeDTO)
+                                .projectTableRelationsDTO(projectTableRelationsDTO)
                                 .build();
 
                 detailDataProcessFactory.processData(resultList, dataIntegrationContext);

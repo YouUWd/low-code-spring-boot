@@ -1,6 +1,7 @@
 package com.jdec.platform.dataengine.biz.dto.context;
 
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
+import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.biz.dto.BasicModel;
@@ -28,4 +29,6 @@ public class DataIntegrationContext extends BasicModel {
     private List<NestedModuleDataDTO> preVersionData;
 
     private ModuleTreeDTO moduleTree;
+
+    private ProjectTableRelationsDTO projectTableRelationsDTO;
 }
