@@ -192,11 +192,6 @@ public class CompanyCustomServiceImpl implements CompanyCustomService {
      */
     private Long getBadgeNumByModuleSlug(String moduleSlug, Long id) {
         switch (moduleSlug) {
-            case "COMPANY-BASIC-INFO", "W_JBXX":
-                LambdaQueryWrapper<BasicInfo> basicInfoLambdaQueryWrapper =
-                        new LambdaQueryWrapper<>();
-                basicInfoLambdaQueryWrapper.eq(BasicInfo::getCompanyId, id);
-                return basicInfoMapper.selectCount(basicInfoLambdaQueryWrapper);
             case "COMPANY-MEMBER", "w_rygc":
                 LambdaQueryWrapper<Member> memberLambdaQueryWrapper = new LambdaQueryWrapper<>();
                 memberLambdaQueryWrapper.in(Member::getType, "employee", "员工");
@@ -228,12 +223,6 @@ public class CompanyCustomServiceImpl implements CompanyCustomService {
                         digitalAccountMapper.selectCount(digitalAccountLambdaQueryWrapper);
 
                 return financialAcountCount + digitalAccountCount;
-
-            case "COMPANY-CREDIT", "W XYDJ":
-                LambdaQueryWrapper<CreditRating> creditLambdaQueryWrapper =
-                        new LambdaQueryWrapper<>();
-                creditLambdaQueryWrapper.eq(CreditRating::getCompanyId, id);
-                return creditRatingMapper.selectCount(creditLambdaQueryWrapper);
             default:
                 return 0L;
         }
