@@ -19,6 +19,33 @@ import java.util.Set;
  */
 public final class TableQueryValidator {
 
+    /**
+     * 平台内置系统级辅助列（主键、树形拓扑节点、软删除、状态、版本与审计字段等）
+     *
+     * <p>凡属于当前模块树合法物理表范围内的系统级辅助列，天然允许投影、过滤与排序，无需在配置中心逐个作为业务字段配置。
+     */
+    private static final Set<String> BUILTIN_SYSTEM_COLUMNS =
+            Set.of(
+                    "id",
+                    "node_id",
+                    "parent_node_id",
+                    "sort_order",
+                    "active",
+                    "status",
+                    "business_status",
+                    "deleted",
+                    "version_no",
+                    "business_no",
+                    "source_id",
+                    "subject_id",
+                    "company_id",
+                    "parent_id",
+                    "info_id",
+                    "created_by",
+                    "created_date",
+                    "updated_by",
+                    "updated_date");
+
     private TableQueryValidator() {}
 
     /** 校验物理表查询请求的表/列是否都在当前模块树允许范围内。 */
@@ -147,6 +174,10 @@ public final class TableQueryValidator {
             throw new IllegalArgumentException(kind + "缺少物理表名: " + column);
         }
         String cleanColumn = column.trim();
+        // 平台内置系统辅助列（id、node_id、parent_node_id、active 等）天然属于合法物理表范围，免于配置元数据校验
+        if (isBuiltinSystemColumn(cleanColumn)) {
+            return;
+        }
         // 测试/兼容场景可能只提供模块表名而没有字段元数据，此时保留表驱动契约，
         // 由数据库负责列存在性校验；真实配置存在字段字典时则严格执行白名单校验。
         if (allowedColumns.isEmpty()) {
@@ -156,6 +187,11 @@ public final class TableQueryValidator {
             throw new IllegalArgumentException(
                     kind + " [" + table.trim() + "." + cleanColumn + "] 不属于当前模块查询范围");
         }
+    }
+
+    /** 判断是否为平台内置系统辅助列。 */
+    public static boolean isBuiltinSystemColumn(String column) {
+        return column != null && BUILTIN_SYSTEM_COLUMNS.contains(column.trim().toLowerCase());
     }
 
     private static String physicalKey(String table, String column) {
