@@ -427,8 +427,10 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
 
                     Object newValue = recordDataDTO.getRow().get(key);
                     Object dbValue =
-                            dataMap.get(sysModuleCombineInfo.getModuleInfo().getModuleId())
-                                    .get(dataId)
+                            dataMap.getOrDefault(
+                                            sysModuleCombineInfo.getModuleInfo().getModuleId(),
+                                            new HashMap<>())
+                                    .getOrDefault(dataId, new HashMap<>())
                                     .get(key);
 
                     // 没有修改
