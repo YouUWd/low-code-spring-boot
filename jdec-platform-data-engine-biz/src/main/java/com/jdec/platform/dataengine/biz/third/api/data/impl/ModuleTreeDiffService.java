@@ -731,7 +731,7 @@ public class ModuleTreeDiffService {
 
                             if ("UPDATE".equals(action)) {
                                 // 对比row字段，生成changeList，挂在recordItem（和row平级）
-                                changeList.putAll(
+                                Map<String, Map<String, Object>> rowChangeMap =
                                         buildRowChangeList(
                                                 rowRawData,
                                                 changeContentMap,
@@ -739,7 +739,9 @@ public class ModuleTreeDiffService {
                                                 "original",
                                                 "change",
                                                 "",
-                                                excludeRelateKeys));
+                                                excludeRelateKeys);
+                                rowChangeMap.remove("preChangeFlag");
+                                changeList.putAll(rowChangeMap);
                                 recordItem.setChangeType("改");
                             } else if ("INSERT".equals(action)) {
                                 recordItem.setChangeType("新");
