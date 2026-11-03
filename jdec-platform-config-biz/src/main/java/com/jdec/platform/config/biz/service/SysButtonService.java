@@ -119,29 +119,10 @@ public class SysButtonService implements SysButtonApi, OpenButtonApi {
             BeanUtils.copyProperties(req, entity);
             entity.setSubjectId(AppContext.getSubjectId());
             entity.setProjectNo(AppContext.getProjectNo());
-            long count =
-                    sysButtonMapper.selectCount(
-                            Wrappers.<SysButton>lambdaQuery()
-                                    .eq(SysButton::getProjectNo, AppContext.getProjectNo())
-                                    .eq(SysButton::getSubjectId, AppContext.getSubjectId())
-                                    .eq(SysButton::getTitle, entity.getTitle()));
-            if (count > 0) {
-                throw new BusinessException("按钮名称已存在");
-            }
             sysButtonMapper.insert(entity);
             // 设置id到请求对象，用于审计切面重新解析dataId
             req.setId(entity.getId());
         } else {
-            long count =
-                    sysButtonMapper.selectCount(
-                            Wrappers.<SysButton>lambdaQuery()
-                                    .eq(SysButton::getProjectNo, AppContext.getProjectNo())
-                                    .eq(SysButton::getSubjectId, AppContext.getSubjectId())
-                                    .eq(SysButton::getTitle, req.getTitle())
-                                    .ne(SysButton::getId, req.getId()));
-            if (count > 0) {
-                throw new BusinessException("按钮名称已存在");
-            }
             SysButton entity = new SysButton();
             BeanUtils.copyProperties(req, entity);
             entity.setId(req.getId());

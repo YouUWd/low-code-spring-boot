@@ -112,8 +112,12 @@ public class ModuleTreeDiffService {
                                     "current",
                                     "currentOld");
                     if (changeList.size() > 0) {
+                        if (changeList.containsKey("preChangeFlag")) {
+                            log.debug("该行数据与上个版本对比有变化，标记为改。");
+                            recordItem.setChangeType("改");
+                            changeList.remove("preChangeFlag");
+                        }
                         recordItem.setChangeList(changeList);
-                        recordItem.setChangeType("改");
                     } else if (Objects.isNull(oldRow) && Objects.nonNull(oldNode)) {
                         recordItem.setChangeType("新");
                     }
@@ -221,6 +225,8 @@ public class ModuleTreeDiffService {
             return changeList;
         }
 
+        boolean preChangeFlag = false;
+
         Iterator<Map.Entry<String, Object>> newFields = newRow.entrySet().iterator();
         while (newFields.hasNext()) {
             Map.Entry<String, Object> entry = newFields.next();
@@ -239,6 +245,7 @@ public class ModuleTreeDiffService {
                 versionCompareItem.put(preKey, oldVal);
                 versionCompareItem.put(currentKey, newVal);
                 addVersionItem = true;
+                preChangeFlag = true;
             }
             if (Objects.nonNull(currentChangeMap.get(fieldKey))) {
                 VersionSnapShot changeObj = currentChangeMap.get(fieldKey);
@@ -297,6 +304,9 @@ public class ModuleTreeDiffService {
             if (addVersionItem) {
                 changeList.put(entry.getKey(), versionCompareItem);
             }
+        }
+        if (preChangeFlag) {
+            changeList.put("preChangeFlag", new HashMap<>());
         }
         return changeList;
     }
