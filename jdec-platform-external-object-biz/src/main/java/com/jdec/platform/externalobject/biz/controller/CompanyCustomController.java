@@ -2,17 +2,21 @@ package com.jdec.platform.externalobject.biz.controller;
 
 import com.jdec.platform.externalobject.api.dto.request.CompanyBadgeNumReq;
 import com.jdec.platform.externalobject.api.dto.request.CompanyRegStatusUpdateReq;
+import com.jdec.platform.externalobject.api.dto.response.CompanyTreeNodeResp;
 import com.jdec.platform.externalobject.biz.service.CompanyCustomService;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 外部对象定制化业务控制器 (COMPANY-ROOT 模块) */
@@ -59,6 +63,22 @@ public class CompanyCustomController {
                     req != null ? req.getMenuIds() : null,
                     ex.getMessage(),
                     ex);
+            throw ex;
+        }
+    }
+
+    @GetMapping("/tree")
+    @Operation(
+            summary = "获取当前单据关联的公司树",
+            description = "基于单据ID分别向上追溯顶级与向下发散全层级，严格按 parent_id 记录的版本精确匹配，构建完整公司树")
+    public ApiResponse<CompanyTreeNodeResp> getCompanyTree(
+            @Parameter(description = "当前单据物理主键ID", required = true) @RequestParam("id") Long id) {
+        try {
+            CompanyTreeNodeResp tree = companyCustomService.getCompanyTree(id);
+            return ApiResponse.success(tree);
+        } catch (Exception ex) {
+            log.error(
+                    "CompanyCustom getCompanyTree failed: id={}, err={}", id, ex.getMessage(), ex);
             throw ex;
         }
     }
