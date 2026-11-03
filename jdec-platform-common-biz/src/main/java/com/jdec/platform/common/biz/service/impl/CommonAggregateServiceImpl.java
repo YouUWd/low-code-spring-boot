@@ -21,13 +21,17 @@ import com.jdec.platform.common.api.dto.response.ModuleDataNode;
 import com.jdec.platform.common.api.dto.response.ModuleMetaDTO;
 import com.jdec.platform.common.api.dto.response.ModuleSimplePermissionDTO;
 import com.jdec.platform.common.api.dto.response.StatusSimpleResp;
-import com.jdec.platform.common.biz.action.MenuActionBundle;
-import com.jdec.platform.common.biz.action.MenuActionButtonService;
-import com.jdec.platform.common.biz.action.MenuActionContext;
+import com.jdec.platform.common.biz.postprocess.action.MenuActionBundle;
+import com.jdec.platform.common.biz.postprocess.action.MenuActionButtonService;
+import com.jdec.platform.common.biz.postprocess.action.MenuActionContext;
+import com.jdec.platform.common.biz.postprocess.action.approval.ApprovalActionBuilder;
+import com.jdec.platform.common.biz.postprocess.enhance.QueryResultEnhanceService;
+import com.jdec.platform.common.biz.query.condition.ApprovalConditionResolver;
+import com.jdec.platform.common.biz.query.condition.CommonFilterResolver;
+import com.jdec.platform.common.biz.query.condition.CommonFilterResolver.FilterSpec;
+import com.jdec.platform.common.biz.query.condition.CommonFilterResolver.PrimaryFilterResult;
+import com.jdec.platform.common.biz.query.mapper.PhysicalQueryMapper;
 import com.jdec.platform.common.biz.service.CommonAggregateService;
-import com.jdec.platform.common.biz.service.QueryResultEnhanceService;
-import com.jdec.platform.common.biz.service.impl.CommonFilterResolver.FilterSpec;
-import com.jdec.platform.common.biz.service.impl.CommonFilterResolver.PrimaryFilterResult;
 import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.SysStatusApi;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
@@ -232,7 +236,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 enhanceAndConvertRecords(rawRecords, rootModuleId, primaryTable, headerRoot);
         List<ActionRowItem> approvalRows =
                 approvalEnabled
-                        ? ApprovalConditionResolver.buildApprovalRows(
+                        ? ApprovalActionBuilder.buildApprovalRows(
                                 rawRecords, primaryTable, approvalType, approvalResp, userId)
                         : null;
         MenuActionBundle actions =
