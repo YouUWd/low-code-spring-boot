@@ -61,17 +61,17 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
         for (Map.Entry<Long, Map<String, Set<String>>> entry : result.entrySet()) {
             StringBuilder sb = new StringBuilder();
             sb.append("模块[").append(entry.getKey()).append("],");
-            if (entry.getValue().containsKey("apply")) {
+            if (entry.getValue().containsKey(PermissionType.APPLY.name())) {
                 sb.append("没有申请权限字段:");
                 sb.append(
-                        entry.getValue().get("apply").stream()
+                        entry.getValue().get(PermissionType.APPLY.name()).stream()
                                 .map(s -> s + " ")
                                 .collect(Collectors.joining(",")));
             }
-            if (entry.getValue().containsKey("edit")) {
+            if (entry.getValue().containsKey(PermissionType.EDIT.name())) {
                 sb.append("没有编辑权限字段:");
                 sb.append(
-                        entry.getValue().get("edit").stream()
+                        entry.getValue().get(PermissionType.EDIT.name()).stream()
                                 .map(s -> s + " ")
                                 .collect(Collectors.joining(",")));
             }

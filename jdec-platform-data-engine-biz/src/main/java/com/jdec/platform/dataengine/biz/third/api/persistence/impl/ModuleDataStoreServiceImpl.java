@@ -447,6 +447,10 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                     ApiResponseCodeEnum.BAD_MODULE_DATA_ERROR.getCode(), "保存变更申请单时，详情页数据为空");
         }
 
+        //        moduleDataPreCheckService.prePermissionCheck(
+        //                req.getNestedModuleData(), detailData, PermissionType.APPLY,
+        // moduleCacheMap);
+
         String businessNo =
                 DataPersistenceUtil.getTableRowBusinessNoWithTabName(
                         detailData.getRecord().get(0).getRow(),
