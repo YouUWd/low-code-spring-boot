@@ -40,6 +40,16 @@ public class ModuleTreeDiffService {
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final SimpleDateFormat DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd");
 
+    private static final Set<String> EXCLUDE_FIELDS =
+            Set.of(
+                    "id",
+                    "pid",
+                    "version_no",
+                    "created_by",
+                    "updated_by",
+                    "created_date",
+                    "updated_date");
+
     private final DataModuleConfigService dataModuleConfigService;
 
     /**
@@ -231,6 +241,10 @@ public class ModuleTreeDiffService {
         while (newFields.hasNext()) {
             Map.Entry<String, Object> entry = newFields.next();
             String fieldKey = entry.getKey();
+            // 非业务字段跳过对比
+            if (EXCLUDE_FIELDS.stream().anyMatch(fieldKey::endsWith)) {
+                continue;
+            }
             Object newVal = entry.getValue();
             Object oldVal = oldRow == null ? null : oldRow.get(fieldKey);
             //            VersionCompareItem.VersionCompareItemBuilder versionCompareItem =
