@@ -46,6 +46,8 @@ public class ModuleTreeDiffService {
                     "updated_date",
                     "source_id");
 
+    private static final Set<String> REMOVED_FIELDS = Set.of("id", "pid", "relation_no");
+
     /**
      * 入口：对比两棵模块树，【新树】原地增加 changeList
      *
@@ -519,10 +521,12 @@ public class ModuleTreeDiffService {
         try {
             if (source instanceof String && isJsonStr((String) source)) {
                 source = OBJECT_MAPPER.readTree((String) source);
+                removeFields((JsonNode) source);
             }
 
             if (target instanceof String && isJsonStr((String) target)) {
                 target = OBJECT_MAPPER.readTree((String) target);
+                removeFields((JsonNode) target);
             }
 
             return source.equals(target);
@@ -534,17 +538,18 @@ public class ModuleTreeDiffService {
     // ========== JSON字符串对比：源是json串，把目标解析成json对象对比 ==========
     private static boolean compareJsonStr(String sourceJson, Object target) {
         try {
-            Object sourceObj = OBJECT_MAPPER.readValue(sourceJson, Object.class);
+            JsonNode sourceObj = OBJECT_MAPPER.readTree(sourceJson);
+            removeFields(sourceObj);
             Object targetObj;
             if (target instanceof String) {
-                targetObj = OBJECT_MAPPER.readValue((String) target, Object.class);
+                targetObj = OBJECT_MAPPER.readTree((String) target);
+                removeFields((JsonNode) targetObj);
             } else {
                 targetObj = target;
             }
+
             // Jackson自带深度equals
-            return OBJECT_MAPPER
-                    .valueToTree(sourceObj)
-                    .equals(OBJECT_MAPPER.valueToTree(targetObj));
+            return sourceObj.equals(OBJECT_MAPPER.valueToTree(targetObj));
         } catch (Exception e) {
             return false;
         }
@@ -955,5 +960,24 @@ public class ModuleTreeDiffService {
 
         // 3. 值节点（字符串、数字、布尔等）直接返回
         return node;
+    }
+
+    /** 递归移除节点中的指定字段（如 id、pid、relation_no） */
+    private static void removeFields(JsonNode node) {
+        if (node == null) {
+            return;
+        }
+        if (node instanceof ObjectNode objectNode) {
+            for (String field : REMOVED_FIELDS) {
+                objectNode.remove(field);
+            }
+            for (Iterator<JsonNode> it = objectNode.elements(); it.hasNext(); ) {
+                removeFields(it.next());
+            }
+        } else if (node instanceof ArrayNode arrayNode) {
+            for (JsonNode item : arrayNode) {
+                removeFields(item);
+            }
+        }
     }
 }
