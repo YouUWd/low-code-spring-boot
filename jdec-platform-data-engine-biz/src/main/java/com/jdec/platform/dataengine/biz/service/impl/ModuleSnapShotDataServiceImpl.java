@@ -388,31 +388,24 @@ public class ModuleSnapShotDataServiceImpl implements ModuleSnapShotDataService 
             // 如果没有 s1 快照 直接保存 s1快照
             if (oldRecord == null) {
 
-                // 如果没有值，不保存
-                if (currentValue != null) {
-                    context.insertInto(
-                                    DSL.table(
-                                            CommonConstant
-                                                    .TABLE_NAME_MODULE_DATA_FIELD_CHANGE_CONTENT))
-                            .set(
-                                    DSL.field(DSL.name("root_module_id")),
-                                    currentReq.getRootModuleId())
-                            .set(
-                                    DSL.field(DSL.name("root_table_data_id")),
-                                    currentReq.getRootModuleMainTableDataId())
-                            .set(
-                                    DSL.field(DSL.name("root_table_data_version")),
-                                    currentReq.getRootModuleMainTableDataVersion())
-                            .set(DSL.field(DSL.name("module_id")), currentModuleId)
-                            .set(DSL.field(DSL.name("table_name")), primaryTable)
-                            .set(DSL.field(DSL.name("data_id")), id)
-                            .set(DSL.field(DSL.name("field_id")), field)
-                            .set(
-                                    DSL.field(DSL.name("first_snapshot")),
-                                    DataPersistenceUtil.getFieldTxtValue(rowMap.get(field)))
-                            .set(DSL.field(DSL.name("created_date")), LocalDateTime.now())
-                            .execute();
-                }
+                // 如果没有值，也保存
+                context.insertInto(
+                                DSL.table(
+                                        CommonConstant.TABLE_NAME_MODULE_DATA_FIELD_CHANGE_CONTENT))
+                        .set(DSL.field(DSL.name("root_module_id")), currentReq.getRootModuleId())
+                        .set(
+                                DSL.field(DSL.name("root_table_data_id")),
+                                currentReq.getRootModuleMainTableDataId())
+                        .set(
+                                DSL.field(DSL.name("root_table_data_version")),
+                                currentReq.getRootModuleMainTableDataVersion())
+                        .set(DSL.field(DSL.name("module_id")), currentModuleId)
+                        .set(DSL.field(DSL.name("table_name")), primaryTable)
+                        .set(DSL.field(DSL.name("data_id")), id)
+                        .set(DSL.field(DSL.name("field_id")), field)
+                        .set(DSL.field(DSL.name("first_snapshot")), currentValue)
+                        .set(DSL.field(DSL.name("created_date")), LocalDateTime.now())
+                        .execute();
             } else {
 
                 Long recordId =

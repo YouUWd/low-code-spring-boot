@@ -11,6 +11,7 @@ import com.jdec.platform.dataengine.biz.dto.ChangeItemDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleRowNodeDataDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleTreeNodeDataDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
+import com.jdec.platform.dataengine.biz.third.api.data.impl.ModuleTreeDiffService;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -1177,7 +1178,7 @@ public class ModuleTreeDataUtils {
                         for (NestedModuleDataDTO childChild : recordDataDTO.getChildren()) {
                             getChildChangeItemList(
                                     childChild,
-                                    childChild.getModuleId(),
+                                    currentModuleId,
                                     parentDataId,
                                     isParentInsert,
                                     dataMap,
@@ -1281,7 +1282,7 @@ public class ModuleTreeDataUtils {
                 for (NestedModuleDataDTO childChild : recordDataDTO.getChildren()) {
                     getChildChangeItemList(
                             childChild,
-                            childChild.getModuleId(),
+                            currentModuleId,
                             dataId,
                             (isParentInsert || currentInsert),
                             dataMap,
@@ -1543,7 +1544,7 @@ public class ModuleTreeDataUtils {
             Object newValue = rowNew.get(key);
             Object dbValue = rowBase.get(key);
             // 没有修改
-            boolean isEqual = DataPersistenceUtil.isEqualValue(newValue, dbValue);
+            boolean isEqual = ModuleTreeDiffService.isEqual(newValue, dbValue);
             if (isEqual) {
                 continue;
             }

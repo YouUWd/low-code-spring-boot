@@ -308,7 +308,7 @@ public class ModuleTreeDiffService {
      * @param target 待对比目标对象
      * @return true=相等，false=不相等
      */
-    private static boolean isEqual(Object source, Object target) {
+    public static boolean isEqual(Object source, Object target) {
         // 1. 两边都null
         if (source == null && target == null) {
             return true;
