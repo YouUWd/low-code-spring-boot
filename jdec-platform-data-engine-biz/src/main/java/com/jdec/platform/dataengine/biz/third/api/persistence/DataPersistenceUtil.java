@@ -26,6 +26,8 @@ public class DataPersistenceUtil {
     public static final String LOCAL_DATETIME_FORMATTER = "yyyy-MM-dd HH:mm:ss";
     public static final String LOCAL_DATE_FORMATTER = "yyyy-MM-dd";
 
+    public static final Set<String> REMOVAL_WORD_FIELDS = Set.of("id", "relation_id", "pid");
+
     public static Long getTableRowId(Map<String, Object> record) {
         Object idObj = record.get(CommonConstant.TABLE_DEFAULT_PRIMARY_KEY_FIELD);
         Long id = idObj instanceof Number num ? num.longValue() : null;
@@ -417,6 +419,29 @@ public class DataPersistenceUtil {
 
         // 1. 字符串直接返回
         if (value instanceof String strVal) {
+            if ((strVal.startsWith("{") && strVal.endsWith("}"))
+                    || (strVal.startsWith("[{") && strVal.endsWith("}]"))) {
+                // json 字符串
+                try {
+                    Object o = JsonUtil.json2Obj(strVal, Object.class);
+                    if (o instanceof List list) {
+                        list.stream()
+                                .forEach(
+                                        x -> {
+                                            if (x instanceof Map m) {
+                                                REMOVAL_WORD_FIELDS.stream()
+                                                        .forEach(y -> m.remove(y));
+                                            }
+                                        });
+
+                    } else if (o instanceof Map map) {
+                        REMOVAL_WORD_FIELDS.stream().forEach(y -> map.remove(y));
+                    }
+                    JsonUtil.obj2Json(o);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            }
             return strVal;
         }
 
@@ -446,6 +471,17 @@ public class DataPersistenceUtil {
         try {
             txt = JsonUtil.obj2Json(value);
             Object o = JsonUtil.json2Obj(txt, Object.class);
+            if (o instanceof List list) {
+                list.stream()
+                        .forEach(
+                                x -> {
+                                    if (x instanceof Map m) {
+                                        REMOVAL_WORD_FIELDS.stream().forEach(y -> m.remove(y));
+                                    }
+                                });
+            } else if (o instanceof Map map) {
+                REMOVAL_WORD_FIELDS.stream().forEach(y -> map.remove(y));
+            }
             txt = JsonUtil.obj2Json(o);
         } catch (JsonProcessingException e) {
             throw new RuntimeException(e);
