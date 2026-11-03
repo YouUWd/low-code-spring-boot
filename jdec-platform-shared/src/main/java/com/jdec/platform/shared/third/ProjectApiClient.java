@@ -6,11 +6,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.net.http.HttpClient;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class ProjectApiClient extends BaseApiClient {
     private final SignatureProvider signatureProvider;
-    private final String businessNo;
 
     public ProjectApiClient(
             HttpClient httpClient, ExternalApiProperties properties, ObjectMapper objectMapper) {
@@ -23,25 +23,41 @@ public class ProjectApiClient extends BaseApiClient {
                 "projectApi");
         var config = properties.getApi("project-api");
         this.signatureProvider = new HmacSha256SignatureProvider(config.getApiSecret());
-        this.businessNo = config.getApiKey();
     }
 
     /**
-     * 绑定或取消绑定。
+     * 根据业务编号及指定列查询项目信息
      *
-     * @param params 请求参数
+     * @param businessNo 项目业务编号 (必填，未传入时抛出 BusinessException)
+     * @param columns 指定列属性列表 (为空时默认查询 title, logo, icon)
+     * @return 外部项目系统返回的数据 Map
      */
-    public void getProjectInfoByNo(Object params) {
-        invoke("getProjectInfo", params, new TypeReference<Void>() {});
+    public Map<String, Object> getProjectInfoByNo(String businessNo, List<String> columns) {
+        if (StrUtil.isBlank(businessNo)) {
+            throw new BusinessException(400, "项目业务编号 businessNo 不能为空");
+        }
+        Map<String, Object> params = new HashMap<>();
+        params.put("business_no", businessNo.trim());
+
+        List<String> targetColumns =
+                (columns != null && !columns.isEmpty())
+                        ? columns
+                        : List.of("title", "logo", "icon");
+        for (int i = 0; i < targetColumns.size(); i++) {
+            params.put("columns[" + i + "]", targetColumns.get(i));
+        }
+
+        return invokeAndUnwrap("getProjectInfo", params, new TypeReference<>() {});
     }
 
-    public Map<String, Object> getProjectInfo() {
-        Map<String, Object> params = new HashMap<>();
-        params.put("columns[0]", "title");
-        params.put("columns[1]", "logo");
-        params.put("columns[2]", "icon");
-        // business_no 自动从配置中读取 (apiKey)
-        return invokeAndUnwrap("getProjectInfo", params, new TypeReference<>() {});
+    /**
+     * 根据业务编号查询项目信息 (默认查询常用列 title, logo, icon)
+     *
+     * @param businessNo 项目业务编号 (必填，未传入时抛出 BusinessException)
+     * @return 外部项目系统返回的数据 Map
+     */
+    public Map<String, Object> getProjectInfoByNo(String businessNo) {
+        return getProjectInfoByNo(businessNo, null);
     }
 
     /** 通用方法：调用接口并自动剥离 InnerApiResponse 包装 */
@@ -60,9 +76,6 @@ public class ProjectApiClient extends BaseApiClient {
     /** 发送带签名的 POST 请求 */
     private <R> R invoke(String action, Object body, TypeReference<R> typeReference) {
         Map<String, Object> params = convertToMap(body);
-        if (StrUtil.isNotBlank(businessNo)) {
-            params.put("business_no", businessNo);
-        }
         Map<String, Object> signedBody = signatureProvider.buildSignedRequest(action, params);
         return post("/invoke", signedBody, typeReference);
     }

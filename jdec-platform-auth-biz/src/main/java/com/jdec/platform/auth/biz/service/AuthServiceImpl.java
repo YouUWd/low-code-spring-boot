@@ -18,12 +18,14 @@ import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.security.JwtTokenProvider;
 import com.jdec.platform.shared.security.model.LoginUser;
+import com.jdec.platform.shared.third.ProjectApiClient;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -56,12 +58,13 @@ public class AuthServiceImpl implements AuthApi {
     private final SysProjectSubjectApi sysProjectSubjectApi;
     private final SysSpecialPermissionApi sysSpecialPermissionApi;
     private final ObjectMapper objectMapper;
+    private final ObjectProvider<ProjectApiClient> projectApiClientProvider;
 
     /** 源实现中的「空角色」占位值，命中时需回退到角色列表的第一个 */
     private static final Long DEFAULT_EMPTY_ROLE_ID = 0L;
 
-    @Value("${app.internal.url:}")
-    private String internalUrl;
+    @Value("${app.company.business-no:P260812103331}")
+    private String companyBusinessNo;
 
     @Override
     public CurrentUserCheckResp getCurrentUserCheckInfo(String token) {
@@ -235,20 +238,43 @@ public class AuthServiceImpl implements AuthApi {
                 ApiCodeEnum.OVERDUE.getCode(), ApiCodeEnum.OVERDUE.getMessage());
     }
 
-    /** 登录页展示的系统信息（沿用源项目的固定值，后续可外部化为配置）。 */
+    /**
+     * 登录页展示的系统信息。
+     *
+     * <p>优先使用 {@link ProjectApiClient} 查询真实的项目数据；未启用或调用异常时降级使用默认系统信息。
+     */
     private SysInfoDTO buildSysInfo() {
-        SysInfoDTO sysInfo = new SysInfoDTO();
-        sysInfo.setTitle("外部对象管理系统");
-        sysInfo.setLogo(
-                "http://119.36.78.123:9077/storage/upload/LIdqTCsyOZIqYJ4fsxeBhntUy860blvL8ZSbN7ic.svg");
-        sysInfo.setIcon(
-                "http://119.36.78.123:9077/storage/upload/PY9vYNYUdPfhjDKJQa0tiAeLjyTP1KrgSK5w4OTU.svg");
-        sysInfo.setIsSubject(2);
-        sysInfo.setSubjectColor("rgb(29, 120, 250)");
-        sysInfo.setLoginBgImg(
-                "http://119.36.78.123:9077/storage/upload/CB5c5JVPOEIBoK6LKBL5PzZEll5dE27tD2AFU3uR.png");
-        sysInfo.setInternalUrl("http://192.168.60.253:5008");
-        return sysInfo;
+        ProjectApiClient projectApiClient = projectApiClientProvider.getIfAvailable();
+        if (projectApiClient != null && StringUtils.hasText(companyBusinessNo)) {
+            try {
+                List<String> columns =
+                        List.of(
+                                "title",
+                                "logo",
+                                "icon",
+                                "is_subject",
+                                "subject_color",
+                                "login_bg_img",
+                                "internal_url",
+                                "user_url",
+                                "formal_url");
+                Map<String, Object> projectData =
+                        projectApiClient.getProjectInfoByNo(companyBusinessNo, columns);
+                if (projectData != null && !projectData.isEmpty()) {
+                    return objectMapper.convertValue(projectData, SysInfoDTO.class);
+                }
+            } catch (Exception ex) {
+                log.warn(
+                        "通过 ProjectApiClient 获取系统信息失败，降级使用默认系统信息: businessNo={}, err={}",
+                        companyBusinessNo,
+                        ex.getMessage());
+                throw new BusinessException(
+                        ApiCodeEnum.SERVER_ERROR.getCode(),
+                        ApiCodeEnum.SERVER_ERROR.getMessage(),
+                        ex);
+            }
+        }
+        return null;
     }
 
     // ========== 切换角色（迁移自 student-manage 的 SystemManageServiceImpl.selectRole） ==========
