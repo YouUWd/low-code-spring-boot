@@ -81,6 +81,12 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
     /** 字段可编辑标记：sys_role_module_field_permission.edit = 1 */
     private static final Integer EDIT_YES = 1;
 
+    /** 初始化标识：尚未进行任何表头设置（数据全部由菜单/字段动态生成，sys_menu_header 无记录） */
+    private static final Integer INITIALIZED_YES = 1;
+
+    /** 初始化标识：非初始化（已从 sys_menu_header 取到已保存的表头配置） */
+    private static final Integer INITIALIZED_NO = 0;
+
     /** 菜单类型：页面（仅该类型且关联详情菜单时，表头归属其详情菜单） */
     private static final Integer MENU_TYPE_PAGE = 2;
 
@@ -144,6 +150,8 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         for (SysMenuHeader stored : selectStoredNodes(headerMenuId)) {
             storedByVirId.putIfAbsent(stored.getVirId(), stored);
         }
+        // 初始化标识：未从 sys_menu_header 取到任何已保存配置时为 1（初始化），否则为 0
+        Integer initialized = storedByVirId.isEmpty() ? INITIALIZED_YES : INITIALIZED_NO;
         List<SysMenuHeaderResp> mergedNodes = new ArrayList<>();
         for (SysMenuHeaderResp node : generatedNodes) {
             SysMenuHeader stored = storedByVirId.get(node.getVirId());
@@ -152,7 +160,9 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
         }
 
         // 仅表中有的节点不再返回（丢弃）；递归子菜单生成的节点直接返回，不落库、不带主键 id
-        return assembleTree(headerMenuId, mergedNodes);
+        SysMenuHeaderResp root = assembleTree(headerMenuId, mergedNodes);
+        root.setInitialized(initialized);
+        return root;
     }
 
     /**
@@ -293,14 +303,23 @@ public class SysMenuHeaderService implements SysMenuHeaderApi, OpenMenuHeaderApi
 
     @Override
     public MenuHeaderDisplayResp buildMenuHeaderDisplay(SysMenuHeaderResp tree) {
+        // 树为空（菜单不存在 / 整树裁剪后无节点）视为尚未进行任何表头设置
         if (tree == null) {
-            return new MenuHeaderDisplayResp();
+            return MenuHeaderDisplayResp.builder().initialized(INITIALIZED_YES).build();
         }
         MenuHeaderColumnResp header = toCheckedColumn(tree);
         if (header == null) {
-            return new MenuHeaderDisplayResp();
+            // 无已勾选列但树已构建：沿用树上的初始化标识（无树时按初始化处理）
+            return MenuHeaderDisplayResp.builder()
+                    .initialized(
+                            tree.getInitialized() != null ? tree.getInitialized() : INITIALIZED_YES)
+                    .build();
         }
-        return MenuHeaderDisplayResp.builder().header(header).build();
+        return MenuHeaderDisplayResp.builder()
+                .header(header)
+                .initialized(
+                        tree.getInitialized() != null ? tree.getInitialized() : INITIALIZED_YES)
+                .build();
     }
 
     /** 深度优先压平提交的表头节点树（父节点在前） */

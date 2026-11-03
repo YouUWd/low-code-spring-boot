@@ -84,4 +84,9 @@ public class SysMenuHeaderResp {
 
     @Schema(description = "子节点列表")
     private List<SysMenuHeaderResp> children;
+
+    @Schema(
+            description =
+                    "初始化标识：1-初始化（尚未进行任何表头设置，数据全部由菜单/字段动态生成）；0-非初始化（已从 sys_menu_header 取到已保存配置）")
+    private Integer initialized;
 }
