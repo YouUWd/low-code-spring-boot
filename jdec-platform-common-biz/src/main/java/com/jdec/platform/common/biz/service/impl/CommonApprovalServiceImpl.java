@@ -7,6 +7,7 @@ import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.event.ApprovalEvent;
 import com.jdec.platform.common.api.CommonBusinessApi;
 import com.jdec.platform.common.api.dto.request.ApprovalReq;
+import com.jdec.platform.common.biz.preprocess.SavePrepositionProcessorService;
 import com.jdec.platform.common.biz.service.CommonApprovalService;
 import com.jdec.platform.config.api.SysApprovalChainConfigApi;
 import com.jdec.platform.config.api.SysStatusApi;
@@ -55,6 +56,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     private final ProjectProperties projectProperties;
     private final ConfigApi configApi;
     private final SubmitCheckRouter submitCheckRouter;
+    private final SavePrepositionProcessorService savePrepositionProcessorService;
 
     // 审批单据
     @Override
@@ -118,6 +120,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long businessSave(DynamicSaveReq req) {
+        savePrepositionProcessorService.preProcess(req.getNestedModuleData());
         // 保存前校验：无审批链保存，以及有审批链的新增保存（主单ID没有值），落库前基于前端提交的参数执行
         //        checkSaveBeforeStore(req);
         DynamicSaveResp result = dataEngineApi.save(req);
@@ -225,6 +228,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long businessSubmit(DynamicSaveReq req) {
+        savePrepositionProcessorService.preProcess(req.getNestedModuleData());
         boolean realTimeSave =
                 Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save");
         // 提交前判断主单ID：有主单ID时保存后按主单ID加载数据库整单数据校验；
