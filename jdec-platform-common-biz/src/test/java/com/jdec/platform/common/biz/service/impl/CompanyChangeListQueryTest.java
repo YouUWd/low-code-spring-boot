@@ -269,7 +269,7 @@ class CompanyChangeListQueryTest {
         assertTrue(req.getColumns().contains("change_no"));
         assertTrue(req.getColumns().contains("source_id"));
         assertTrue(req.getColumns().contains("modify_reason"));
-        assertTrue(req.getColumns().contains("read_status"));
+        assertFalse(req.getColumns().contains("read_status"));
 
         // 验证必须包含主表创建人为当前用户的 source_id IN (286L) 条件
         assertTrue(
@@ -285,16 +285,16 @@ class CompanyChangeListQueryTest {
         assertNotNull(resp.getHeader());
         assertNotNull(resp.getHeader().getChildren());
 
-        // 验证变更专有字段 (id, change_no, source_id, modify_reason, read_status) 在原表头缺失时已被自动构建进去
+        // 验证变更专有字段中：change_no, modify_reason 在表头展示，而 id, source_id, read_status 不在表头展示
         List<String> headerDataIndexes =
                 resp.getHeader().getChildren().stream()
                         .map(MenuHeaderColumnResp::getDataIndex)
                         .toList();
-        assertTrue(headerDataIndexes.contains("info.id"));
+        assertFalse(headerDataIndexes.contains("info.id"));
         assertTrue(headerDataIndexes.contains("info.change_no"));
-        assertTrue(headerDataIndexes.contains("info.source_id"));
+        assertFalse(headerDataIndexes.contains("info.source_id"));
         assertTrue(headerDataIndexes.contains("info.modify_reason"));
-        assertTrue(headerDataIndexes.contains("info.read_status"));
+        assertFalse(headerDataIndexes.contains("info.read_status"));
 
         assertNotNull(resp.getData());
         assertEquals(1, resp.getData().getTotal());
@@ -303,7 +303,7 @@ class CompanyChangeListQueryTest {
         Map<String, Object> testResultMap = resp.getData().getRecord().get(0).getRow();
         assertNotNull(testResultMap);
 
-        // 验证纯 info 结构：业务字段与变更固有属性
+        // 验证纯 info 结构：业务字段与变更固有属性（数据中返回 id、change_id、source_id，但不返回 read_status）
         assertEquals("CR99999", testResultMap.get("info.business_no"));
         assertEquals("更名后测试01", testResultMap.get("info.company_name"));
         assertEquals(changeId, testResultMap.get("info.id"));
@@ -311,6 +311,8 @@ class CompanyChangeListQueryTest {
         assertEquals("CHG202610290001", testResultMap.get("info.change_no"));
         assertEquals(sourceId, testResultMap.get("info.source_id"));
         assertEquals("企业更名申请", testResultMap.get("info.modify_reason"));
+        assertNull(testResultMap.get("info.read_status"));
+        assertNull(testResultMap.get("read_status"));
 
         // 确认不包含任何 info_change 前缀
         assertNull(testResultMap.get("info_change.company_name"));
@@ -392,9 +394,9 @@ class CompanyChangeListQueryTest {
         assertEquals("根菜单", respHeader.getLabel());
         assertNotNull(respHeader.getChildren());
 
-        // 验证仅保留根模块 moduleId=1001 的信息：5个变更固有字段 + 原单1个根模块字段(col1) = 6个
-        // 子模块 moduleId=1002 (基本信息) 必须被彻底移除
-        assertEquals(6, respHeader.getChildren().size());
+        // 验证仅保留根模块 moduleId=1001 的信息：2个变更固有字段(变更单号、变更原因) + 原单1个根模块字段(col1) = 3个
+        // 变更ID、原单ID、读取状态 不在表头展示，子模块 moduleId=1002 (基本信息) 必须被彻底移除
+        assertEquals(3, respHeader.getChildren().size());
 
         for (MenuHeaderColumnResp child : respHeader.getChildren()) {
             assertNotNull(child);
@@ -408,11 +410,11 @@ class CompanyChangeListQueryTest {
         List<String> labels =
                 respHeader.getChildren().stream().map(MenuHeaderColumnResp::getLabel).toList();
         assertTrue(labels.contains("一级直接列"));
-        assertTrue(labels.contains("变更ID"));
+        assertFalse(labels.contains("变更ID"));
         assertTrue(labels.contains("变更单号"));
-        assertTrue(labels.contains("原单ID"));
+        assertFalse(labels.contains("原单ID"));
         assertTrue(labels.contains("变更原因"));
-        assertTrue(labels.contains("读取状态"));
+        assertFalse(labels.contains("读取状态"));
         assertFalse(labels.contains("基本信息(子模块)"), "子模块信息不得保留在返回的表头中");
         assertFalse(labels.contains("子模块字段"), "子模块字段不得保留在返回的表头中");
     }
