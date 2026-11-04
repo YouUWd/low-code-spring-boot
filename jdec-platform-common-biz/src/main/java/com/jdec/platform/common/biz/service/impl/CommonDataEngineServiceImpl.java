@@ -64,7 +64,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
     private final IApprovalEngine iApprovalEngine;
 
-    private final Set<String> alwaysIncludeFields =
+    private static final Set<String> ALWAYS_INCLUDE_FIELDS =
             Set.of(
                     "node_id",
                     "parent_node_id",
@@ -201,7 +201,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                 // 返回内置返回的字段，不需要根据权限进行判断
                 fieldIds.addAll(
                         rootNode.getModule(targetMenu.getModuleId()).getFields().stream()
-                                .filter(ele -> alwaysIncludeFields.contains(ele.getColumnName()))
+                                .filter(ele -> ALWAYS_INCLUDE_FIELDS.contains(ele.getColumnName()))
                                 .map(ModuleFieldDTO::getId)
                                 .collect(Collectors.toSet()));
             }
