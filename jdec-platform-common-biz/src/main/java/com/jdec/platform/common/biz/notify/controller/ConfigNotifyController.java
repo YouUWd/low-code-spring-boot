@@ -79,7 +79,8 @@ public class ConfigNotifyController {
                     ClientSession.builder()
                             .sessionId(UUID.randomUUID().toString())
                             .userId(loginUser.getUserId())
-                            .subjectId(loginUser.getSubjectId())
+                            // 主体ID 必须来自前端传入，不能取 token 解析中的主体
+                            .subjectId(subjectId)
                             .roleId(roleId != null ? roleId : loginUser.getRoleId())
                             .mockUserId(mockUserId != null ? mockUserId : loginUser.getMockUserId())
                             .isMockLogin(
@@ -142,23 +143,31 @@ public class ConfigNotifyController {
         if (claims == null) {
             throw new BusinessException(HttpStatus.UNAUTHORIZED.value(), "令牌无效或已过期");
         }
+
+        // 与拦截器一致：phone 为必填字段，缺失直接拒绝
         String phone = claims.get("phone", String.class);
-        if (phone != null) {
-            String cached = stringRedisTemplate.opsForValue().get(REDIS_TOKEN_KEY_PREFIX + phone);
-            if (!token.equals(cached)) {
-                throw new BusinessException(HttpStatus.UNAUTHORIZED.value(), "令牌已失效，请重新登录");
-            }
+        if (!org.springframework.util.StringUtils.hasText(phone)) {
+            throw new BusinessException(HttpStatus.UNAUTHORIZED.value(), "令牌格式错误");
         }
 
-        Long userId = claims.getSubject() != null ? Long.parseLong(claims.getSubject()) : null;
+        // 校验 Redis 中是否存在且未失效的 token
+        String cached = stringRedisTemplate.opsForValue().get(REDIS_TOKEN_KEY_PREFIX + phone);
+        if (!token.equals(cached)) {
+            throw new BusinessException(HttpStatus.UNAUTHORIZED.value(), "令牌已失效，请重新登录");
+        }
+
+        // 与拦截器一致：userId 取自 "userId" claim（而非 subject）
+        Long userId = claims.get("userId", Long.class);
         String username = claims.get("username", String.class);
         Long subjectId = claims.get("subjectId", Long.class);
+
         return LoginUser.builder()
                 .userId(userId)
                 .username(username)
                 .phone(phone)
                 .subjectId(subjectId)
                 .token(token)
+                .realUserId(userId)
                 .build();
     }
 }
