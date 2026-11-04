@@ -19,15 +19,11 @@ import com.jdec.platform.config.biz.mapper.*;
 import com.jdec.platform.config.biz.reference.ReferenceCheckService;
 import com.jdec.platform.config.biz.reference.ReferenceViolation;
 import com.jdec.platform.config.biz.util.AuditLogHelper;
-import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
-import com.jdec.platform.shared.enums.ChangeType;
 import com.jdec.platform.shared.exception.PopException;
-import com.jdec.platform.shared.service.ConfigChangeMessagePublisher;
 import com.jdec.platform.shared.third.WordApiClient;
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
@@ -62,8 +58,7 @@ public class SysFieldService implements SysFieldApi {
     private final SysDataSnapshotService snapshotService;
     private final ObjectMapper objectMapper;
     private final SysFieldLogService sysFieldLogService;
-    private final ConfigApi configApi;
-    private final ConfigChangeMessagePublisher configChangeMessagePublisher;
+    private final SysModuleService sysModuleService;
 
     // ==================== 元数据查询逻辑 ====================
 
@@ -740,99 +735,15 @@ public class SysFieldService implements SysFieldApi {
             saveToWordSystem(oldBusinessNo, req.getRelationBusinessNo(), tableName, subjectId);
         }
 
-        String oldDisplayName = oldField != null ? oldField.getDisplayName() : null;
         // 同步更新 sys_module_field 中的 display_name 并按需失效模块缓存
-        syncDisplayNameToModuleFields(
-                projectNo,
-                subjectId,
-                tableName,
-                req.getColumnName(),
-                oldDisplayName,
-                req.getDisplayName());
+        sysModuleService.syncFieldDisplayName(
+                projectNo, subjectId, tableName, req.getColumnName(), req.getDisplayName());
 
         // 记录字段配置修改审计日志（仅更新操作，子表按主键 id 对比 i/u/d）
         sysFieldLogService.logUpdate(oldField, tableName, req, oldFieldValues);
 
         // 查询并返回保存后的完整数据
         return getSysFieldById(fieldId, projectNo, subjectId, tableName);
-    }
-
-    /** 同步字段展示名称到当前项目主体下所有涉及该物理字段的模块字段定义 (sys_module_field) 并按需淘汰模块缓存 */
-    private void syncDisplayNameToModuleFields(
-            String projectNo,
-            Long subjectId,
-            String tableName,
-            String columnName,
-            String oldDisplayName,
-            String newDisplayName) {
-        if (!StringUtils.hasText(newDisplayName)
-                || !StringUtils.hasText(tableName)
-                || !StringUtils.hasText(columnName)) {
-            return;
-        }
-        // 前后无实质变化时，避免无谓的数据库更新与缓存失效通知
-        if (Objects.equals(oldDisplayName, newDisplayName)) {
-            return;
-        }
-        try {
-            LambdaQueryWrapper<SysModule> moduleWrapper =
-                    Wrappers.<SysModule>lambdaQuery().eq(SysModule::getProjectNo, projectNo);
-            if (subjectId != null) {
-                moduleWrapper.eq(SysModule::getSubjectId, subjectId);
-            }
-            List<SysModule> modules = sysModuleMapper.selectList(moduleWrapper);
-            if (CollectionUtils.isEmpty(modules)) {
-                return;
-            }
-
-            List<Long> moduleIds = modules.stream().map(SysModule::getId).toList();
-            int affected =
-                    sysModuleFieldMapper.update(
-                            null,
-                            Wrappers.<SysModuleField>lambdaUpdate()
-                                    .in(SysModuleField::getModuleId, moduleIds)
-                                    .eq(SysModuleField::getTableName, tableName)
-                                    .eq(SysModuleField::getColumnName, columnName)
-                                    .set(SysModuleField::getDisplayName, newDisplayName)
-                                    .set(SysModuleField::getUpdatedDate, LocalDateTime.now()));
-            log.info(
-                    "已同步更新项目 {} 主体 {} 下表 {} 字段 {} 在 {} 个模块中的 display_name 从 '{}' 变更至 '{}' (影响 {} 行)",
-                    projectNo,
-                    subjectId,
-                    tableName,
-                    columnName,
-                    moduleIds.size(),
-                    oldDisplayName,
-                    newDisplayName,
-                    affected);
-
-            // 仅在真实产生数据变更时淘汰模块树缓存
-            if (affected > 0) {
-                // 1. 本地立即清退模块元数据缓存，确保当前节点立即读到最新配置
-                if (configApi != null) {
-                    configApi.clearMetaCache();
-                    log.info("已本地清退模块配置元数据缓存");
-                }
-
-                // 2. 通过 Redis 广播发布 MODULE_CHANGED 消息，通知集群各节点同步清退模块缓存
-                if (configChangeMessagePublisher != null) {
-                    Map<String, Object> payload = new HashMap<>();
-                    payload.put("tableName", tableName);
-                    payload.put("columnName", columnName);
-                    payload.put("affectedModuleIds", moduleIds);
-                    configChangeMessagePublisher.publish(
-                            subjectId, projectNo, ChangeType.MODULE_CHANGED, payload);
-                }
-            }
-        } catch (Exception e) {
-            log.warn(
-                    "同步更新 sys_module_field 的 display_name 失败: projectNo={}, subjectId={}, table={}, column={}, error={}",
-                    projectNo,
-                    subjectId,
-                    tableName,
-                    columnName,
-                    e.getMessage());
-        }
     }
 
     /** 根据字段ID查询完整的字段配置 */
