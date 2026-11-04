@@ -64,6 +64,26 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
     private final IApprovalEngine iApprovalEngine;
 
+    private final Set<String> alwaysIncludeFields =
+            Set.of(
+                    "node_id",
+                    "parent_node_id",
+                    "sort_order",
+                    "active",
+                    "status",
+                    "business_status",
+                    "deleted",
+                    "version_no",
+                    "business_no",
+                    "source_id",
+                    "subject_id",
+                    "parent_id",
+                    "info_id",
+                    "created_by",
+                    "created_date",
+                    "updated_by",
+                    "updated_date");
+
     @Override
     public DetailDataResp<NestedModuleDataDTO> getDetailByMenu(
             MenuDetailQueryReq menuDetailQueryReq) {
@@ -175,6 +195,13 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                 fieldIds.addAll(
                         rootNode.getModule(targetMenu.getModuleId()).getFields().stream()
                                 .filter(ele -> modulePermissionFields.contains(ele.getId()))
+                                .map(ModuleFieldDTO::getId)
+                                .collect(Collectors.toSet()));
+
+                // 返回内置返回的字段，不需要根据权限进行判断
+                fieldIds.addAll(
+                        rootNode.getModule(targetMenu.getModuleId()).getFields().stream()
+                                .filter(ele -> alwaysIncludeFields.contains(ele.getColumnName()))
                                 .map(ModuleFieldDTO::getId)
                                 .collect(Collectors.toSet()));
             }
