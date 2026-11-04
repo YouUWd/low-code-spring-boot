@@ -254,6 +254,9 @@ public class CompanyCustomServiceImpl implements CompanyCustomService {
         if (realtimeValidateApi == null || info == null) {
             return;
         }
+        if (ExternalObjectWordValues.isIndividualNature(info.getNature())) {
+            throw new BusinessException("个人性质的外部对象不允许修改登记状态");
+        }
         ExternalObjectRealtimeValidateReq validateReq =
                 new ExternalObjectRealtimeValidateReq(
                         info.getId(), info.getId(), "info.reg_status", regStatus);
