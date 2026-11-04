@@ -66,6 +66,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
     private static final Set<String> ALWAYS_INCLUDE_FIELDS =
             Set.of(
+                    "id",
                     "node_id",
                     "parent_node_id",
                     "sort_order",
@@ -148,6 +149,9 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
         List<Long> checkedFieldIds = new ArrayList<>();
 
+        // 内置字段，不需要根据权限进行判断
+        Set<Long> alwaysIncludeFieldIds = new HashSet<>();
+
         Boolean hasApproval =
                 sysApprovalChainConfigApi.getApprovalStatus(List.of(rootModule.getId()));
 
@@ -199,11 +203,16 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                 .collect(Collectors.toSet()));
 
                 // 返回内置返回的字段，不需要根据权限进行判断
-                fieldIds.addAll(
+
+                Set<Long> alwaysIncludeFieldIdSet =
                         rootNode.getModule(targetMenu.getModuleId()).getFields().stream()
                                 .filter(ele -> ALWAYS_INCLUDE_FIELDS.contains(ele.getColumnName()))
                                 .map(ModuleFieldDTO::getId)
-                                .collect(Collectors.toSet()));
+                                .collect(Collectors.toSet());
+
+                fieldIds.addAll(alwaysIncludeFieldIdSet);
+
+                alwaysIncludeFieldIds.addAll(alwaysIncludeFieldIdSet);
             }
 
             checkedFieldIds.addAll(fieldIds);
@@ -405,7 +414,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         nameToWorldConfMap,
                         fieldNameMap,
                         rootNode,
-                        queryModel);
+                        queryModel,
+                        alwaysIncludeFieldIds);
 
         if (dynamicDetailQueryReq.getId() <= 0) {
             detailData = buildTemplateTree(metaDTO);
@@ -551,7 +561,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             Map<String, FieldWordCloudDTO> worldCloudConfigMap,
             Map<String, SysFieldResp> fieldNameMap,
             ModuleTreeDTO moduleTreeDTO,
-            QueryModel queryModel) {
+            QueryModel queryModel,
+            Set<Long> alwaysIncludeFieldIds) {
         if (moduleTreeDTO == null || moduleTreeDTO.getModuleMap() == null) {
             return null;
         }
@@ -590,6 +601,12 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                     permissionCode = fp != null ? (fp.getView() ? 1 : 0) : 0;
                 } else if (queryModel == QueryModel.CHANGE_REQUEST) {
                     permissionCode = fp != null ? (fp.getEdit() || fp.getView() ? 2 : 0) : 0;
+                }
+
+                // 如果字段ID在alwaysIncludeFieldIds中，则强制设置权限码为1。不受权限控制的字段强制赋予查看权限
+                if (!CollectionUtils.isEmpty(alwaysIncludeFieldIds)
+                        && alwaysIncludeFieldIds.contains(f.getId())) {
+                    permissionCode = 1;
                 }
 
                 FieldMetaDTO fMeta =
@@ -674,7 +691,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                 worldCloudConfigMap,
                                 fieldNameMap,
                                 moduleTreeDTO,
-                                queryModel));
+                                queryModel,
+                                alwaysIncludeFieldIds));
             }
         }
 
