@@ -925,4 +925,277 @@ public final class PhysicalQueryMapper {
         }
         return false;
     }
+
+    // ==================== 5. 系统影子/辅助投影列补齐与剥离 ====================
+
+    /**
+     * 主表系统级辅助/影子投影列名集合。
+     *
+     * <p>这些列用于驱动行级业务规则（如按钮控制、审批行标识、状态判定等）。 若模块定义了该列且前端表头未请求投影，物理查询时将自动补入底层 SELECT，
+     * 并在结果组装返回前端时剥离移除，确保业务规则在内存中无感知计算，且不越权泄露给前端。
+     */
+    public static final Set<String> SYSTEM_SHADOW_COLUMNS = Set.of("nature");
+
+    /**
+     * 根据候选字段集合与模块元数据，自动在所属物理表的投影规格（{@link TableSpec}）中补齐缺失的影子投影列。
+     *
+     * @param tableSpecs 当前物理表查询投影规格列表
+     * @param moduleTree 模块元数据树
+     * @param rootModuleId 根模块 ID
+     * @return 本次实际额外补入的影子列标识集合（格式为 {@code tableName.columnName}），供后续结果剥离
+     */
+    public static Set<String> supplementShadowColumns(
+            List<TableSpec> tableSpecs, ModuleTreeDTO moduleTree, Long rootModuleId) {
+        return supplementShadowColumns(tableSpecs, moduleTree, rootModuleId, SYSTEM_SHADOW_COLUMNS);
+    }
+
+    /**
+     * 根据候选字段集合与模块元数据，自动在所属物理表的投影规格（{@link TableSpec}）中补齐缺失的影子投影列。
+     *
+     * <p>核心契约与安全机制：
+     *
+     * <ul>
+     *   <li><b>支持跨表解析</b>：候选列可位于根模块主表，也可位于模块树中的其他子表（支持 {@code column} 或 {@code table.column} 形式）；
+     *   <li><b>看查询条件中是否存在</b>：
+     *       <ul>
+     *         <li>若该列在当前查询条件（投影规格）中<b>已经存在</b>，判定为无需补充，<b>绝不加入 shadowKeys</b>，避免在后续返回时发生错误移除；
+     *         <li>若候选列位于非主表的其他表，仅在当前查询条件已涉及该表时才参与补齐，绝不随意强行引入未参与查询的子表；
+     *       </ul>
+     *   <li><b>精准剥离</b>：仅记录本次真正额外补入底层 SELECT 的物理列全名（{@code table.column}），供返回前剥离。
+     * </ul>
+     *
+     * @param tableSpecs 当前物理表查询投影规格列表
+     * @param moduleTree 模块元数据树
+     * @param rootModuleId 根模块 ID
+     * @param candidateColumns 待检查的候选列名集合
+     * @return 本次实际额外补入的影子列标识集合（格式为小写 {@code table.column}），供后续结果剥离
+     */
+    public static Set<String> supplementShadowColumns(
+            List<TableSpec> tableSpecs,
+            ModuleTreeDTO moduleTree,
+            Long rootModuleId,
+            Collection<String> candidateColumns) {
+        if (tableSpecs == null
+                || moduleTree == null
+                || rootModuleId == null
+                || candidateColumns == null
+                || candidateColumns.isEmpty()) {
+            return Collections.emptySet();
+        }
+
+        ModuleInfo rootModule = moduleTree.getModule(rootModuleId);
+        String primaryTable =
+                rootModule != null && rootModule.getPrimaryTable() != null
+                        ? rootModule.getPrimaryTable().trim()
+                        : null;
+
+        // 收集当前查询已涉及的物理表名映射 (lowercase tableName -> TableSpec)
+        Map<String, TableSpec> existingTableSpecMap = new HashMap<>();
+        for (TableSpec spec : tableSpecs) {
+            if (spec != null && spec.getTableName() != null && !spec.getTableName().isBlank()) {
+                existingTableSpecMap.put(spec.getTableName().trim().toLowerCase(), spec);
+            }
+        }
+
+        Set<String> supplementedKeys = new LinkedHashSet<>();
+
+        for (String cand : candidateColumns) {
+            if (cand == null || cand.isBlank()) {
+                continue;
+            }
+            // 1. 在模块树中解析字段的归属模块、物理表与标准列名（支持主表及跨表解析）
+            ShadowFieldTarget target =
+                    resolveShadowFieldTarget(moduleTree, rootModuleId, primaryTable, cand.trim());
+            if (target == null) {
+                continue;
+            }
+
+            String targetTableLower = target.tableName().toLowerCase();
+            String realColName = target.columnName();
+            String realColLower = realColName.toLowerCase();
+
+            // 2. 检查当前查询条件中是否存在该表：
+            //    - 主表始终属于当前分页查询的主体；
+            //    - 其它从表必须在当前查询条件/已有 tableSpecs 中已存在，避免无故强行引入未参与查询的表
+            boolean isPrimary =
+                    primaryTable != null && primaryTable.equalsIgnoreCase(target.tableName());
+            TableSpec targetSpec = existingTableSpecMap.get(targetTableLower);
+            if (targetSpec == null) {
+                if (!isPrimary) {
+                    // 非主表且当前查询未涉及该表，跳过
+                    continue;
+                }
+                // 主表尚无 TableSpec 则初始化补入
+                targetSpec = TableSpec.of(target.moduleId(), target.tableName(), new ArrayList<>());
+                tableSpecs.add(targetSpec);
+                existingTableSpecMap.put(targetTableLower, targetSpec);
+            }
+
+            // 3. 检查当前查询条件（投影规格）中是否已经存在该列：
+            List<String> currentCols = targetSpec.getColumns();
+            if (currentCols == null) {
+                currentCols = new ArrayList<>();
+                targetSpec.setColumns(currentCols);
+            }
+
+            boolean alreadyExists = false;
+            for (String c : currentCols) {
+                if (c == null) {
+                    continue;
+                }
+                String cleanC =
+                        c.contains(".") ? c.substring(c.lastIndexOf('.') + 1).trim() : c.trim();
+                if ("*".equals(cleanC) || cleanC.equalsIgnoreCase(realColLower)) {
+                    alreadyExists = true;
+                    break;
+                }
+            }
+
+            // 若当前查询条件中已经存在该列，则说明前端/查询原本就包含了它，
+            // 坚决不作为额外补充的影子列，坚决不加入 supplementedKeys，避免后续错误的移除！
+            if (alreadyExists) {
+                continue;
+            }
+
+            // 当前查询条件中确实不存在，补入底层投影，并记录为影子列以备后续剥离
+            currentCols.add(realColName);
+            supplementedKeys.add(target.tableName().toLowerCase() + "." + realColLower);
+        }
+
+        return supplementedKeys;
+    }
+
+    record ShadowFieldTarget(Long moduleId, String tableName, String columnName) {}
+
+    private static ShadowFieldTarget resolveShadowFieldTarget(
+            ModuleTreeDTO moduleTree, Long rootModuleId, String primaryTable, String candidate) {
+        if (candidate.contains(".")) {
+            String rawTable = candidate.substring(0, candidate.indexOf('.')).trim();
+            String rawCol = candidate.substring(candidate.indexOf('.') + 1).trim();
+            if (rawTable.isBlank() || rawCol.isBlank()) {
+                return null;
+            }
+            Long modId = moduleTree.findModuleIdByTableName(rawTable);
+            if (modId == null) {
+                modId = rootModuleId;
+            }
+            ModuleInfo mod = moduleTree.getModule(modId);
+            String realTable =
+                    mod != null && mod.getPrimaryTable() != null
+                            ? mod.getPrimaryTable().trim()
+                            : rawTable;
+            String realCol = findRealColumnName(mod, rawCol);
+            if (realCol != null) {
+                return new ShadowFieldTarget(modId, realTable, realCol);
+            }
+            if (moduleTree.getFieldMap() != null) {
+                for (ModuleFieldDTO f : moduleTree.getFieldMap().values()) {
+                    if (f != null
+                            && rawTable.equalsIgnoreCase(f.getTableName())
+                            && rawCol.equalsIgnoreCase(f.getColumnName())) {
+                        Long fModId = moduleTree.getModuleIdByFieldId(f.getId());
+                        return new ShadowFieldTarget(
+                                fModId != null ? fModId : modId,
+                                f.getTableName().trim(),
+                                f.getColumnName().trim());
+                    }
+                }
+            }
+            return null;
+        }
+
+        // 不含表名前缀时，优先在主表中查找
+        ModuleInfo rootMod = moduleTree.getModule(rootModuleId);
+        String realColInRoot = findRealColumnName(rootMod, candidate);
+        if (realColInRoot != null && primaryTable != null) {
+            return new ShadowFieldTarget(rootModuleId, primaryTable, realColInRoot);
+        }
+
+        // 若主表无此列，检索模块树中其他所有子模块（跨表查找）
+        if (moduleTree.getModuleMap() != null) {
+            for (ModuleInfo subMod : moduleTree.getModuleMap().values()) {
+                if (subMod == null
+                        || (rootModuleId != null && rootModuleId.equals(subMod.getModuleId()))) {
+                    continue;
+                }
+                String realCol = findRealColumnName(subMod, candidate);
+                if (realCol != null
+                        && subMod.getPrimaryTable() != null
+                        && !subMod.getPrimaryTable().isBlank()) {
+                    return new ShadowFieldTarget(
+                            subMod.getModuleId(), subMod.getPrimaryTable().trim(), realCol);
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static String findRealColumnName(ModuleInfo mod, String targetCol) {
+        if (mod == null || mod.getFields() == null) {
+            return null;
+        }
+        for (ModuleFieldDTO f : mod.getFields()) {
+            if (f != null
+                    && f.getColumnName() != null
+                    && f.getColumnName().trim().equalsIgnoreCase(targetCol)) {
+                return f.getColumnName().trim();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 从最终组装的数据记录项树中剥离移除本次查询额外补充的影子投影列。
+     *
+     * <p>以 {@code table.column} 形式严格进行大小写无关的精确匹配剥离，避免误伤同名列。
+     *
+     * @param items 数据记录项列表
+     * @param shadowKeys 待剥离的影子列集合（格式为 {@code table.column}）
+     */
+    public static void removeShadowColumns(
+            List<DataRecordItem> items, Collection<String> shadowKeys) {
+        if (CollectionUtils.isEmpty(items) || CollectionUtils.isEmpty(shadowKeys)) {
+            return;
+        }
+        Set<String> normalizedShadowKeys = new HashSet<>();
+        for (String k : shadowKeys) {
+            if (k != null && !k.isBlank()) {
+                normalizedShadowKeys.add(k.trim().toLowerCase());
+            }
+        }
+        removeShadowColumnsInternal(items, normalizedShadowKeys);
+    }
+
+    private static void removeShadowColumnsInternal(
+            List<DataRecordItem> items, Set<String> normalizedShadowKeys) {
+        if (CollectionUtils.isEmpty(items) || CollectionUtils.isEmpty(normalizedShadowKeys)) {
+            return;
+        }
+        for (DataRecordItem item : items) {
+            if (item == null) {
+                continue;
+            }
+            Map<String, Object> row = item.getRow();
+            if (row != null && !row.isEmpty()) {
+                List<String> keysToRemove = new ArrayList<>();
+                for (String rawKey : row.keySet()) {
+                    if (rawKey != null
+                            && normalizedShadowKeys.contains(rawKey.trim().toLowerCase())) {
+                        keysToRemove.add(rawKey);
+                    }
+                }
+                for (String k : keysToRemove) {
+                    row.remove(k);
+                }
+            }
+            if (!CollectionUtils.isEmpty(item.getChildren())) {
+                for (ModuleDataNode childNode : item.getChildren()) {
+                    if (childNode != null && !CollectionUtils.isEmpty(childNode.getRecord())) {
+                        removeShadowColumnsInternal(childNode.getRecord(), normalizedShadowKeys);
+                    }
+                }
+            }
+        }
+    }
 }

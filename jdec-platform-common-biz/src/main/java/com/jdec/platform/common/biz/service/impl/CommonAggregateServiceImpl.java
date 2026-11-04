@@ -212,6 +212,15 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         finalFilters.addAll(filterResult.filters());
 
+        Set<String> candidateShadowCols =
+                new LinkedHashSet<>(PhysicalQueryMapper.SYSTEM_SHADOW_COLUMNS);
+        if (menuActionButtonService != null) {
+            candidateShadowCols.addAll(menuActionButtonService.collectRequiredRowFields(actionCtx));
+        }
+        Set<String> shadowKeys =
+                PhysicalQueryMapper.supplementShadowColumns(
+                        tableSpecs, moduleTree, rootModuleId, candidateShadowCols);
+
         DataPage<DataBlock> rawDataPage =
                 dataApi.queryPage(
                         PageQueryReq.builder()
@@ -243,6 +252,9 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 menuActionButtonService != null
                         ? menuActionButtonService.buildActions(rawRecords, actionCtx)
                         : MenuActionBundle.none();
+
+        // 最终返回前移除为业务计算额外补入的影子投影字段，防止越权或污染前端表头
+        PhysicalQueryMapper.removeShadowColumns(recordItems, shadowKeys);
 
         ModuleDataNode rootNode =
                 ModuleDataNode.builder()

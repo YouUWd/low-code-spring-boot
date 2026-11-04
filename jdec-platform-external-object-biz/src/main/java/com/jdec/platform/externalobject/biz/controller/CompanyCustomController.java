@@ -48,6 +48,19 @@ public class CompanyCustomController {
         }
     }
 
+    @GetMapping("/nature")
+    @Operation(summary = "根据单据ID获取对象性质", description = "根据单据ID查询外部对象单据的对象性质(nature)")
+    public ApiResponse<Object> getNature(
+            @Parameter(description = "当前单据物理主键ID", required = true) @RequestParam("id") Long id) {
+        try {
+            Object nature = companyCustomService.getNature(id);
+            return ApiResponse.success(nature);
+        } catch (Exception ex) {
+            log.error("CompanyCustom getNature failed: id={}, err={}", id, ex.getMessage(), ex);
+            throw ex;
+        }
+    }
+
     @PostMapping("/badge-num")
     @Operation(
             summary = "获取菜单Tab对应的角标数",

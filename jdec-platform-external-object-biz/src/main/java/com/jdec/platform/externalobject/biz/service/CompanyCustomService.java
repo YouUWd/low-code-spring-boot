@@ -23,6 +23,14 @@ public interface CompanyCustomService {
      */
     void updateRegStatus(CompanyRegStatusUpdateReq req);
 
+    /**
+     * 根据单据物理主键ID获取对象性质 (nature)
+     *
+     * @param id 当前单据物理主键ID
+     * @return 对象性质 (已解析的结构化数据或原始配置)
+     */
+    Object getNature(Long id);
+
     Map<Long, Long> getMenuNum(CompanyBadgeNumReq req);
 
     /**
