@@ -52,6 +52,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
     private final SysRoleSubjectMapper sysRoleSubjectMapper;
     private final com.jdec.platform.config.biz.util.AuditLogHelper auditLogHelper;
     private final SysRoleMapper sysRoleMapper;
+    private final SysModuleMapper sysModuleMapper;
 
     @Override
     public List<RoleMenuResp> getRoleMenu(Long roleId, Long subjectId, String projectNo) {
@@ -1307,7 +1308,38 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
                         .map(SysRoleSubject::getSubjectId)
                         .distinct()
                         .toList();
-        ConfigChangeContext.set(affectedUserIds, affectedSubjectIds, affectedModuleIds);
+        // 受影响的模块需向上补齐所有父级模块 ID（直到最顶级），一并推送
+        List<Long> expandedModuleIds = expandModuleIdsWithAncestors(affectedModuleIds);
+        ConfigChangeContext.set(affectedUserIds, affectedSubjectIds, expandedModuleIds);
+    }
+
+    /**
+     * 将受影响的模块 ID 列表向上补齐其所有父级模块 ID（直到最顶级模块，parentId 为 0 即停止）。
+     *
+     * @param moduleIds 受影响的模块 ID 列表
+     * @return 包含自身及所有祖先模块 ID 的去重列表
+     */
+    private List<Long> expandModuleIdsWithAncestors(List<Long> moduleIds) {
+        if (CollUtil.isEmpty(moduleIds)) {
+            return moduleIds;
+        }
+        Set<Long> result = new LinkedHashSet<>(moduleIds);
+        // 逐层向上查询父级，直到没有新的父级模块为止
+        Set<Long> toQuery = new HashSet<>(moduleIds);
+        while (CollUtil.isNotEmpty(toQuery)) {
+            List<SysModule> modules =
+                    sysModuleMapper.selectList(
+                            Wrappers.<SysModule>lambdaQuery().in(SysModule::getId, toQuery));
+            toQuery.clear();
+            for (SysModule module : modules) {
+                Long parentId = module.getParentId();
+                if (parentId != null && parentId != 0 && !result.contains(parentId)) {
+                    result.add(parentId);
+                    toQuery.add(parentId);
+                }
+            }
+        }
+        return new ArrayList<>(result);
     }
 
     @Override

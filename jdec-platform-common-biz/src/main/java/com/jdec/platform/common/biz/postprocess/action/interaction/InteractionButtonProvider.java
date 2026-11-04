@@ -48,6 +48,17 @@ public interface InteractionButtonProvider {
     }
 
     /**
+     * 声明当前 Provider 计算行级按钮所必需的物理列名集合（如 {@code nature}）。
+     *
+     * <p>若前端请求或表头未勾选这些列，查询引擎将在底层查询时自动补充投影， 供按钮逻辑在内存中快速判定，并在最终返回前端响应前剥离移除，杜绝 N+1 反查与字段越权泄露。
+     *
+     * @return 依赖的物理字段列名集合（小写）
+     */
+    default java.util.Set<String> requiredRowFields() {
+        return java.util.Collections.emptySet();
+    }
+
+    /**
      * 贡献与行数据无关的全局互动按钮 (如申请类按钮、批量导出等工具栏操作)
      *
      * @param ctx 互动操作上下文

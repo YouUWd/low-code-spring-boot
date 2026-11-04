@@ -222,6 +222,50 @@ class InteractionActionServiceTest {
         assertEquals("edit_company_reg_status", cancelBtns.get(0).getButtonKey());
     }
 
+    @Test
+    void testCompanyInteractionButtonProvider_individualNatureExcluded() {
+        InteractionActionContext ctx =
+                InteractionActionContext.builder()
+                        .projectNo("company")
+                        .moduleCode("COMPANY-ROOT")
+                        .primaryTable("info")
+                        .modulePermissionResp(buildTestPermissions())
+                        .assignedPermissionCodes(
+                                Set.of(
+                                        "company_apply",
+                                        "update_company_info",
+                                        "edit_company_reg_status"))
+                        .build();
+
+        // 1. 企业性质 (99启用，应该展示)
+        DataRow rowEnterprise = createDataRow(201L, "CR-ENT", 99);
+        rowEnterprise.putValue("info", "nature", "[{\"alias_value_title\":\"企业\"}]");
+
+        // 2. 个人性质词云 JSON (99启用，是个人，不应该展示)
+        DataRow rowIndividualJson = createDataRow(202L, "CR-IND", 99);
+        rowIndividualJson.putValue("info", "nature", "[{\"alias_value_title\":\"个人\"}]");
+
+        // 3. 个人性质纯文本 (-99取消，是个人，不应该展示)
+        DataRow rowIndividualText = createDataRow(203L, "CR-IND-TXT", -99);
+        rowIndividualText.putValue("info", "nature", "个人");
+
+        InteractionActionService service =
+                new InteractionActionService(
+                        List.of(
+                                new DefaultInteractionButtonProvider(),
+                                new CompanyInteractionButtonProvider()));
+
+        List<ActionRowItem> rowActions =
+                service.buildRowActions(
+                        List.of(rowEnterprise, rowIndividualJson, rowIndividualText), ctx);
+        assertNotNull(rowActions);
+        assertEquals(1, rowActions.size());
+        assertEquals(201L, rowActions.get(0).getRow().getId());
+        assertEquals(
+                "edit_company_reg_status",
+                rowActions.get(0).getRow().getBtnList().get(0).getButtonKey());
+    }
+
     private RoleInteractionPermissionByModuleResp buildTestPermissions() {
         RoleInteractionPermissionByModuleResp.InteractionPermissionItem applyItem =
                 new RoleInteractionPermissionByModuleResp.InteractionPermissionItem();

@@ -4,7 +4,10 @@ import com.jdec.platform.common.api.dto.response.ActionButtonDTO;
 import com.jdec.platform.common.api.dto.response.ActionRowItem;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -102,6 +105,30 @@ public class InteractionActionService {
         }
 
         return result.isEmpty() ? null : result;
+    }
+
+    /**
+     * 收集当前上下文所有生效 Provider 声明所需的行级物理依赖字段
+     *
+     * @param ctx 互动操作上下文
+     * @return 依赖的物理字段列名集合
+     */
+    public Set<String> collectRequiredRowFields(InteractionActionContext ctx) {
+        if (ctx == null || CollectionUtils.isEmpty(providers)) {
+            return Collections.emptySet();
+        }
+        List<InteractionButtonProvider> activeProviders = resolveActiveProviders(ctx);
+        if (activeProviders.isEmpty()) {
+            return Collections.emptySet();
+        }
+        Set<String> fields = new LinkedHashSet<>();
+        for (InteractionButtonProvider provider : activeProviders) {
+            Set<String> reqFields = provider.requiredRowFields();
+            if (!CollectionUtils.isEmpty(reqFields)) {
+                fields.addAll(reqFields);
+            }
+        }
+        return fields;
     }
 
     /**
