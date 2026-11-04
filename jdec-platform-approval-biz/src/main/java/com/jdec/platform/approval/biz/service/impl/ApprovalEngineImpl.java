@@ -616,7 +616,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         LambdaQueryWrapper<ApprovalBusiness> processWrapper = new LambdaQueryWrapper<>();
         processWrapper.in(ApprovalBusiness::getModuleId, approvalListReq.getModuleIdList());
         processWrapper.apply("FIND_IN_SET({0}, approval_uids)", approvalListReq.getApplicantId());
-        processWrapper.notIn(ApprovalBusiness::getBusinessNumber, toDoRespList);
+        if (!toDoRespList.isEmpty()) {
+            processWrapper.notIn(ApprovalBusiness::getBusinessNumber, toDoRespList);
+        }
         List<ApprovalBusiness> DoneList = approvalBusinessMapper.selectList(processWrapper);
         List<String> doneRespList =
                 new ArrayList<>(
