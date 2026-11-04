@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 /**
  * 外部对象必填校验（提交整单校验与保存校验共用）。
  *
- * <p>规则来源：{@code docs/external/外部对象必填校验.md}。以对象性质（{@code info.nature}）为前置条件，按模块树从上到下、
+ * <p>规则来源：{@code docs/validation/外部对象校验说明.md}。以对象性质（{@code info.nature}）为前置条件，按模块树从上到下、
  * 同级模块从前到后的顺序遍历整单数据，把全部未填写的必填项写入 {@link ExternalObjectValidationMessages}， 由调用方在本层收集完成后一次性抛出 {@link
  * BusinessException}。
  *
