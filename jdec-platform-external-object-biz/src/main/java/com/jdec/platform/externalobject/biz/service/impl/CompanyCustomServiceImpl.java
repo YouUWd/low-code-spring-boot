@@ -59,6 +59,8 @@ public class CompanyCustomServiceImpl implements CompanyCustomService {
 
     private final SysMenuApi sysMenuApi;
 
+    private final ObjectMapper objectMapper;
+
     @Override
     public void updateRegStatus(CompanyRegStatusUpdateReq req) {
         if (req == null) {
@@ -106,6 +108,26 @@ public class CompanyCustomServiceImpl implements CompanyCustomService {
                 oldRegStatus,
                 info.getRegStatus(),
                 UserContext.getOperateUserId());
+    }
+
+    @Override
+    public Object getNature(Long id) {
+        if (id == null) {
+            throw new IllegalArgumentException("单据 ID 不能为空");
+        }
+        Info info = infoMapper.selectById(id);
+        if (info == null || (info.getDeleted() != null && info.getDeleted() != 0)) {
+            throw new BusinessException("未找到对应的外部对象单据记录: id=" + id);
+        }
+        String nature = info.getNature();
+        if (!StringUtils.hasText(nature)) {
+            return null;
+        }
+        try {
+            return objectMapper.readTree(nature);
+        } catch (Exception e) {
+            return nature;
+        }
     }
 
     @Override

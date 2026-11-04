@@ -109,6 +109,20 @@ public class MenuActionButtonService {
         return interactionActionService.buildGlobalActions(interactionCtx);
     }
 
+    /**
+     * 收集当前菜单按钮计算所必需的行级物理投影字段
+     *
+     * @param ctx 菜单按钮集中上下文
+     * @return 依赖的物理字段列名集合
+     */
+    public Set<String> collectRequiredRowFields(MenuActionContext ctx) {
+        if (ctx == null || interactionActionService == null) {
+            return Collections.emptySet();
+        }
+        InteractionActionContext interactionCtx = buildInteractionActionContext(ctx);
+        return interactionActionService.collectRequiredRowFields(interactionCtx);
+    }
+
     private List<ActionRowItem> resolveCustomActions(
             List<DataRow> rawRecords, MenuActionContext ctx) {
         if (rowCustomActionService == null) {
