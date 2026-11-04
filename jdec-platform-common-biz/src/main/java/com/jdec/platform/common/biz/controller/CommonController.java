@@ -4,6 +4,7 @@ import com.jdec.platform.common.biz.constant.IndustryConstants;
 import com.jdec.platform.common.biz.service.CommonApprovalService;
 import com.jdec.platform.common.biz.service.UserService;
 import com.jdec.platform.config.api.dto.response.UserSearchTreeNodeResp;
+import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.ChangeApplySaveResp;
 import com.jdec.platform.shared.model.ApiResponse;
@@ -30,6 +31,7 @@ public class CommonController {
 
     private final UserService userService;
     private final CommonApprovalService commonApprovalService;
+    private final DataEngineApi dataEngineApi;
 
     /**
      * 获取人员架构树
@@ -117,6 +119,17 @@ public class CommonController {
                     req.getNestedModuleData().getModuleId(),
                     ex.getMessage(),
                     ex);
+            throw ex;
+        }
+    }
+
+    @PostMapping("/get/deptNo")
+    @Operation(summary = "获取部门编号", description = "获取部门编号")
+    public ApiResponse<String> getDeptNo() {
+        try {
+            return ApiResponse.success(dataEngineApi.getNextDeptNo());
+        } catch (Exception ex) {
+            log.error("Common DataEngine getDeptNo failed:,err={}", ex.getMessage(), ex);
             throw ex;
         }
     }

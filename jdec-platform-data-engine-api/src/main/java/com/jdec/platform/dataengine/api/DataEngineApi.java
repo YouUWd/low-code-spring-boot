@@ -35,4 +35,6 @@ public interface DataEngineApi {
     Integer modifyBusinessFormStatus(BusinessFormStatusReq req);
 
     ChangeApplySaveResp saveChangeApply(DynamicSaveReq req);
+
+    String getNextDeptNo();
 }

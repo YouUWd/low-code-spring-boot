@@ -1,9 +1,11 @@
 package com.jdec.platform.dataengine.biz.service;
 
+import cn.hutool.core.util.StrUtil;
 import com.jdec.platform.dataengine.api.DataEngineApi;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.*;
 import com.jdec.platform.dataengine.api.dto.response.*;
+import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.operatelog.annotation.SaveOperateLog;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataApprovalBizService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataStoreService;
@@ -19,6 +21,7 @@ public class DataEngineService implements DataEngineApi {
     private final DynamicQueryService dynamicQueryService;
     private final ModuleDataStoreService moduleDataStoreService;
     private final ModuleDataApprovalBizService moduleDataApprovalBizService;
+    private final SequenceService sequenceService;
 
     @Override
     public NestedModuleDataDTO getDetail(DynamicDetailQueryReq dynamicDetailQueryReq) {
@@ -79,5 +82,12 @@ public class DataEngineService implements DataEngineApi {
     @Override
     public ChangeApplySaveResp saveChangeApply(DynamicSaveReq req) {
         return moduleDataStoreService.saveChangeApply(req);
+    }
+
+    @Override
+    public String getNextDeptNo() {
+        Long nextValue = sequenceService.nextSequenceValue(CommonConstant.SEQ_NAME_DEPT_NO);
+        String s = StrUtil.padPre(nextValue.toString(), 5, '0');
+        return "W" + s;
     }
 }

@@ -100,4 +100,6 @@ public interface CommonConstant {
                     "deleted",
                     "node_id",
                     "parent_node_id");
+
+    String SEQ_NAME_DEPT_NO = "MEMBER.CODE";
 }

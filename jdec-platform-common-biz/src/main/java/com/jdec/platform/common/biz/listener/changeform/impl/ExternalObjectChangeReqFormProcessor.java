@@ -151,7 +151,7 @@ public class ExternalObjectChangeReqFormProcessor
                     messageTemplate,
                     messageReceiverList);
         } catch (Exception e) {
-
+            log.error("send wechat message error", e);
         } finally {
             AppContext.remove();
             UserContext.remove();
