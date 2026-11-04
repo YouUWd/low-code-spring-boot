@@ -160,7 +160,7 @@ public class ConfigChangeNotifyAspect {
             return;
         }
 
-        // 发布消息
+        // 发布消息：主体ID / 项目编码取自请求上下文 AppContext
         try {
             Long subjectId = AppContext.getSubjectId();
             String projectNo = AppContext.getProjectNo();

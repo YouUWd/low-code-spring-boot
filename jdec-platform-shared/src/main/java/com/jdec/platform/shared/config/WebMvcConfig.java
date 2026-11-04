@@ -27,6 +27,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                         "/api/config/init/**", // 系统初始化：无需登录
                         "/api/common/auth/login", // 登录：无需登录
                         "/api/permission/*/check-current-user",
+                        "/api/common/notify/**", // SSE 推送通道：鉴权通过 query token 完成，避免拦截
                         "/doc.html", // API 文档
                         "/webjars/**",
                         "/v3/api-docs/**",
@@ -45,6 +46,7 @@ public class WebMvcConfig implements WebMvcConfigurer {
                 .excludePathPatterns(
                         "/api/config/auth/**",
                         "/api/config/init/**",
+                        "/api/common/notify/**", // SSE 通道：projectNo 由客户端 query 传入
                         "/api/permission/*/check-current-user"); // 系统初始化：无需 X-Project-No 上下文
     }
 

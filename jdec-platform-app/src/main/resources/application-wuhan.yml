@@ -203,3 +203,7 @@ config:
 
 monitor-center:
   base-url: http://localhost:8080
+
+app:
+  company:
+    business-no: P260812103331

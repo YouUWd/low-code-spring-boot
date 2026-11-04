@@ -4,6 +4,8 @@
         allowedDependencies = {
             "externalobject.api",
             "common.api",
+            "config.api",
+            "config.open",
             "dataengine.api",
             "validation",
             "shared"
