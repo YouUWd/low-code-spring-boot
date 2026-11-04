@@ -29,6 +29,9 @@ public class ModuleNodeDTO {
     @Schema(description = "模块编码", example = "MOD-STUDENT-COURSE")
     private String moduleCode;
 
+    @Schema(description = "业务编码", example = "BUS-STUDENT-COURSE")
+    private String businessCode;
+
     @Schema(description = "模块名称", example = "选课与成绩管理")
     private String moduleName;
 

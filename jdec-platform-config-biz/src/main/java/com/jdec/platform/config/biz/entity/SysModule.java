@@ -34,6 +34,9 @@ public class SysModule {
     /** 模块唯一编码 */
     private String moduleCode;
 
+    /** 业务编码 */
+    private String businessCode;
+
     /** 模块名称 */
     private String moduleName;
 

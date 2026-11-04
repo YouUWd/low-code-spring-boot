@@ -15,6 +15,9 @@ public class SysModuleSimpleTreeResp {
     @Schema(description = "模块编码", example = "sys_user")
     private String moduleCode;
 
+    @Schema(description = "业务编码", example = "BUS-STUDENT")
+    private String businessCode;
+
     @Schema(description = "模块名称", example = "用户管理")
     private String moduleName;
 

@@ -89,6 +89,7 @@ public class SysModuleService implements SysModuleApi {
         resp.setCategory(module.getCategory());
         resp.setSourceSubjects(module.getSourceSubjects());
         resp.setModuleCode(module.getModuleCode());
+        resp.setBusinessCode(module.getBusinessCode());
         resp.setModuleName(module.getModuleName());
         resp.setModuleDesc(module.getModuleDesc());
         resp.setParentId(module.getParentId() != null ? module.getParentId() : 0L);
@@ -131,6 +132,7 @@ public class SysModuleService implements SysModuleApi {
         moduleInfo.setCategory(module.getCategory());
         moduleInfo.setSourceSubjects(module.getSourceSubjects());
         moduleInfo.setModuleCode(module.getModuleCode());
+        moduleInfo.setBusinessCode(module.getBusinessCode());
         moduleInfo.setModuleName(module.getModuleName());
         moduleInfo.setModuleDesc(module.getModuleDesc());
         moduleInfo.setParentId(module.getParentId() != null ? module.getParentId() : 0L);
@@ -586,6 +588,7 @@ public class SysModuleService implements SysModuleApi {
         module.setEnableActive(request.getEnableActive() != null ? request.getEnableActive() : 0);
         module.setEnableChange(request.getEnableChange() != null ? request.getEnableChange() : 0);
         module.setModuleCode(request.getModuleCode());
+        module.setBusinessCode(request.getBusinessCode());
         module.setModuleName(request.getModuleName());
         module.setModuleDesc(request.getModuleDesc());
         module.setParentId(0L);
@@ -600,6 +603,7 @@ public class SysModuleService implements SysModuleApi {
 
     private void updateModuleInfo(SysModule module, SaveSysModuleReq request) {
         module.setModuleCode(request.getModuleCode());
+        module.setBusinessCode(request.getBusinessCode());
         module.setModuleName(request.getModuleName());
         module.setModuleDesc(request.getModuleDesc());
         if (request.getCategory() != null) {
@@ -920,6 +924,7 @@ public class SysModuleService implements SysModuleApi {
             SysModuleSimpleTreeResp node = new SysModuleSimpleTreeResp();
             node.setId(m.getId());
             node.setModuleCode(m.getModuleCode());
+            node.setBusinessCode(m.getBusinessCode());
             node.setModuleName(m.getModuleName());
             node.setChildren(new ArrayList<>());
             nodeMap.put(m.getId(), node);

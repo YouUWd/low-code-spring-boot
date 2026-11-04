@@ -60,6 +60,10 @@ public class SaveModuleReq {
                 example = "MOD-STUDENT-FULL")
         private String moduleCode;
 
+        /** 业务编码 */
+        @Schema(description = "业务编码", example = "BUS-STUDENT")
+        private String businessCode;
+
         /** 模块名称 */
         @Schema(description = "模块名称", requiredMode = Schema.RequiredMode.REQUIRED, example = "学生管理")
         private String moduleName;

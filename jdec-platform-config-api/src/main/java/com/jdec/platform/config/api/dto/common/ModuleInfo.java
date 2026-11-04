@@ -34,6 +34,9 @@ public class ModuleInfo {
     @Schema(description = "模块编码", example = "MOD-STUDENT")
     private String moduleCode;
 
+    @Schema(description = "业务编码", example = "BUS-STUDENT")
+    private String businessCode;
+
     @Schema(description = "模块名称", example = "学生管理")
     private String moduleName;
 
