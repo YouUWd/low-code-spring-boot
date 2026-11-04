@@ -521,13 +521,14 @@ public class ModuleTreeDiffService {
         try {
             if (source instanceof String && isJsonStr((String) source)) {
                 source = OBJECT_MAPPER.readTree((String) source);
-                removeFields((JsonNode) source);
             }
 
             if (target instanceof String && isJsonStr((String) target)) {
                 target = OBJECT_MAPPER.readTree((String) target);
-                removeFields((JsonNode) target);
             }
+
+            removeFields((JsonNode) source);
+            removeFields((JsonNode) target);
 
             return source.equals(target);
         } catch (Exception e) {
@@ -539,14 +540,16 @@ public class ModuleTreeDiffService {
     private static boolean compareJsonStr(String sourceJson, Object target) {
         try {
             JsonNode sourceObj = OBJECT_MAPPER.readTree(sourceJson);
-            removeFields(sourceObj);
+
             Object targetObj;
             if (target instanceof String) {
                 targetObj = OBJECT_MAPPER.readTree((String) target);
-                removeFields((JsonNode) targetObj);
             } else {
                 targetObj = target;
             }
+
+            removeFields(sourceObj);
+            removeFields((JsonNode) targetObj);
 
             // Jackson自带深度equals
             return sourceObj.equals(OBJECT_MAPPER.valueToTree(targetObj));
