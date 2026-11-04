@@ -512,11 +512,14 @@ public class DataPersistenceUtil {
     }
 
     public static String getNewBusinessNo(String moduleCode, String table) {
-        String prefix =
-                StrUtil.split(moduleCode, "-").stream()
-                        .filter(word -> !word.isBlank())
-                        .map(word -> String.valueOf(word.charAt(0)))
-                        .collect(Collectors.joining());
+        String prefix = moduleCode;
+        if (moduleCode.contains("-")) {
+            prefix =
+                    StrUtil.split(moduleCode, "-").stream()
+                            .filter(word -> !word.isBlank())
+                            .map(word -> String.valueOf(word.charAt(0)))
+                            .collect(Collectors.joining());
+        }
         return ToolUtils.nextNoWithFixedLen(prefix.toUpperCase());
     }
 

@@ -1062,6 +1062,6 @@ public class ToolUtils {
     }
 
     public static String nextNoWithFixedLen(String prefix) {
-        return nextNo(StrUtil.toUpperCase(prefix), 1, "", 5, null);
+        return nextNo(StrUtil.toUpperCase(prefix), 1, "", 3, null);
     }
 }

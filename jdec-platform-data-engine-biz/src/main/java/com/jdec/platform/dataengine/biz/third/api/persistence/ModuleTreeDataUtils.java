@@ -507,7 +507,16 @@ public class ModuleTreeDataUtils {
                                     .put(
                                             tab + ".business_no",
                                             DataPersistenceUtil.getNewBusinessNo(
-                                                    sysModuleInfo.getModuleInfo().getModuleCode(),
+                                                    StringUtils.isEmpty(
+                                                                    sysModuleInfo
+                                                                            .getModuleInfo()
+                                                                            .getBusinessCode())
+                                                            ? sysModuleInfo
+                                                                    .getModuleInfo()
+                                                                    .getModuleCode()
+                                                            : sysModuleInfo
+                                                                    .getModuleInfo()
+                                                                    .getBusinessCode(),
                                                     tab));
                             recordDataDTO.getRow().put(tab + ".version_no", versionNo);
                             // 如果是根模块主表, 设置状态
@@ -589,7 +598,16 @@ public class ModuleTreeDataUtils {
                                     .put(
                                             tab + ".business_no",
                                             DataPersistenceUtil.getNewBusinessNo(
-                                                    sysModuleInfo.getModuleInfo().getModuleCode(),
+                                                    StringUtils.isEmpty(
+                                                                    sysModuleInfo
+                                                                            .getModuleInfo()
+                                                                            .getBusinessCode())
+                                                            ? sysModuleInfo
+                                                                    .getModuleInfo()
+                                                                    .getModuleCode()
+                                                            : sysModuleInfo
+                                                                    .getModuleInfo()
+                                                                    .getBusinessCode(),
                                                     tab));
                         }
                     }
