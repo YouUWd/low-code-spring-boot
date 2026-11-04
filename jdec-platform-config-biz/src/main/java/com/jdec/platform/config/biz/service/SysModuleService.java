@@ -28,6 +28,7 @@ import com.jdec.platform.config.biz.mapper.SysTableRelationMapper;
 import com.jdec.platform.config.biz.reference.ReferenceCheckService;
 import com.jdec.platform.config.biz.reference.ReferenceViolation;
 import com.jdec.platform.shared.annotation.ConfigChangeNotify;
+import com.jdec.platform.shared.context.ConfigChangeContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.enums.ChangeType;
@@ -47,9 +48,12 @@ import java.util.stream.Stream;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 /** 模块管理业务实现类 负责模块、字段配置和状态配置的完整生命周期管理 */
 @Service
@@ -945,5 +949,88 @@ public class SysModuleService implements SysModuleApi {
             }
         }
         return tree;
+    }
+
+    /**
+     * 同步物理字段展示名称到当前项目主体下所有关联的模块字段 (sys_module_field)
+     *
+     * <p>通过注解自动完成本地模块缓存清退 ({@link CacheEvict}，仅当更新行数 > 0 时触发) 与集群广播通知 ({@link ConfigChangeNotify})。
+     *
+     * @param projectNo 项目编码
+     * @param subjectId 主体 ID
+     * @param tableName 物理表名
+     * @param columnName 物理列名
+     * @param newDisplayName 新展示名称
+     * @return 实际受影响的模块字段行数
+     */
+    @Caching(
+            evict = {
+                @CacheEvict(
+                        cacheNames = "config:module_basic",
+                        allEntries = true,
+                        condition = "#result > 0"),
+                @CacheEvict(
+                        cacheNames = "config:module_tree",
+                        allEntries = true,
+                        condition = "#result > 0")
+            })
+    @ConfigChangeNotify(changeType = ChangeType.MODULE_CHANGED)
+    @Transactional(rollbackFor = Exception.class)
+    public int syncFieldDisplayName(
+            String projectNo,
+            Long subjectId,
+            String tableName,
+            String columnName,
+            String newDisplayName) {
+        if (!StringUtils.hasText(newDisplayName)
+                || !StringUtils.hasText(tableName)
+                || !StringUtils.hasText(columnName)) {
+            return 0;
+        }
+
+        // 1. 查询当前项目主体下涉及的所有模块
+        LambdaQueryWrapper<SysModule> moduleWrapper =
+                Wrappers.<SysModule>lambdaQuery().eq(SysModule::getProjectNo, projectNo);
+        if (subjectId != null) {
+            moduleWrapper.eq(SysModule::getSubjectId, subjectId);
+        }
+        List<SysModule> modules = sysModuleMapper.selectList(moduleWrapper);
+        if (CollectionUtils.isEmpty(modules)) {
+            return 0;
+        }
+        List<Long> moduleIds = modules.stream().map(SysModule::getId).toList();
+
+        // 2. 批量更新模块字段展示名 (通过 SQL 差异比对避免伪更新)
+        int affected =
+                sysModuleFieldMapper.update(
+                        null,
+                        Wrappers.<SysModuleField>lambdaUpdate()
+                                .in(SysModuleField::getModuleId, moduleIds)
+                                .eq(SysModuleField::getTableName, tableName)
+                                .eq(SysModuleField::getColumnName, columnName)
+                                .and(
+                                        w ->
+                                                w.ne(SysModuleField::getDisplayName, newDisplayName)
+                                                        .or()
+                                                        .isNull(SysModuleField::getDisplayName))
+                                .set(SysModuleField::getDisplayName, newDisplayName)
+                                .set(SysModuleField::getUpdatedDate, LocalDateTime.now()));
+
+        if (affected > 0) {
+            log.info(
+                    "已同步更新物理字段展示名: projectNo={}, subjectId={}, table={}, col={}, 新展示名='{}', 影响模块字段数={}",
+                    projectNo,
+                    subjectId,
+                    tableName,
+                    columnName,
+                    newDisplayName,
+                    affected);
+            Map<String, Object> customPayload = new HashMap<>();
+            customPayload.put("tableName", tableName);
+            customPayload.put("columnName", columnName);
+            customPayload.put("newDisplayName", newDisplayName);
+            ConfigChangeContext.set(null, null, moduleIds, customPayload);
+        }
+        return affected;
     }
 }

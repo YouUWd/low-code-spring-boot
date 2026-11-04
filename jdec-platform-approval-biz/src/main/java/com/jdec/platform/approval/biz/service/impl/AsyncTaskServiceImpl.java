@@ -27,6 +27,7 @@ import com.jdec.platform.shared.context.RequestContextSnapshotHolder;
 import com.jdec.platform.shared.datasource.DataSourceContextHolder;
 import com.jdec.platform.shared.datasource.ProjectProperties;
 import com.jdec.platform.shared.exception.BusinessException;
+import com.jdec.platform.shared.third.ProjectApiClient;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -64,6 +65,7 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
     private final SysWechatTemplateApi sysWechatTemplateApi;
     private final ApprovalChainMapper approvalChainMapper;
     private final ProjectProperties projectProperties;
+    private final ProjectApiClient projectApiClient;
 
     /** 取消按钮：取消只回退单据状态，不产生业务变更，日志 remark 不记录变更明细 */
     private static final String BUTTON_CANCEL = "cancel";
@@ -414,14 +416,21 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
             ApprovalProcessDTO approvalProcessDTO, String slug, Object sourceData) {
         Long createdBy = (Long) getFieldValueFromSource(sourceData, "created_by");
         UserDetailResp createByUser = sysUserApi.getUserDetailByUserId(createdBy);
+        String businessNo = AppContext.getProjectNo();
+        List<String> columns = List.of("title", "formal_url");
+        Map<String, Object> projectInfo = projectApiClient.getProjectInfoByNo(businessNo, columns);
         // 系统内置参数
         switch (slug) {
             case "systemName":
-                if (AppContext.getProjectNo().contains("company")) {
-                    return "外部对象管理系统";
+                if (Objects.nonNull(projectInfo)) {
+                    return projectInfo.get("title").toString();
                 }
+                return "";
             case "frontUrl":
-                return "http://192.168.60.6:5008";
+                if (Objects.nonNull(projectInfo)) {
+                    return projectInfo.get("formal_url").toString();
+                }
+                return "";
             case "currentTime":
                 return LocalDateTime.now()
                         .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));

@@ -49,7 +49,7 @@ public class CommonMenuHeaderController {
                             + "以菜单/字段 + 系统表头配置生成的默认表头为骨架，按 virId 叠加该用户在 user_menu_header 中的个性化配置"
                             + "（两边都有取用户记录，用户没有的取默认值；模块侧已不存在的菜单/字段、以及用户表多出的记录一律丢弃）；"
                             + "主键id 仅 user_menu_header 中的记录保留，来自默认表头/sys_menu_header 的节点不带 id；"
-                            + "roleId 非空时按角色权限过滤菜单与字段（字段仅保留 view=1）")
+                            + "始终按角色权限过滤菜单与字段（字段仅保留 view=1，与列表展示口径一致；roleId 为空时回退当前登录角色）")
     public ApiResponse<SysMenuHeaderResp> getUserMenuHeader(
             @RequestParam Long userId,
             @RequestParam Long menuId,
