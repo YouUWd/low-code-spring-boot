@@ -108,8 +108,15 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         // 表头记录（sys_menu_header / user_menu_header）均按详情菜单ID 归属，将前端传入的列表菜单ID 转换后再查
         Long headerMenuId = openMenuHeaderApi.resolveHeaderMenuId(menuId);
 
+        // 权限过滤始终基于角色：优先用入参 roleId，未传时回退当前登录角色（请求上下文），
+        // 避免漏传导致权限剔除的字段仍随 user_menu_header 记录放出（与列表展示口径一致）
+        Long effectiveRoleId = roleId != null ? roleId : UserContext.getRoleId();
+
         // 默认表头树：菜单/字段生成 + sys_menu_header 已保存配置 + 角色权限过滤（config 侧实现）
-        SysMenuHeaderResp tree = openMenuHeaderApi.getMenuHeaderTree(menuId, roleId);
+        // 字段权限范围与列表展示保持一致：仅保留 view=1 的字段（VIEW_ONLY）
+        SysMenuHeaderResp tree =
+                openMenuHeaderApi.getMenuHeaderTree(
+                        menuId, effectiveRoleId, MenuFieldPermissionScope.VIEW_ONLY);
         // 角色对该菜单无任何权限：整树丢弃，不返回任何节点
         if (tree == null) {
             return null;
@@ -378,7 +385,8 @@ public class UserMenuHeaderService implements UserMenuHeaderApi {
         // 该列还没有用户记录：整棵树未个性化，或个性化后模块侧新增 / 系统表头后来才勾选的列，
         // 统一按「用户表头查询」接口的同一口径取值（默认树为骨架 + 已有个性化按 virId 逐节点叠加）
         SysMenuHeaderResp sourceTree =
-                openMenuHeaderApi.getMenuHeaderTree(req.getMenuId(), UserContext.getRoleId());
+                openMenuHeaderApi.getMenuHeaderTree(
+                        req.getMenuId(), UserContext.getRoleId(), MenuFieldPermissionScope.ANY);
         if (sourceTree == null) {
             throw new BusinessException("当前角色在该菜单下没有可用的表头配置");
         }

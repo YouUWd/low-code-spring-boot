@@ -12,7 +12,9 @@ public interface UserMenuHeaderApi {
      * 查询用户在指定列表菜单下的个性化表头树
      *
      * <p>以「菜单 + 字段 + {@code sys_menu_header} + 角色权限」生成的默认表头树为骨架，按 {@code vir_id} 叠加该用户在 {@code
-     * user_menu_header} 中的个性化配置：两边都有取用户记录，用户没有的取默认节点，用户有而默认树没有的记录被丢弃。
+     * user_menu_header} 中的个性化配置：两边都有取用户记录，用户没有的取默认节点，用户有而默认树没有的记录被丢弃。 字段权限仅保留 {@code view=1}
+     * 的字段（{@code type=list} 取 {@code VIEW_ONLY}）；{@code roleId} 为空时回退当前登录角色，
+     * 始终做权限过滤，因此角色无查看权限（view=0）的字段即便在 {@code user_menu_header} 有记录也不会放出。
      *
      * <p>{@code user_menu_header.menu_id} 存的是「详情菜单ID」，入参 {@code menuId} 为前端传入的列表菜单ID， 内部先转换为详情菜单ID
      * 再查询用户配置。
@@ -22,7 +24,7 @@ public interface UserMenuHeaderApi {
      *
      * @param userId 用户ID
      * @param menuId 列表菜单ID
-     * @param roleId 角色ID，为空时不做角色权限过滤
+     * @param roleId 角色ID，为空时回退当前登录角色（请求上下文），始终按列表展示口径（仅 view=1）过滤字段
      * @return 用户表头配置树的根节点
      */
     SysMenuHeaderResp getUserMenuHeaderTree(Long userId, Long menuId, Long roleId);
