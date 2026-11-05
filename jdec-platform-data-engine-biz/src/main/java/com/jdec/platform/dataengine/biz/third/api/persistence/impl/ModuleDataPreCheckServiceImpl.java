@@ -34,6 +34,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                     "updated_date",
                     "deleted",
                     "active",
+                    "sort_order",
                     "source_id",
                     "node_id",
                     "parent_node_id");

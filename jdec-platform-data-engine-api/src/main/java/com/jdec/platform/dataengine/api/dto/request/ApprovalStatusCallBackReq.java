@@ -24,14 +24,14 @@ public class ApprovalStatusCallBackReq implements Serializable {
     @Schema(description = "登记时间")
     private LocalDateTime registrationTime;
 
-    @Schema(description = "是否终止状态")
-    private Boolean isTermination;
-
     @Schema(description = "是否第一次提交")
     private Boolean isFirstSubmit;
 
     @Schema(description = "是否当前步骤状态完成")
     private Boolean isCurrentStepFinish;
+
+    @Schema(description = "驳回 reject 通过 pass")
+    private String op;
 
     @Schema(description = "菜单ID")
     private Long menuId;
