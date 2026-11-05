@@ -650,8 +650,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             moduleTables.forEach(
                     tableName -> {
                         for (String columnName : ALWAYS_INCLUDE_FIELDS) {
-                            if (fieldNameMap.containsKey(tableName + "." + columnName)) {
-                                if (!fieldMetaMap.containsKey(tableName + "." + columnName)) {
+                            if (!fieldMetaMap.containsKey(tableName + "." + columnName)) {
+                                if (fieldNameMap.containsKey(tableName + "." + columnName)) {
                                     fieldMetaMap.put(
                                             tableName + "." + columnName,
                                             FieldMetaDTO.builder()
@@ -667,32 +667,33 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                                     .edit(false)
                                                     .permissionCode(1)
                                                     .build());
-                                }
-                            } else if (tableColumnInfoMap.containsKey(tableName)) {
-                                ColumnInfoResp targetColumn =
-                                        tableColumnInfoMap.get(tableName).stream()
-                                                .filter(
-                                                        column ->
-                                                                column.getColumnName()
-                                                                        .equals(columnName))
-                                                .findFirst()
-                                                .orElse(null);
-                                if (Objects.nonNull(targetColumn)) {
-                                    fieldMetaMap.put(
-                                            tableName + "." + columnName,
-                                            FieldMetaDTO.builder()
-                                                    .displayName(
-                                                            StringUtils.isNotBlank(
-                                                                            targetColumn
-                                                                                    .getDisplayName())
-                                                                    ? targetColumn.getDisplayName()
-                                                                    : targetColumn
-                                                                            .getColumnComment())
-                                                    .apply(false)
-                                                    .view(true)
-                                                    .edit(false)
-                                                    .permissionCode(1)
-                                                    .build());
+                                } else if (tableColumnInfoMap.containsKey(tableName)) {
+                                    ColumnInfoResp targetColumn =
+                                            tableColumnInfoMap.get(tableName).stream()
+                                                    .filter(
+                                                            column ->
+                                                                    column.getColumnName()
+                                                                            .equals(columnName))
+                                                    .findFirst()
+                                                    .orElse(null);
+                                    if (Objects.nonNull(targetColumn)) {
+                                        fieldMetaMap.put(
+                                                tableName + "." + columnName,
+                                                FieldMetaDTO.builder()
+                                                        .displayName(
+                                                                StringUtils.isNotBlank(
+                                                                                targetColumn
+                                                                                        .getDisplayName())
+                                                                        ? targetColumn
+                                                                                .getDisplayName()
+                                                                        : targetColumn
+                                                                                .getColumnComment())
+                                                        .apply(false)
+                                                        .view(true)
+                                                        .edit(false)
+                                                        .permissionCode(1)
+                                                        .build());
+                                    }
                                 }
                             }
                         }
