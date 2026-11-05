@@ -939,7 +939,8 @@ public class SysRoleService implements SysRoleApi {
                                     .in(SysUser::getUserId, userIds)
                                     .eq(SysUser::getDeleted, 0));
             Map<Long, SysUser> userMap =
-                    sysUsers.stream().collect(Collectors.toMap(SysUser::getUserId, u -> u));
+                    sysUsers.stream()
+                            .collect(Collectors.toMap(SysUser::getUserId, u -> u, (a, b) -> a));
 
             for (SysRoleUser roleUser : userList) {
                 SysUser user = userMap.get(roleUser.getUserId());
@@ -1028,7 +1029,8 @@ public class SysRoleService implements SysRoleApi {
                                     .in(SysUser::getUserId, userIds)
                                     .eq(SysUser::getDeleted, 0));
             Map<Long, SysUser> userMap =
-                    sysUsers.stream().collect(Collectors.toMap(SysUser::getUserId, u -> u));
+                    sysUsers.stream()
+                            .collect(Collectors.toMap(SysUser::getUserId, u -> u, (a, b) -> a));
 
             for (SysRoleUser roleUser : userList) {
                 SysUser user = userMap.get(roleUser.getUserId());
@@ -1136,6 +1138,19 @@ public class SysRoleService implements SysRoleApi {
 
     @Override
     public List<SubjectOptionResp> listSubjectOptions() {
+        return hrQueryService.listSubjects().stream()
+                .map(
+                        subject -> {
+                            SubjectOptionResp resp = new SubjectOptionResp();
+                            resp.setSubjectId(subject.get("id", Long.class));
+                            resp.setSubjectName(subject.get("subject_name", String.class));
+                            return resp;
+                        })
+                .toList();
+    }
+
+    @Override
+    public List<SubjectOptionResp> listProjectSubjectOptions() {
         return sysProjectSubjectApi.list().stream()
                 .map(
                         subject -> {
@@ -1507,7 +1522,8 @@ public class SysRoleService implements SysRoleApi {
             return;
         }
         Map<Long, SysUser> candidateMap =
-                candidates.stream().collect(Collectors.toMap(SysUser::getUserId, u -> u));
+                candidates.stream()
+                        .collect(Collectors.toMap(SysUser::getUserId, u -> u, (a, b) -> a));
 
         // 有有效角色绑定的用户（时效有效）
         Set<Long> protectedUserIds =
@@ -1566,7 +1582,7 @@ public class SysRoleService implements SysRoleApi {
                                 .in(SysUser::getUserId, allUserIds)
                                 .eq(SysUser::getDeleted, 0));
         Map<Long, SysUser> userMap =
-                users.stream().collect(Collectors.toMap(SysUser::getUserId, u -> u));
+                users.stream().collect(Collectors.toMap(SysUser::getUserId, u -> u, (a, b) -> a));
 
         List<SysRoleUser> list = new ArrayList<>();
 
@@ -1645,7 +1661,12 @@ public class SysRoleService implements SysRoleApi {
         return user != null && user.getSubjectId() != null && user.getSubjectId().equals(subjectId);
     }
 
-    /** 批量检查并创建不存在的用户 */
+    /**
+     * 批量检查并创建/恢复用户。
+     *
+     * <p>注意：查询已存在记录时<span>不过滤 deleted</span>。逻辑删除的记录应被恢复更新， 而非当作“不存在”再次插入，否则同一 userId
+     * 会产生重复行（见历史脏数据问题）。
+     */
     private void batchEnsureUsersExist(
             Set<Long> allUserIds,
             Set<Long> insideIds,
@@ -1653,20 +1674,37 @@ public class SysRoleService implements SysRoleApi {
             Map<Long, String> deptManagerMap,
             Map<Long, String> subjectNameMap,
             Map<Long, String> subjectCompanyMap) {
-        List<SysUser> existingUsers =
-                sysUserMapper.selectList(
-                        Wrappers.<SysUser>lambdaQuery()
-                                .in(SysUser::getUserId, allUserIds)
-                                .eq(SysUser::getDeleted, 0));
-        Set<Long> existingUserIds =
-                existingUsers.stream().map(SysUser::getUserId).collect(Collectors.toSet());
-
         if (insideIds == null) {
             insideIds = new HashSet<>();
         }
-        List<SysUser> newUsers = new ArrayList<>();
+        // 不过滤 deleted：逻辑删除的记录需要被恢复，而不是重复新增
+        List<SysUser> existingUsers =
+                sysUserMapper.selectList(
+                        Wrappers.<SysUser>lambdaQuery().in(SysUser::getUserId, allUserIds));
+        // 同一 userId 可能存在多条历史重复数据，优先保留未删除/较新的一条用于恢复
+        Map<Long, SysUser> existingMap =
+                existingUsers.stream()
+                        .collect(
+                                Collectors.toMap(
+                                        SysUser::getUserId,
+                                        u -> u,
+                                        (a, b) ->
+                                                (a.getDeleted() != null && a.getDeleted() == 0)
+                                                        ? a
+                                                        : b));
+
+        List<SysUser> toInsert = new ArrayList<>();
+        List<SysUser> toUpdate = new ArrayList<>();
         for (Long userId : allUserIds) {
-            if (!existingUserIds.contains(userId)) {
+            SysUser exist = existingMap.get(userId);
+            if (exist != null) {
+                // 已存在：刷新人力信息并恢复逻辑删除（不覆盖用户类型/启用状态等管理字段）
+                fillUserHrFields(
+                        exist, userId, userMap, deptManagerMap, subjectNameMap, subjectCompanyMap);
+                exist.setDeleted(0);
+                toUpdate.add(exist);
+            } else {
+                // 不存在：新增
                 SysUser sysUser = new SysUser();
                 sysUser.setUserId(userId);
                 sysUser.setUserType(
@@ -1674,36 +1712,53 @@ public class SysRoleService implements SysRoleApi {
                                 ? UserTypeEnum.INSIDE.getCode()
                                 : UserTypeEnum.EXTERNAL.getCode());
                 sysUser.setStatusFlag(UserStatusFlagEnum.ENABLE.getCode());
-
-                // 从User表获取数据填充
-                SysUser u = userMap.get(userId);
-                if (u != null) {
-                    sysUser.setUserName(u.getUserName());
-                    sysUser.setSex(u.getSex());
-                    sysUser.setUserAvatar(u.getUserAvatar());
-                    sysUser.setWorkNumber(u.getWorkNumber());
-                    sysUser.setPhone(u.getPhone());
-                    sysUser.setShortName(u.getShortName());
-                    sysUser.setSubjectId(u.getSubjectId());
-                    sysUser.setSubjectName(subjectNameMap.get(u.getSubjectId()));
-                    sysUser.setCompanyName(subjectCompanyMap.get(u.getSubjectId()));
-                    sysUser.setDepartIds(u.getDepartIds());
-                    sysUser.setDepartName(u.getDepartName());
-                    String managerName =
-                            this.getManagerByDepartId(u.getDepartIds(), deptManagerMap);
-                    sysUser.setLeaderName(managerName);
-                    sysUser.setPositionName(u.getPositionName());
-                    sysUser.setStatusFlag(UserStatusFlagEnum.ENABLE.getCode());
-                    sysUser.setDeleted(0);
-                    sysUser.setEmployedStatus(EmployedStatusEnum.EMPLOYED_STATUS_ENABLED.getCode());
-                } else {
-                    sysUser.setUserName("用户" + userId);
-                }
-                newUsers.add(sysUser);
+                sysUser.setEmployedStatus(EmployedStatusEnum.EMPLOYED_STATUS_ENABLED.getCode());
+                fillUserHrFields(
+                        sysUser,
+                        userId,
+                        userMap,
+                        deptManagerMap,
+                        subjectNameMap,
+                        subjectCompanyMap);
+                sysUser.setDeleted(0);
+                toInsert.add(sysUser);
             }
         }
-        if (!newUsers.isEmpty()) {
-            sysUserMapper.insert(newUsers);
+        if (!toUpdate.isEmpty()) {
+            sysUserMapper.updateById(toUpdate);
+        }
+        if (!toInsert.isEmpty()) {
+            sysUserMapper.insert(toInsert);
+        }
+    }
+
+    /** 用 HR 数据填充用户的人力相关字段（不覆盖用户类型、启用状态等管理字段） */
+    private void fillUserHrFields(
+            SysUser target,
+            Long userId,
+            Map<Long, SysUser> userMap,
+            Map<Long, String> deptManagerMap,
+            Map<Long, String> subjectNameMap,
+            Map<Long, String> subjectCompanyMap) {
+        SysUser u = userMap.get(userId);
+        if (u != null) {
+            target.setUserName(u.getUserName());
+            target.setSex(u.getSex());
+            target.setUserAvatar(u.getUserAvatar());
+            target.setWorkNumber(u.getWorkNumber());
+            target.setPhone(u.getPhone());
+            target.setShortName(u.getShortName());
+            target.setSubjectId(u.getSubjectId());
+            target.setSubjectName(subjectNameMap.get(u.getSubjectId()));
+            target.setCompanyName(subjectCompanyMap.get(u.getSubjectId()));
+            target.setDepartIds(u.getDepartIds());
+            target.setDepartName(u.getDepartName());
+            target.setLeaderName(this.getManagerByDepartId(u.getDepartIds(), deptManagerMap));
+            target.setPositionName(u.getPositionName());
+            target.setEmployedStatus(EmployedStatusEnum.EMPLOYED_STATUS_ENABLED.getCode());
+        } else if (target.getId() == null) {
+            // 仅新增场景下，HR 无数据时给默认名（恢复场景保留原有名称）
+            target.setUserName("用户" + userId);
         }
     }
 
