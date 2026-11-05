@@ -63,6 +63,10 @@ public class SysDataPermissionService implements SysDataPermissionApi {
     /** 是否来自词云：否 */
     private static final Integer CLOUD_NO = 0;
 
+    /** 词云业务数据需逐层剥离的内部字段 */
+    private static final Set<String> WORD_CLOUD_REMOVED_FIELDS =
+            Set.of("id", "pid", "relation_no", "relation_id", "word_id");
+
     private final SysDataPermissionMapper sysDataPermissionMapper;
     private final SysProjectSubjectMapper sysProjectSubjectMapper;
     private final SysModuleMapper sysModuleMapper;
@@ -191,6 +195,11 @@ public class SysDataPermissionService implements SysDataPermissionApi {
             DataPermissionQueryItem item = new DataPermissionQueryItem();
             item.setTableName(parts[0]);
             item.setColumn(parts[1]);
+            SysField fieldConfig = codeFieldMap.get(permission.getCode());
+            item.setCloud(
+                    fieldConfig != null && StringUtils.hasText(fieldConfig.getRelationBusinessNo())
+                            ? CLOUD_YES
+                            : CLOUD_NO);
             item.setSubjectIds(
                     nodeSubjects.stream()
                             .map(SysProjectSubject::getSubjectId)
@@ -471,7 +480,9 @@ public class SysDataPermissionService implements SysDataPermissionApi {
                             seenBizNameKeys.computeIfAbsent(
                                     subjectId + "#" + dataPermissionCode, key -> new HashSet<>());
                     // 数组字段按元素拆分，同一业务数据只保留首次出现的展示值
-                    for (Map.Entry<Object, Object> entry : flattenBizNames(value).entrySet()) {
+                    boolean cloud = CLOUD_YES.equals(item.getCloud());
+                    for (Map.Entry<Object, Object> entry :
+                            flattenBizNames(value, cloud).entrySet()) {
                         if (seenKeys.add(entry.getKey())) {
                             bizNames.add(entry.getValue());
                         }
@@ -494,8 +505,10 @@ public class SysDataPermissionService implements SysDataPermissionApi {
      *
      * <p>数组按元素逐个展开，非数组按单值返回；展示值尽量保留业务字段原始类型，JSON 文本与 jOOQ JSON/JSONB 对象解析为 {@code Map}/{@code List}
      * 后返回，前端拿到的是 JSON 结构而不是 JSON 文本，标量（字符串、数字、布尔）原样返回； 字段值为空时保留占位 {@link #NULL_VALUE}，数组内的空元素直接忽略。
+     *
+     * <p>词云来源的数据（{@code cloud=true}）会先逐层剥离内部字段（{@link #WORD_CLOUD_REMOVED_FIELDS}）再按剥离后的结构去重。
      */
-    private Map<Object, Object> flattenBizNames(Object value) {
+    private Map<Object, Object> flattenBizNames(Object value, boolean cloud) {
         Map<Object, Object> bizNames = new LinkedHashMap<>();
         if (value == null) {
             bizNames.put(NULL_VALUE, NULL_VALUE);
@@ -503,7 +516,7 @@ public class SysDataPermissionService implements SysDataPermissionApi {
         }
         for (Object element : toElements(value)) {
             if (element != null) {
-                Object displayValue = toDisplayValue(element);
+                Object displayValue = toDisplayValue(element, cloud);
                 bizNames.putIfAbsent(
                         dedupKey(displayValue), displayValue == null ? NULL_VALUE : displayValue);
             }
@@ -515,19 +528,44 @@ public class SysDataPermissionService implements SysDataPermissionApi {
      * 业务数据的展示值：尽量保留业务字段的原始类型。
      *
      * <p>jOOQ JSON/JSONB 包装类型先取出 JSON 文本，再按 JSON 结构解析为 {@code Map}/{@code List}；字符串、数字、布尔等
-     * 标量原样返回，解析失败时按原始文本返回。
+     * 标量原样返回，解析失败时按原始文本返回。词云来源的数据会先剥离内部字段。
      */
-    private Object toDisplayValue(Object element) {
+    private Object toDisplayValue(Object element, boolean cloud) {
         Object value = unwrapJson(element);
         if (value instanceof CharSequence text) {
             String content = text.toString().trim();
             if (isJsonContainer(content)) {
                 try {
-                    return OBJECT_MAPPER.readValue(content, Object.class);
+                    return stripWordCloudFields(
+                            OBJECT_MAPPER.readValue(content, Object.class), cloud);
                 } catch (Exception e) {
                     log.debug("字段值不是合法的 JSON，按单值处理: {}", content);
                     return value;
                 }
+            }
+        }
+        return stripWordCloudFields(value, cloud);
+    }
+
+    /**
+     * 词云来源的业务数据，逐层匹配并剥离内部元数据字段（{@code id/pid/relation_no/relation_id/word_id}）。
+     *
+     * <p>对 JSON 对象按 Key 递归删除这些字段，JSON 数组递归处理每个元素，非 JSON 结构原样返回。剥离后在 {@link #flattenBizNames(Object,
+     * boolean)} 中按剥离后的结构去重，避免仅因这些元数据不同而判定为不同业务数据；非词云来源直接原样返回。
+     */
+    private Object stripWordCloudFields(Object value, boolean cloud) {
+        if (!cloud || value == null) {
+            return value;
+        }
+        if (value instanceof Map<?, ?> rawMap) {
+            Map<String, Object> map = (Map<String, Object>) rawMap;
+            map.keySet().removeIf(WORD_CLOUD_REMOVED_FIELDS::contains);
+            for (Object child : map.values()) {
+                stripWordCloudFields(child, true);
+            }
+        } else if (value instanceof List<?> list) {
+            for (Object child : list) {
+                stripWordCloudFields(child, true);
             }
         }
         return value;
