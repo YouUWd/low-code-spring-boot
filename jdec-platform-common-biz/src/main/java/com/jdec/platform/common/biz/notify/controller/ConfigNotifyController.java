@@ -200,7 +200,7 @@ public class ConfigNotifyController {
             throw new BusinessException(HttpStatus.UNAUTHORIZED.value(), "令牌已失效，请重新登录");
         }
 
-        // 与拦截器一致：userId 取自 "userId" claim（而非 subject）
+        // 与拦截器一致
         Long userId = claims.get("userId", Long.class);
         String username = claims.get("username", String.class);
         Long subjectId = claims.get("subjectId", Long.class);
