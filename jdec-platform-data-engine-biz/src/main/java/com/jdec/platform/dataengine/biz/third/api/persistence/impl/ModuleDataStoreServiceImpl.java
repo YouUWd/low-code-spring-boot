@@ -180,6 +180,10 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
             }
             case APPROVAL_REALTIME_SAVE -> {
                 // 实时新增,修改 // 实时新增 是个全局更新 必须要有 detailData
+                if (detailData == null) {
+                    throw new BusinessException(
+                            ApiResponseCodeEnum.BAD_REQUEST.getCode(), "实时保存时，详情数据不能为空");
+                }
                 // todo 校验字段权限是否可编辑可写入
                 moduleDataPreCheckService.prePermissionCheck(
                         nestedSaveData, detailData, permissionType, moduleCacheMap);

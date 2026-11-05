@@ -8,6 +8,7 @@ import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.StringUtils;
@@ -20,7 +21,7 @@ public class MemberModulePrepositionProcessor implements ModuleDataPrepositionPr
 
     private final DataEngineApi dataEngineApi;
 
-    private final String MODULE_CODE = "COMPANY-MEMBER";
+    private final Set<String> MODULE_CODE = Set.of("COMPANY-MEMBER", "W_RYGC");
 
     @Override
     public void preProcess(NestedModuleDataDTO nestedModuleDataDTO, ModuleTreeDTO moduleTreeDTO) {
@@ -46,11 +47,11 @@ public class MemberModulePrepositionProcessor implements ModuleDataPrepositionPr
 
     @Override
     public Boolean isApplicable(Long moduleId, ModuleTreeDTO moduleTreeDTO) {
-        return MODULE_CODE.equals(moduleTreeDTO.getModuleMap().get(moduleId).getModuleCode());
+        return MODULE_CODE.contains(moduleTreeDTO.getModuleMap().get(moduleId).getModuleCode());
     }
 
     @Override
-    public String getModuleCode() {
+    public Set<String> getModuleCode() {
         return MODULE_CODE;
     }
 }
