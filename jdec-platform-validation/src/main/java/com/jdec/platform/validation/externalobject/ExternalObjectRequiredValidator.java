@@ -338,10 +338,9 @@ public class ExternalObjectRequiredValidator {
             ExternalObjectSnapshot.CreditRatingRow creditRating,
             NatureFlags flags,
             ExternalObjectValidationMessages messages) {
-        // 子表无记录时按一行空值处理，内部信用等级、企查查评分视为未填
+        // 子表无记录时按一行空值处理，企查查评分视为未填
         ExternalObjectSnapshot.CreditRatingRow row =
                 creditRating == null ? EMPTY_CREDIT_RATING : creditRating;
-        requireJson(row.internalLevel(), "信用等级 - 内部信用等级", messages);
         if (flags.qccScoreRequired()) {
             requireText(row.qccScore(), "信用等级 - 企查查评分", messages);
         }
