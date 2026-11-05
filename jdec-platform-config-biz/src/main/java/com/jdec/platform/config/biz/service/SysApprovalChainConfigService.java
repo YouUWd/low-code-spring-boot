@@ -509,7 +509,7 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                 .in(SysUser::getUserId, ids)
                                 .eq(SysUser::getDeleted, 0))
                 .stream()
-                .collect(Collectors.toMap(SysUser::getUserId, u -> u));
+                .collect(Collectors.toMap(SysUser::getUserId, u -> u, (a, b) -> a));
     }
 
     private Map<String, String> batchQueryApprovalRules(Set<String> values) {

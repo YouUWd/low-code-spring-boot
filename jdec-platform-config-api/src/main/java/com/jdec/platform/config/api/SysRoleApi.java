@@ -41,6 +41,9 @@ public interface SysRoleApi {
 
     List<SubjectOptionResp> listSubjectOptions();
 
+    /** 从 sys_project_subject 表按当前项目编码查询主体下拉列表 */
+    List<SubjectOptionResp> listProjectSubjectOptions();
+
     /**
      * 根据用户ID和主体ID查询用户有哪些角色
      *

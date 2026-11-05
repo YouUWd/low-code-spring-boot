@@ -99,6 +99,13 @@ public class SysRoleController {
         return ApiResponse.success(sysRoleApi.listSubjectOptions());
     }
 
+    /** 提供主体下拉列表（从 sys_project_subject 表按项目编码过滤） */
+    @GetMapping("/subjects/project")
+    @Operation(summary = "主体下拉列表（项目主体）")
+    public ApiResponse<List<SubjectOptionResp>> listProjectSubjects() {
+        return ApiResponse.success(sysRoleApi.listProjectSubjectOptions());
+    }
+
     @GetMapping("/get-list")
     @Operation(summary = "角色下拉列表")
     public ApiResponse<List<RoleListResp>> listRole() {
