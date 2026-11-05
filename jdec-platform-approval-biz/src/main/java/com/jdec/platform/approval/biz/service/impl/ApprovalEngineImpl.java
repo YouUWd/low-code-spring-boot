@@ -1263,7 +1263,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setModuleId(approvalBusiness.getModuleId());
         backReq.setRegistrationTime(LocalDateTime.now());
         backReq.setIsCurrentStepFinish(true);
-        backReq.setIsTermination(false);
+        backReq.setOp("create");
         dataEngineApi.processApprovalStatus(backReq);
         approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
         // 写入日志
@@ -1423,7 +1423,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setModuleId(approvalBusiness.getModuleId());
         backReq.setRegistrationTime(LocalDateTime.now());
         backReq.setIsCurrentStepFinish(true);
-        backReq.setIsTermination(false);
+        backReq.setOp("submit");
         dataEngineApi.processApprovalStatus(backReq);
         approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
         // 写入日志
@@ -1596,11 +1596,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setDataId(approvalBusiness.getRecordId());
         backReq.setModuleId(approvalBusiness.getModuleId());
         backReq.setIsCurrentStepFinish(approved);
-        if (approvalBusiness.getStatusValue().equals(99)) {
-            backReq.setIsTermination(true);
-        } else {
-            backReq.setIsTermination(false);
-        }
+        backReq.setOp("pass");
         ApprovalProcessResultResp resultResp = dataEngineApi.processApprovalStatus(backReq);
         approvalProcessDTO.setReason(resultResp.getRemark());
         approvalProcessDTO.setAutoRemark(resultResp.getReferenceDataRemark());
@@ -1788,7 +1784,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setModuleId(approvalBusiness.getModuleId());
         backReq.setReason(approvalProcessDTO.getReason().toString());
         backReq.setIsCurrentStepFinish(false);
-        backReq.setIsTermination(false);
+        backReq.setOp("reject");
         ApprovalProcessResultResp resultResp = dataEngineApi.processApprovalStatus(backReq);
         approvalProcessDTO.setReason(resultResp.getRemark());
         approvalProcessDTO.setAutoRemark(resultResp.getReferenceDataRemark());
@@ -1923,7 +1919,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setModuleId(approvalBusiness.getModuleId());
         backReq.setReason(approvalProcessDTO.getReason().toString());
         backReq.setIsCurrentStepFinish(false);
-        backReq.setIsTermination(false);
+        backReq.setOp("cancel");
         ApprovalProcessResultResp resultResp = dataEngineApi.processApprovalStatus(backReq);
         approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
         approvalProcessDTO.setReason(resultResp.getRemark());
