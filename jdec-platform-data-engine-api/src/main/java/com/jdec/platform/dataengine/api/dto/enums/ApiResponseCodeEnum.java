@@ -1,4 +1,4 @@
-package com.jdec.platform.dataengine.biz.enums;
+package com.jdec.platform.dataengine.api.dto.enums;
 
 import lombok.Getter;
 

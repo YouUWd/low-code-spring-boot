@@ -1,5 +1,6 @@
 package com.jdec.platform.dataengine.biz.third.api.detail.impl;
 
+import com.jdec.platform.dataengine.api.dto.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleFilterInfo;
@@ -7,14 +8,12 @@ import com.jdec.platform.dataengine.biz.dto.ModuleInfo;
 import com.jdec.platform.dataengine.biz.dto.context.DetailModuleQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.DetailQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.ListQueryContext;
-import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.enums.ModuleType;
 import com.jdec.platform.dataengine.biz.third.api.ListBizQueryService;
 import com.jdec.platform.dataengine.biz.third.api.data.DetailDataProcessFactory;
 import com.jdec.platform.dataengine.biz.third.api.detail.DetailBizReferQueryService;
 import com.jdec.platform.dataengine.biz.third.api.detail.DetailModuleDataQueryService;
 import com.jdec.platform.dataengine.biz.third.api.module.MenuModuleMappingService;
-import com.jdec.platform.dataengine.biz.third.api.module.ModuleInfoWithPermissionService;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.*;
 import lombok.RequiredArgsConstructor;
@@ -26,8 +25,6 @@ import org.springframework.stereotype.Service;
 public class DetailBizCurrentQueryService implements DetailBizReferQueryService {
 
     private final MenuModuleMappingService menuModuleMappingService;
-
-    private final ModuleInfoWithPermissionService moduleInfoWithPermissionService;
 
     private final ListBizQueryService listBizQueryService;
 
