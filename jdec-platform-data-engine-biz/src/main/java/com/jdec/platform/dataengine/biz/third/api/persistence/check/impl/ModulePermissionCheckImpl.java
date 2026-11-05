@@ -1,7 +1,7 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence.check.impl;
 
+import com.jdec.platform.dataengine.api.dto.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
-import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
 import com.jdec.platform.dataengine.biz.third.api.persistence.check.BaseDataSaveCheck;

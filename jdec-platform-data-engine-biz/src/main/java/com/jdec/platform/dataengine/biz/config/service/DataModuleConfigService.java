@@ -1,6 +1,12 @@
 package com.jdec.platform.dataengine.biz.config.service;
 
+import static cn.hutool.poi.excel.sax.ElementName.f;
+
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.jdec.platform.config.api.SysFieldApi;
+import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
+import com.jdec.platform.config.api.dto.response.ColumnInfoResp;
+import com.jdec.platform.config.api.dto.response.TableInfoResp;
 import com.jdec.platform.dataengine.api.dto.model.ModuleFieldDTO;
 import com.jdec.platform.dataengine.api.dto.model.ModuleNodeDTO;
 import com.jdec.platform.dataengine.api.dto.model.SysModuleInfo;
@@ -11,6 +17,7 @@ import com.jdec.platform.dataengine.biz.config.entity.DataSysTableRelation;
 import com.jdec.platform.dataengine.biz.config.mapper.DataSysModuleFieldMapper;
 import com.jdec.platform.dataengine.biz.config.mapper.DataSysModuleMapper;
 import com.jdec.platform.dataengine.biz.config.mapper.DataSysTableRelationMapper;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import java.util.*;
@@ -34,9 +41,32 @@ import org.springframework.transaction.annotation.Transactional;
 @DataSource(DataSourceConstants.CONFIG_CENTER)
 public class DataModuleConfigService {
 
+    private static final Set<String> ALWAYS_INCLUDE_FIELDS =
+            Set.of(
+                    "id",
+                    "node_id",
+                    "parent_node_id",
+                    "sort_order",
+                    "active",
+                    "status",
+                    "business_status",
+                    "deleted",
+                    "version_no",
+                    "business_no",
+                    "source_id",
+                    "subject_id",
+                    "parent_id",
+                    "info_id",
+                    "created_by",
+                    "created_date",
+                    "updated_by",
+                    "updated_date");
+
     private final DataSysModuleMapper moduleMapper;
     private final DataSysModuleFieldMapper moduleFieldMapper;
     private final DataSysTableRelationMapper tableRelationMapper;
+
+    private final SysFieldApi sysFieldApi;
 
     /** 根据模块ID获取模块元数据 (纯数据引擎视角，仅提取必要配置) */
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -221,26 +251,86 @@ public class DataModuleConfigService {
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
-    public List<ModuleFieldDTO> listFieldsByModuleIds(List<Long> moduleIds) {
+    public List<ModuleFieldDTO> listFieldsByModuleIds(
+            Set<Long> moduleIds, ModuleTreeDTO moduleTreeDTO) {
         if (moduleIds == null || moduleIds.isEmpty()) {
             return Collections.emptyList();
         }
 
+        List<ModuleFieldDTO> allModuleFields = new ArrayList<>();
+
+        // 模块勾选的字段
         List<DataSysModuleField> fields =
                 moduleFieldMapper.selectList(
                         Wrappers.<DataSysModuleField>lambdaQuery()
-                                .in(DataSysModuleField::getModuleId, moduleIds));
-        return fields.stream()
-                .map(
-                        f ->
-                                ModuleFieldDTO.builder()
-                                        .id(f.getId())
-                                        .moduleId(f.getModuleId())
-                                        .tableName(f.getTableName())
-                                        .columnName(f.getColumnName())
-                                        .displayName(f.getDisplayName())
-                                        .sortOrder(f.getSortOrder())
-                                        .build())
-                .collect(Collectors.toList());
+                                .in(DataSysModuleField::getModuleId, moduleIds)
+                                .eq(DataSysModuleField::getStatus, 1));
+
+        List<ModuleFieldDTO> selectedModuleFields =
+                fields.stream()
+                        .map(
+                                f ->
+                                        ModuleFieldDTO.builder()
+                                                .id(f.getId())
+                                                .moduleId(f.getModuleId())
+                                                .tableName(f.getTableName())
+                                                .columnName(f.getColumnName())
+                                                .displayName(f.getDisplayName())
+                                                .sortOrder(f.getSortOrder())
+                                                .build())
+                        .collect(Collectors.toList());
+
+        allModuleFields.addAll(selectedModuleFields);
+
+        List<TableInfoResp> tableInfoList =
+                sysFieldApi.getAllTablesWithColumns(
+                        AppContext.getProjectNo(), AppContext.getSubjectId());
+
+        // 获取表列信息并按表名映射
+        Map<String, List<ColumnInfoResp>> tableColumnInfoMap =
+                tableInfoList.stream()
+                        .collect(
+                                Collectors.toMap(
+                                        TableInfoResp::getTableName, TableInfoResp::getColumns));
+
+        for (Long moduleId : moduleIds) {
+            Set<String> moduleTables =
+                    moduleTreeDTO.getModule(moduleId).getFields().stream()
+                            .map(ele -> ele.getTableName())
+                            .collect(Collectors.toSet());
+
+            // 给每个模块表添加白名单字段
+            for (String tableName : moduleTables) {
+                if (tableColumnInfoMap.containsKey(tableName)) {
+                    tableColumnInfoMap
+                            .get(tableName)
+                            .forEach(
+                                    field -> {
+                                        if (ALWAYS_INCLUDE_FIELDS.contains(field.getColumnName())) {
+                                            if (!allModuleFields.stream()
+                                                    .anyMatch(
+                                                            item ->
+                                                                    item.getColumnName()
+                                                                                    .equals(
+                                                                                            field
+                                                                                                    .getColumnName())
+                                                                            && item.getTableName()
+                                                                                    .equals(
+                                                                                            tableName))) {
+                                                allModuleFields.add(
+                                                        ModuleFieldDTO.builder()
+                                                                .moduleId(moduleId)
+                                                                .tableName(tableName)
+                                                                .columnName(field.getColumnName())
+                                                                .displayName(field.getDisplayName())
+                                                                .build());
+                                            }
+                                        }
+                                    });
+                }
+            }
+        }
+
+        return allModuleFields;
     }
 }
