@@ -6,6 +6,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.jdec.platform.config.api.SysProjectSubjectApi;
 import com.jdec.platform.config.api.SysRoleApi;
 import com.jdec.platform.config.api.dto.request.QueryRoleConfigPageReq;
 import com.jdec.platform.config.api.dto.request.RoleSubjectReq;
@@ -57,6 +58,7 @@ public class SysRoleService implements SysRoleApi {
     private final ReferenceCheckService referenceCheckService;
     private final SysDataSnapshotService sysDataSnapshotService;
     private final RoleApprovalLogService roleApprovalLogService;
+    private final SysProjectSubjectApi sysProjectSubjectApi;
 
     @Override
     public Long getUserRoleCount(Long id, Long subjectId, String projectNo) {
@@ -1134,12 +1136,12 @@ public class SysRoleService implements SysRoleApi {
 
     @Override
     public List<SubjectOptionResp> listSubjectOptions() {
-        return hrQueryService.listSubjects().stream()
+        return sysProjectSubjectApi.list().stream()
                 .map(
                         subject -> {
                             SubjectOptionResp resp = new SubjectOptionResp();
-                            resp.setSubjectId(subject.get("id", Long.class));
-                            resp.setSubjectName(subject.get("subject_name", String.class));
+                            resp.setSubjectId(subject.getSubjectId());
+                            resp.setSubjectName(subject.getSubjectName());
                             return resp;
                         })
                 .toList();
