@@ -65,26 +65,9 @@ public class SysUserService implements SysUserApi {
                     query.getPageNum(), query.getPageSize(), 0L, Collections.emptyList());
         }
 
-        // 2. 根据角色 ID 列表查询关联的用户 ID（过滤状态有效且在时效范围内的记录）
+        // 2. 收集角色关联的用户 ID（含「角色-用户直接关联」与「角色-主体关联带出主体下用户」两部分）
         List<Long> roleIds = roles.stream().map(SysRole::getId).toList();
-        java.time.LocalDate today = java.time.LocalDate.now();
-        List<Long> userIds =
-                sysRoleUserMapper
-                        .selectList(
-                                Wrappers.<SysRoleUser>lambdaQuery()
-                                        .in(SysRoleUser::getRoleId, roleIds)
-                                        .eq(SysRoleUser::getStatus, 0))
-                        .stream()
-                        .filter(
-                                ru ->
-                                        isEffectiveDateValid(
-                                                ru.getEffectiveType(),
-                                                ru.getEffectiveStartDate(),
-                                                ru.getEffectiveEndDate(),
-                                                today))
-                        .map(SysRoleUser::getUserId)
-                        .distinct()
-                        .toList();
+        List<Long> userIds = collectUserIdsByRoles(roleIds);
         if (userIds.isEmpty()) {
             return PageResult.of(
                     query.getPageNum(), query.getPageSize(), 0L, Collections.emptyList());
@@ -130,6 +113,67 @@ public class SysUserService implements SysUserApi {
                         .orderByDesc(SysUser::getCreatedDate);
         Page<SysUser> result = sysUserMapper.selectPage(page, wrapper);
         return PageResultUtils.of(result.convert(this::toUserPageResp));
+    }
+
+    /**
+     * 根据角色 ID 列表收集所有关联的用户 ID，包含两部分： 1) 角色-用户直接关联（sys_role_user）-> 用户 ID 2)
+     * 角色-主体关联（sys_role_subject）-> 主体 ID -> 主体下所有用户（sys_user.subject_id） 两部分结果合并去重后返回。
+     */
+    private List<Long> collectUserIdsByRoles(List<Long> roleIds) {
+        if (roleIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        LocalDate today = LocalDate.now();
+        Set<Long> userIds = new LinkedHashSet<>();
+
+        // 1) 角色 -> 用户直接关联
+        sysRoleUserMapper
+                .selectList(
+                        Wrappers.<SysRoleUser>lambdaQuery()
+                                .in(SysRoleUser::getRoleId, roleIds)
+                                .eq(SysRoleUser::getStatus, 0))
+                .stream()
+                .filter(
+                        ru ->
+                                isEffectiveDateValid(
+                                        ru.getEffectiveType(),
+                                        ru.getEffectiveStartDate(),
+                                        ru.getEffectiveEndDate(),
+                                        today))
+                .map(SysRoleUser::getUserId)
+                .forEach(userIds::add);
+
+        // 2) 角色 -> 主体关联 -> 主体下用户
+        List<Long> subjectIds =
+                sysRoleSubjectMapper
+                        .selectList(
+                                Wrappers.<SysRoleSubject>lambdaQuery()
+                                        .in(SysRoleSubject::getRoleId, roleIds)
+                                        .eq(SysRoleSubject::getStatus, 0))
+                        .stream()
+                        .filter(
+                                rs ->
+                                        isEffectiveDateValid(
+                                                rs.getEffectiveType(),
+                                                rs.getEffectiveStartDate(),
+                                                rs.getEffectiveEndDate(),
+                                                today))
+                        .map(SysRoleSubject::getSubjectId)
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .toList();
+        if (!subjectIds.isEmpty()) {
+            sysUserMapper
+                    .selectList(
+                            Wrappers.<SysUser>lambdaQuery()
+                                    .in(SysUser::getSubjectId, subjectIds)
+                                    .eq(SysUser::getDeleted, Boolean.FALSE)
+                                    .select(SysUser::getUserId))
+                    .stream()
+                    .map(SysUser::getUserId)
+                    .forEach(userIds::add);
+        }
+        return new ArrayList<>(userIds);
     }
 
     private SysUserPageResp toUserPageResp(SysUser user) {
@@ -206,30 +250,12 @@ public class SysUserService implements SysUserApi {
             return Collections.emptyList();
         }
 
-        // 2. 根据角色 ID 查询中间表，过滤状态有效且在时效范围内的记录
+        // 2. 收集角色关联的用户 ID（含「角色-用户直接关联」与「角色-主体关联带出主体下用户」两部分）
         List<Long> roleIds = roles.stream().map(SysRole::getId).toList();
-        java.time.LocalDate today = java.time.LocalDate.now();
-        List<SysRoleUser> roleUsers =
-                sysRoleUserMapper
-                        .selectList(
-                                Wrappers.<SysRoleUser>lambdaQuery()
-                                        .in(SysRoleUser::getRoleId, roleIds)
-                                        .eq(SysRoleUser::getStatus, 0))
-                        .stream()
-                        .filter(
-                                ru ->
-                                        isEffectiveDateValid(
-                                                ru.getEffectiveType(),
-                                                ru.getEffectiveStartDate(),
-                                                ru.getEffectiveEndDate(),
-                                                today))
-                        .toList();
-        if (roleUsers.isEmpty()) {
+        List<Long> userIds = collectUserIdsByRoles(roleIds);
+        if (userIds.isEmpty()) {
             return Collections.emptyList();
         }
-
-        // 3. 根据用户 ID 列表查询用户表
-        List<Long> userIds = roleUsers.stream().map(SysRoleUser::getUserId).distinct().toList();
         List<SysUser> users =
                 sysUserMapper.selectList(
                         Wrappers.<SysUser>lambdaQuery()
