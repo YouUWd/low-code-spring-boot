@@ -214,6 +214,12 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         finalFilters.addAll(filterResult.filters());
 
+        PhysicalQueryMapper.supplementSystemColumns(
+                tableSpecs,
+                moduleTree,
+                rootModuleId,
+                table -> configApi.getTableColumnNames(AppContext.getProjectNo(), table));
+
         Set<String> candidateShadowCols =
                 new LinkedHashSet<>(PhysicalQueryMapper.SYSTEM_SHADOW_COLUMNS);
         if (menuActionButtonService != null) {
@@ -345,7 +351,10 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         String changeTable = primaryTable + "_change";
         List<String> targetColumns =
                 PhysicalQueryMapper.collectChangeTargetColumns(
-                        prunedHeader, moduleTree, primaryTable);
+                        prunedHeader,
+                        moduleTree,
+                        primaryTable,
+                        configApi.getTableColumnNames(AppContext.getProjectNo(), changeTable));
         List<FilterItem> singleFilters =
                 PhysicalQueryMapper.buildChangeFilters(req, moduleTree, primaryTable, changeTable);
         singleFilters.add(
@@ -414,6 +423,12 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         Map<String, Set<String>> requestedTableColumnsMap =
                 PhysicalQueryMapper.buildRequestedTableColumnsMap(
                         reqTables, moduleTree, openMenuApi::getModuleIdByMenuId);
+        PhysicalQueryMapper.supplementSystemColumns(
+                tableSpecs,
+                moduleTree,
+                rootModuleId,
+                table -> configApi.getTableColumnNames(AppContext.getProjectNo(), table),
+                requestedTableColumnsMap);
         List<FilterItem> finalFilters =
                 PhysicalQueryMapper.toFlatFilters(
                         req.getFilters(), moduleTree, openMenuApi::getModuleIdByMenuId);
@@ -502,6 +517,11 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         List<Long> checkedFieldIds = PhysicalQueryMapper.collectCheckedFieldIds(headerRoot);
         List<TableSpec> tableSpecs = PhysicalQueryMapper.toTableSpecs(moduleTree, checkedFieldIds);
+        PhysicalQueryMapper.supplementSystemColumns(
+                tableSpecs,
+                moduleTree,
+                rootModuleId,
+                table -> configApi.getTableColumnNames(AppContext.getProjectNo(), table));
 
         DataBlock dataBlock =
                 dataApi.getDetail(

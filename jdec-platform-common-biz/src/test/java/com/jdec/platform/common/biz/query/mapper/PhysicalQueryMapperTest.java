@@ -453,4 +453,65 @@ class PhysicalQueryMapperTest {
         // 整体顺序校验：变更单号 -> 企业名称 -> 业务编号 -> 变更原因 -> 变更申请人 -> 消息发送时间
         assertEquals(List.of("变更单号", "企业名称", "业务编号", "变更原因", "变更申请人", "消息发送时间"), labels);
     }
+
+    @Test
+    @DisplayName(
+            "测试 supplementSystemColumns：根据物理表真实列交集自动补齐 BUILTIN_SYSTEM_COLUMNS，且不进入 shadowKeys 被剥离")
+    void testSupplementSystemColumns_addActualSystemColumnsAndKeepOutOfShadowKeys() {
+        ModuleTreeDTO tree = buildTestModuleTree(true, true);
+        List<TableSpec> tableSpecs = new ArrayList<>();
+        tableSpecs.add(TableSpec.of(1001L, "info", new ArrayList<>(List.of("company_name"))));
+        tableSpecs.add(TableSpec.of(1002L, "basic_info", new ArrayList<>(List.of("currency"))));
+
+        Map<String, Set<String>> requestedMap = new HashMap<>();
+        requestedMap.put("info", new java.util.HashSet<>(Set.of("company_name")));
+        requestedMap.put("basic_info", new java.util.HashSet<>(Set.of("currency")));
+
+        PhysicalQueryMapper.supplementSystemColumns(
+                tableSpecs,
+                tree,
+                1001L,
+                table -> {
+                    if ("info".equalsIgnoreCase(table)) {
+                        return Set.of(
+                                "id",
+                                "company_name",
+                                "business_no",
+                                "business_status",
+                                "version_no",
+                                "created_by",
+                                "created_date");
+                    }
+                    if ("basic_info".equalsIgnoreCase(table)) {
+                        return Set.of("id", "company_id", "subject_id", "currency", "deleted");
+                    }
+                    return Set.of();
+                },
+                requestedMap);
+
+        assertEquals(
+                List.of(
+                        "company_name",
+                        "id",
+                        "business_no",
+                        "version_no",
+                        "business_status",
+                        "created_by",
+                        "created_date"),
+                tableSpecs.get(0).getColumns());
+        assertEquals(
+                List.of("currency", "id", "deleted", "subject_id"), tableSpecs.get(1).getColumns());
+
+        assertTrue(requestedMap.get("info").contains("business_status"));
+        assertTrue(requestedMap.get("info").contains("created_by"));
+        assertTrue(requestedMap.get("basic_info").contains("subject_id"));
+        assertFalse(requestedMap.get("basic_info").contains("company_id"));
+
+        // 随后执行 supplementShadowColumns（包含 business_status、created_by、nature），
+        // 已作为系统辅助列补入的 business_status、created_by 绝不进入 shadowKeys，仅 nature 进入 shadowKeys
+        Set<String> shadowKeys =
+                PhysicalQueryMapper.supplementShadowColumns(
+                        tableSpecs, tree, 1001L, Set.of("business_status", "created_by", "nature"));
+        assertEquals(Set.of("info.nature"), shadowKeys);
+    }
 }

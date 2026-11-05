@@ -26,25 +26,27 @@ public final class TableQueryValidator {
      */
     private static final Set<String> BUILTIN_SYSTEM_COLUMNS =
             Set.of(
-                    "id",
-                    "node_id",
-                    "parent_node_id",
-                    "sort_order",
-                    "active",
-                    "status",
-                    "business_status",
-                    "deleted",
-                    "version_no",
-                    "business_no",
-                    "source_id",
-                    "subject_id",
-                    "company_id",
-                    "parent_id",
-                    "info_id",
-                    "created_by",
-                    "created_date",
-                    "updated_by",
-                    "updated_date");
+                    // 1. 主键与单据版本溯源
+                    "id", // 物理主键
+                    "business_no", // 业务单号
+                    "version_no", // 乐观锁/单据版本号
+                    "source_id", // 变更单对应原单据 ID
+                    // 2. 单据状态与生命周期
+                    "business_status", // 业务流程状态（如草稿、审批中、已生效）
+                    "active", // 激活/启用标识（1=启用，0=停用）
+                    "deleted", // 软删除标识（0=未删除，1=已删除）
+                    // 3. 树形拓扑与行序
+                    "node_id", // 树形节点唯一标识
+                    "parent_node_id", // 树形父节点标识
+                    "sort_order", // 同级/明细行排序号
+                    // 4. 主体归属
+                    "subject_id", // 业务主体/租户归属 ID
+                    // 5. 审计字段
+                    "created_by", // 创建人
+                    "created_date", // 创建时间
+                    "updated_by", // 最后修改人
+                    "updated_date" // 最后修改时间
+                    );
 
     private TableQueryValidator() {}
 

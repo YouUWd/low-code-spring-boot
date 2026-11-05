@@ -688,6 +688,14 @@ public final class PhysicalQueryMapper {
 
     public static List<String> collectChangeTargetColumns(
             MenuHeaderColumnResp headerRoot, ModuleTreeDTO moduleTree, String primaryTable) {
+        return collectChangeTargetColumns(headerRoot, moduleTree, primaryTable, null);
+    }
+
+    public static List<String> collectChangeTargetColumns(
+            MenuHeaderColumnResp headerRoot,
+            ModuleTreeDTO moduleTree,
+            String primaryTable,
+            Set<String> actualChangeTableColumns) {
         Set<String> targetColumns =
                 new LinkedHashSet<>(List.of("id", "change_no", "source_id", "modify_reason"));
 
@@ -710,7 +718,7 @@ public final class PhysicalQueryMapper {
             }
         }
 
-        if (moduleTree.getFieldMap() != null) {
+        if (moduleTree != null && moduleTree.getFieldMap() != null) {
             for (ModuleFieldDTO f : moduleTree.getFieldMap().values()) {
                 if (f != null && f.getColumnName() != null && !f.getColumnName().isBlank()) {
                     String tbl =
@@ -720,6 +728,20 @@ public final class PhysicalQueryMapper {
                     if (primaryTable.equalsIgnoreCase(tbl)) {
                         targetColumns.add(f.getColumnName().trim());
                     }
+                }
+            }
+        }
+
+        if (!CollectionUtils.isEmpty(actualChangeTableColumns)) {
+            Set<String> lowerActual = new HashSet<>();
+            for (String col : actualChangeTableColumns) {
+                if (col != null && !col.isBlank()) {
+                    lowerActual.add(col.trim().toLowerCase());
+                }
+            }
+            for (String sysCol : BUILTIN_SYSTEM_COLUMNS) {
+                if (lowerActual.contains(sysCol.toLowerCase())) {
+                    targetColumns.add(sysCol);
                 }
             }
         }
@@ -1098,6 +1120,193 @@ public final class PhysicalQueryMapper {
     }
 
     // ==================== 5. 系统影子/辅助投影列补齐与剥离 ====================
+
+    /**
+     * 平台内置系统级辅助列（主键、树形拓扑节点、软删除、状态、版本与审计字段等）。
+     *
+     * <p>与底层 {@code TableQueryValidator.BUILTIN_SYSTEM_COLUMNS}
+     * 保持一致；当物理表中实际存在这些辅助列时，默认纳入查询投影并作为正式列返回。
+     */
+    public static final List<String> BUILTIN_SYSTEM_COLUMNS =
+            List.of(
+                    // 1. 主键与单据版本溯源
+                    "id", // 物理主键
+                    "business_no", // 业务单号
+                    "version_no", // 乐观锁/单据版本号
+                    "source_id", // 变更单对应原单据 ID
+                    // 2. 单据状态与生命周期
+                    "business_status", // 业务流程状态（如草稿、审批中、已生效）
+                    "active", // 激活/启用标识（1=启用，0=停用）
+                    "deleted", // 软删除标识（0=未删除，1=已删除）
+                    // 3. 树形拓扑与行序
+                    "node_id", // 树形节点唯一标识
+                    "parent_node_id", // 树形父节点标识
+                    "sort_order", // 同级/明细行排序号
+                    // 4. 主体归属
+                    "subject_id", // 业务主体/租户归属 ID
+                    // 5. 审计字段
+                    "created_by", // 创建人
+                    "created_date", // 创建时间
+                    "updated_by", // 最后修改人
+                    "updated_date" // 最后修改时间
+                    );
+
+    /**
+     * 为当前物理表查询投影规格列表（{@link TableSpec}）自动补齐各物理表实际存在的平台内置系统级辅助列。
+     *
+     * @param tableSpecs 当前物理表查询投影规格列表
+     * @param moduleTree 模块元数据树
+     * @param rootModuleId 根模块 ID
+     * @param tableColumnsResolver 物理表实际列名解析函数（tableName -&gt; 物理列名集合）
+     */
+    public static void supplementSystemColumns(
+            List<TableSpec> tableSpecs,
+            ModuleTreeDTO moduleTree,
+            Long rootModuleId,
+            Function<String, Set<String>> tableColumnsResolver) {
+        supplementSystemColumns(tableSpecs, moduleTree, rootModuleId, tableColumnsResolver, null);
+    }
+
+    /**
+     * 为当前物理表查询投影规格列表（{@link TableSpec}）自动补齐各物理表实际存在的平台内置系统级辅助列，并同步放行 {@code
+     * requestedTableColumnsMap}。
+     *
+     * @param tableSpecs 当前物理表查询投影规格列表
+     * @param moduleTree 模块元数据树
+     * @param rootModuleId 根模块 ID
+     * @param tableColumnsResolver 物理表实际列名解析函数（tableName -&gt; 物理列名集合）
+     * @param requestedTableColumnsMap 调用方显式请求的表列白名单映射（可选，非空时同步放行补入的辅助列）
+     */
+    public static void supplementSystemColumns(
+            List<TableSpec> tableSpecs,
+            ModuleTreeDTO moduleTree,
+            Long rootModuleId,
+            Function<String, Set<String>> tableColumnsResolver,
+            Map<String, Set<String>> requestedTableColumnsMap) {
+        if (tableSpecs == null || tableColumnsResolver == null) {
+            return;
+        }
+
+        Map<String, List<String>> resolvedSysColsCache = new HashMap<>();
+
+        if (moduleTree != null && rootModuleId != null) {
+            ModuleInfo rootModule = moduleTree.getModule(rootModuleId);
+            String primaryTable =
+                    rootModule != null && rootModule.getPrimaryTable() != null
+                            ? rootModule.getPrimaryTable().trim()
+                            : null;
+            if (primaryTable != null && !primaryTable.isBlank()) {
+                boolean hasPrimary = false;
+                for (TableSpec spec : tableSpecs) {
+                    if (spec != null && primaryTable.equalsIgnoreCase(spec.getTableName())) {
+                        hasPrimary = true;
+                        break;
+                    }
+                }
+                if (!hasPrimary) {
+                    List<String> primarySysCols =
+                            resolveActualSystemColumns(
+                                    primaryTable, tableColumnsResolver, resolvedSysColsCache);
+                    if (!primarySysCols.isEmpty()) {
+                        tableSpecs.add(
+                                TableSpec.of(
+                                        rootModuleId,
+                                        primaryTable,
+                                        new ArrayList<>(primarySysCols)));
+                    }
+                }
+            }
+        }
+
+        for (TableSpec spec : tableSpecs) {
+            if (spec == null || spec.getTableName() == null || spec.getTableName().isBlank()) {
+                continue;
+            }
+            String tableName = spec.getTableName().trim();
+            List<String> currentCols = spec.getColumns();
+            if (currentCols != null) {
+                boolean hasWildcard = false;
+                for (String c : currentCols) {
+                    if (c != null && "*".equals(c.trim())) {
+                        hasWildcard = true;
+                        break;
+                    }
+                }
+                if (hasWildcard) {
+                    continue;
+                }
+            }
+
+            List<String> actualSysCols =
+                    resolveActualSystemColumns(
+                            tableName, tableColumnsResolver, resolvedSysColsCache);
+            if (actualSysCols.isEmpty()) {
+                continue;
+            }
+
+            List<String> mutableCols =
+                    currentCols != null ? new ArrayList<>(currentCols) : new ArrayList<>();
+            Set<String> existingLower = new HashSet<>();
+            for (String c : mutableCols) {
+                if (c != null && !c.isBlank()) {
+                    String cleanC =
+                            c.contains(".") ? c.substring(c.lastIndexOf('.') + 1).trim() : c.trim();
+                    existingLower.add(cleanC.toLowerCase());
+                }
+            }
+
+            for (String sysCol : actualSysCols) {
+                String sysColLower = sysCol.toLowerCase();
+                if (existingLower.add(sysColLower)) {
+                    mutableCols.add(sysCol);
+                }
+            }
+            spec.setColumns(mutableCols);
+
+            if (requestedTableColumnsMap != null) {
+                Set<String> allowedCols = requestedTableColumnsMap.get(tableName.toLowerCase());
+                if (allowedCols != null) {
+                    for (String sysCol : actualSysCols) {
+                        allowedCols.add(sysCol.toLowerCase());
+                    }
+                }
+            }
+        }
+    }
+
+    private static List<String> resolveActualSystemColumns(
+            String tableName,
+            Function<String, Set<String>> tableColumnsResolver,
+            Map<String, List<String>> cache) {
+        String key = tableName.toLowerCase();
+        if (cache.containsKey(key)) {
+            return cache.get(key);
+        }
+        Set<String> physicalCols = null;
+        try {
+            physicalCols = tableColumnsResolver.apply(tableName);
+        } catch (Exception ex) {
+            log.warn("获取物理表 [{}] 实际列名集合失败: err={}", tableName, ex.getMessage());
+        }
+        if (CollectionUtils.isEmpty(physicalCols)) {
+            cache.put(key, Collections.emptyList());
+            return Collections.emptyList();
+        }
+        Set<String> lowerPhysical = new HashSet<>();
+        for (String col : physicalCols) {
+            if (col != null && !col.isBlank()) {
+                lowerPhysical.add(col.trim().toLowerCase());
+            }
+        }
+        List<String> matched = new ArrayList<>();
+        for (String sysCol : BUILTIN_SYSTEM_COLUMNS) {
+            if (lowerPhysical.contains(sysCol.toLowerCase())) {
+                matched.add(sysCol);
+            }
+        }
+        cache.put(key, matched);
+        return matched;
+    }
 
     /**
      * 主表系统级辅助/影子投影列名集合。

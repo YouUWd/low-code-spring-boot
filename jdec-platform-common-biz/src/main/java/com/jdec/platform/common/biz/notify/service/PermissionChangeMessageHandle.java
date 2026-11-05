@@ -102,6 +102,37 @@ public interface PermissionChangeMessageHandle {
         return result;
     }
 
+    /**
+     * 取「除申请人本人以外」的所有前端会话（审批链变更场景）
+     *
+     * <p>遍历全量在线会话，剔除 {@code createUserId} 命中的连接（兼容模拟登录视角： 当连接处于模拟登录态时以 {@code mockUserId}
+     * 作为有效用户身份参与比对）， 其余全部纳入推送集合。
+     *
+     * <p>用于审批链新增/提交/通过/驳回/取消等「申请人自己操作不应触发自己刷新」的场景， 与文档中 {@code
+     * getAffectedClientSessionListWithoutCreateUser(applicantId)} 语义一致。
+     *
+     * @param createUserId 申请人（创建人）用户ID，为 null 时退化为全量广播
+     * @return 需要推送的会话列表
+     */
+    default List<ClientSession> getAffectedClientSessionListWithoutCreateUser(Long createUserId) {
+        List<ClientSession> result = new ArrayList<>();
+        if (createUserId == null) {
+            // 缺少申请人维度时，退化为全量广播，避免变更「石沉大海」
+            result.addAll(SseSessionHolder.getAllSessions());
+            return result;
+        }
+        for (ClientSession s : SseSessionHolder.getAllSessions()) {
+            Long effectiveUser =
+                    Boolean.TRUE.equals(s.getIsMockLogin()) ? s.getMockUserId() : s.getUserId();
+            // 排除申请人本人（含模拟登录态下被模拟人即申请人本人）
+            if (createUserId.equals(effectiveUser)) {
+                continue;
+            }
+            result.add(s);
+        }
+        return result;
+    }
+
     /** 按主体广播（channel 中的 subjectId），用于模块级变更等无法精准匹配的场景 */
     default List<ClientSession> getAffectedClientSessionListBySubject(Long subjectId) {
         List<ClientSession> result = new ArrayList<>();

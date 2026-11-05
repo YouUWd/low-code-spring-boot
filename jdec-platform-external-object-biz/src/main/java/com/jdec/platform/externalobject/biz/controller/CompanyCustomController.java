@@ -3,12 +3,14 @@ package com.jdec.platform.externalobject.biz.controller;
 import com.jdec.platform.externalobject.api.dto.request.CompanyBadgeNumReq;
 import com.jdec.platform.externalobject.api.dto.request.CompanyRegStatusUpdateReq;
 import com.jdec.platform.externalobject.api.dto.response.CompanyTreeNodeResp;
+import com.jdec.platform.externalobject.biz.entity.CompanyContact;
 import com.jdec.platform.externalobject.biz.service.CompanyCustomService;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import java.util.List;
 import java.util.Map;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -92,6 +94,26 @@ public class CompanyCustomController {
         } catch (Exception ex) {
             log.error(
                     "CompanyCustom getCompanyTree failed: id={}, err={}", id, ex.getMessage(), ex);
+            throw ex;
+        }
+    }
+
+    @GetMapping("/company-contact/list")
+    @Operation(
+            summary = "根据公司ID查询公司联系方式列表",
+            description = "基于所属公司ID(company_id)查询未删除的公司联系方式列表，按排序号升序返回")
+    public ApiResponse<List<CompanyContact>> listCompanyContacts(
+            @Parameter(description = "所属公司ID（单据物理主键ID）", required = true) @RequestParam("companyId")
+                    Long companyId) {
+        try {
+            List<CompanyContact> list = companyCustomService.listCompanyContacts(companyId);
+            return ApiResponse.success(list);
+        } catch (Exception ex) {
+            log.error(
+                    "CompanyCustom listCompanyContacts failed: companyId={}, err={}",
+                    companyId,
+                    ex.getMessage(),
+                    ex);
             throw ex;
         }
     }

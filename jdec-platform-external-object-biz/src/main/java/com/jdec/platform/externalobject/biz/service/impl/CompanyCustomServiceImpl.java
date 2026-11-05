@@ -497,4 +497,18 @@ public class CompanyCustomServiceImpl implements CompanyCustomService {
     private String buildNodeKey(String businessNo, Integer versionNo) {
         return (businessNo != null ? businessNo : "") + ":" + (versionNo != null ? versionNo : 0);
     }
+
+    @Override
+    public List<CompanyContact> listCompanyContacts(Long companyId) {
+        if (companyId == null) {
+            throw new IllegalArgumentException("公司 ID (companyId) 不能为空");
+        }
+        LambdaQueryWrapper<CompanyContact> queryWrapper =
+                new LambdaQueryWrapper<CompanyContact>()
+                        .eq(CompanyContact::getCompanyId, companyId)
+                        .eq(CompanyContact::getDeleted, 0)
+                        .orderByAsc(CompanyContact::getSortOrder)
+                        .orderByAsc(CompanyContact::getId);
+        return companyContactMapper.selectList(queryWrapper);
+    }
 }
