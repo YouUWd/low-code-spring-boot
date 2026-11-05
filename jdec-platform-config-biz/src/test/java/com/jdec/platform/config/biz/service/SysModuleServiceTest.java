@@ -12,6 +12,7 @@ import com.jdec.platform.config.biz.entity.SysTableRelation;
 import com.jdec.platform.config.biz.mapper.SysModuleFieldMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleMapper;
 import com.jdec.platform.config.biz.mapper.SysModuleStatusMapper;
+import com.jdec.platform.config.biz.mapper.SysRoleModuleFieldPermissionMapper;
 import com.jdec.platform.config.biz.mapper.SysStatusMapper;
 import com.jdec.platform.config.biz.mapper.SysTableRelationMapper;
 import com.jdec.platform.config.biz.reference.ReferenceCheckService;
@@ -41,6 +42,8 @@ class SysModuleServiceTest {
     @Mock private SysStatusMapper sysStatusMapper;
 
     @Mock private SysTableRelationMapper sysTableRelationMapper;
+
+    @Mock private SysRoleModuleFieldPermissionMapper sysRoleModuleFieldPermissionMapper;
 
     @Mock private ReferenceCheckService referenceCheckService;
 

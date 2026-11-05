@@ -3,7 +3,9 @@ package com.jdec.platform.common.biz.postprocess.action.custom;
 import com.jdec.platform.common.api.dto.response.ActionButtonDTO;
 import com.jdec.platform.common.biz.support.TargetMatcher;
 import com.jdec.platform.data.api.dto.common.DataRow;
+import java.util.Collections;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 行级定制操作按钮提供者扩展点 (CustomButtonProvider)
@@ -25,6 +27,17 @@ public interface CustomButtonProvider {
      */
     default String target() {
         return "*";
+    }
+
+    /**
+     * 声明计算当前行定制按钮所必需的物理表字段名集合（如 {@code "business_status"}、{@code "created_by"}）
+     *
+     * <p>查询阶段将自动在主表查询投影中补齐缺失的依赖列（影子列），并在返回前端前自动剥离。
+     *
+     * @return 依赖的物理字段列名集合
+     */
+    default Set<String> requiredRowFields() {
+        return Collections.emptySet();
     }
 
     /**

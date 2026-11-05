@@ -155,6 +155,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         List<ApprovalBusinessNoResp> approvalResp =
                 approvalEnabled ? fetchApprovalBusinessNos(rootModuleId) : null;
         ModulePermissionDTO rootModulePerm = fetchModulePermission(rootModuleId, roleId);
+        boolean hasApplyPermission = hasModuleApplyPermission(rootModulePerm);
         boolean hasEditPermission = hasModuleEditPermission(rootModulePerm);
 
         PrimaryFilterResult filterResult =
@@ -187,6 +188,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .enableChange(enableChange)
                         .userId(userId)
                         .roleId(roleId)
+                        .hasApplyPermission(hasApplyPermission)
                         .hasEditPermission(hasEditPermission)
                         .build();
 
@@ -1235,6 +1237,10 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                     ex.getMessage());
             return null;
         }
+    }
+
+    private boolean hasModuleApplyPermission(ModulePermissionDTO perm) {
+        return perm != null && Boolean.TRUE.equals(perm.getApply());
     }
 
     private boolean hasModuleEditPermission(ModulePermissionDTO perm) {

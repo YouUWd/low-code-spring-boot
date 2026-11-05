@@ -11,6 +11,7 @@ import com.jdec.platform.config.api.dto.response.RoleInteractionPermissionByModu
 import com.jdec.platform.data.api.dto.common.DataRow;
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
@@ -116,11 +117,19 @@ public class MenuActionButtonService {
      * @return 依赖的物理字段列名集合
      */
     public Set<String> collectRequiredRowFields(MenuActionContext ctx) {
-        if (ctx == null || interactionActionService == null) {
+        if (ctx == null) {
             return Collections.emptySet();
         }
-        InteractionActionContext interactionCtx = buildInteractionActionContext(ctx);
-        return interactionActionService.collectRequiredRowFields(interactionCtx);
+        Set<String> fields = new LinkedHashSet<>();
+        if (rowCustomActionService != null) {
+            CustomActionContext customActionCtx = toCustomActionContext(ctx);
+            fields.addAll(rowCustomActionService.collectRequiredRowFields(customActionCtx));
+        }
+        if (interactionActionService != null) {
+            InteractionActionContext interactionCtx = buildInteractionActionContext(ctx);
+            fields.addAll(interactionActionService.collectRequiredRowFields(interactionCtx));
+        }
+        return fields;
     }
 
     private List<ActionRowItem> resolveCustomActions(
@@ -151,6 +160,7 @@ public class MenuActionButtonService {
                 ctx.getEnableChange(),
                 ctx.getUserId(),
                 ctx.getRoleId(),
+                ctx.isHasApplyPermission(),
                 ctx.isHasEditPermission());
     }
 

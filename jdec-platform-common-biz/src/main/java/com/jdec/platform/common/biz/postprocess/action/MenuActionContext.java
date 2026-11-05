@@ -30,11 +30,14 @@ public class MenuActionContext {
     /** 模块是否启用变更申请 (1-开启, 0-关闭) */
     private final Integer enableChange;
 
-    /** 当前请求操作的用户 ID */
+    /** 当前请求操作的用户 ID（生效用户 ID） */
     private final Long userId;
 
     /** 当前用户的角色 ID */
     private final Long roleId;
+
+    /** 当前角色对根模块是否具备申请权限 (hasApplyPermission) */
+    private final boolean hasApplyPermission;
 
     /** 当前角色对根模块是否具备编辑权限 (hasEditPermission) */
     private final boolean hasEditPermission;

@@ -5,7 +5,9 @@ import com.jdec.platform.common.api.dto.response.ActionRowItem;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -32,6 +34,31 @@ public class RowCustomActionService {
     }
 
     /**
+     * 收集当前上下文所有生效 Provider 声明所需的行级物理依赖字段
+     *
+     * @param ctx 定制操作上下文
+     * @return 依赖的物理字段列名集合
+     */
+    public Set<String> collectRequiredRowFields(CustomActionContext ctx) {
+        if (ctx == null || CollectionUtils.isEmpty(providers)) {
+            return Collections.emptySet();
+        }
+        List<CustomButtonProvider> activeProviders =
+                providers.stream().filter(p -> p.supports(ctx)).toList();
+        if (activeProviders.isEmpty()) {
+            return Collections.emptySet();
+        }
+        Set<String> fields = new LinkedHashSet<>();
+        for (CustomButtonProvider provider : activeProviders) {
+            Set<String> reqFields = provider.requiredRowFields();
+            if (!CollectionUtils.isEmpty(reqFields)) {
+                fields.addAll(reqFields);
+            }
+        }
+        return fields;
+    }
+
+    /**
      * 为多行数据构建定制操作行列表
      *
      * @param rawRecords 原始物理数据行列表
@@ -54,10 +81,11 @@ public class RowCustomActionService {
 
         if (activeProviders.isEmpty()) {
             log.info(
-                    "[CustomAction] 当前模块无生效的定制Provider: projectNo={}, rootModuleId={}, enableActive={}, hasEditPermission={}",
+                    "[CustomAction] 当前模块无生效的定制Provider: projectNo={}, rootModuleId={}, enableActive={}, hasApplyPermission={}, hasEditPermission={}",
                     ctx.projectNo(),
                     ctx.rootModuleId(),
                     ctx.enableActive(),
+                    ctx.hasApplyPermission(),
                     ctx.hasEditPermission());
             return null;
         }

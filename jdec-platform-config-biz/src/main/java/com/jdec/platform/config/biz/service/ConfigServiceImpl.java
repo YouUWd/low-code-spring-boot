@@ -483,7 +483,6 @@ public class ConfigServiceImpl implements ConfigApi {
                             .edit(modEdit)
                             .moduleFieldPermissions(moduleFieldPermMap)
                             .moduleTreeFieldPermissions(moduleTreeFieldPermMap)
-                            .fieldPermissions(moduleTreeFieldPermMap)
                             .build();
 
             result.put(targetModuleId, dto);

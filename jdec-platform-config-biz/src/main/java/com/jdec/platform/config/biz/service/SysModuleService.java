@@ -200,7 +200,7 @@ public class SysModuleService implements SysModuleApi {
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     @ConfigChangeNotify(changeType = ChangeType.MODULE_CHANGED, moduleIdExpr = "#result")
     public Long saveModule(String projectNo, Long subjectId, SaveModuleReq request) {
         SaveModuleReq.SaveSysModuleReq req = request.getModule();
@@ -552,7 +552,7 @@ public class SysModuleService implements SysModuleApi {
     }
 
     @Override
-    @Transactional
+    @Transactional(rollbackFor = Exception.class)
     @ConfigChangeNotify(changeType = ChangeType.MODULE_CHANGED, moduleIdExpr = "#moduleId")
     public void deleteModuleComplete(Long moduleId) {
         SysModule module = sysModuleMapper.selectById(moduleId);
@@ -692,19 +692,28 @@ public class SysModuleService implements SysModuleApi {
             }
         }
 
-        // 3. 识别在库中存在但本次未被勾选的字段：软停用 (status = 0)，绝不物理删除以保护权限及关联数据
+        // 3. 识别在库中存在但本次未被勾选的字段：软停用 (status = 0)，并同步清理已停用字段的角色权限记录
+        List<Long> disabledFieldIds = new ArrayList<>();
         for (SysModuleField f : existFields) {
-            if (f.getId() != null
-                    && !processedFieldIds.contains(f.getId())
-                    && (f.getStatus() == null || f.getStatus() == 1)) {
-                f.setStatus(0); // 停用
-                f.setUpdatedDate(now);
-                saveOrUpdateList.add(f);
+            if (f.getId() != null && !processedFieldIds.contains(f.getId())) {
+                disabledFieldIds.add(f.getId());
+                if (f.getStatus() == null || f.getStatus() == 1) {
+                    f.setStatus(0); // 停用
+                    f.setUpdatedDate(now);
+                    saveOrUpdateList.add(f);
+                }
             }
         }
 
         if (!saveOrUpdateList.isEmpty()) {
             Db.saveOrUpdateBatch(saveOrUpdateList);
+        }
+
+        if (!disabledFieldIds.isEmpty()) {
+            sysRoleModuleFieldPermissionMapper.delete(
+                    Wrappers.<SysRoleModuleFieldPermission>lambdaQuery()
+                            .eq(SysRoleModuleFieldPermission::getModuleId, moduleId)
+                            .in(SysRoleModuleFieldPermission::getModuleFieldId, disabledFieldIds));
         }
     }
 
