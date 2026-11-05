@@ -26,6 +26,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -688,8 +689,7 @@ public final class PhysicalQueryMapper {
     public static List<String> collectChangeTargetColumns(
             MenuHeaderColumnResp headerRoot, ModuleTreeDTO moduleTree, String primaryTable) {
         Set<String> targetColumns =
-                new LinkedHashSet<>(
-                        List.of("id", "change_no", "source_id", "modify_reason", "read_status"));
+                new LinkedHashSet<>(List.of("id", "change_no", "source_id", "modify_reason"));
 
         List<Long> checkedFieldIds = collectCheckedFieldIds(headerRoot);
         if (!CollectionUtils.isEmpty(checkedFieldIds)) {
@@ -784,6 +784,7 @@ public final class PhysicalQueryMapper {
                 continue;
             }
             Map<String, Object> merged = new LinkedHashMap<>(recordMap);
+            merged.remove("read_status");
             if (merged.get("id") != null) {
                 merged.put("change_id", merged.get("id"));
             }
@@ -817,15 +818,148 @@ public final class PhysicalQueryMapper {
                         && child.getDataIndex() == null) {
                     continue;
                 }
+                if (isExcludedChangeHeaderColumn(child)) {
+                    continue;
+                }
                 MenuHeaderColumnResp prunedChild = copyHeaderColumn(child);
                 prunedChild.setChildren(null);
                 prunedChild.setSorted(null);
                 prunedChild.setSearchType(null);
+                renameChangeHeaderColumn(prunedChild);
                 firstLevel.add(prunedChild);
             }
+            // 变更申请单表头排布规则：变更单号放最前面，变更原因放在变更表中的创建人之前
+            reorderChangeHeaderColumns(firstLevel);
             pruned.setChildren(firstLevel);
         }
         return pruned;
+    }
+
+    private static void renameChangeHeaderColumn(MenuHeaderColumnResp column) {
+        if (column == null) {
+            return;
+        }
+        if (isCreatorColumn(column)) {
+            column.setLabel("变更申请人");
+        } else if (isCreateTimeColumn(column)) {
+            column.setLabel("消息发送时间");
+        }
+    }
+
+    private static void reorderChangeHeaderColumns(List<MenuHeaderColumnResp> columns) {
+        if (CollectionUtils.isEmpty(columns)) {
+            return;
+        }
+        MenuHeaderColumnResp changeNoNode = null;
+        MenuHeaderColumnResp modifyReasonNode = null;
+
+        Iterator<MenuHeaderColumnResp> iterator = columns.iterator();
+        while (iterator.hasNext()) {
+            MenuHeaderColumnResp node = iterator.next();
+            if (node == null) {
+                continue;
+            }
+            if (isChangeNoColumn(node)) {
+                if (changeNoNode == null) {
+                    changeNoNode = node;
+                }
+                iterator.remove();
+            } else if (isModifyReasonColumn(node)) {
+                if (modifyReasonNode == null) {
+                    modifyReasonNode = node;
+                }
+                iterator.remove();
+            }
+        }
+
+        if (changeNoNode != null) {
+            columns.add(0, changeNoNode);
+        }
+
+        if (modifyReasonNode != null) {
+            int creatorIndex = -1;
+            for (int i = 0; i < columns.size(); i++) {
+                if (isCreatorColumn(columns.get(i))) {
+                    creatorIndex = i;
+                    break;
+                }
+            }
+            if (creatorIndex >= 0) {
+                columns.add(creatorIndex, modifyReasonNode);
+            } else {
+                columns.add(modifyReasonNode);
+            }
+        }
+    }
+
+    private static boolean isChangeNoColumn(MenuHeaderColumnResp node) {
+        if (node == null) {
+            return false;
+        }
+        String di = node.getDataIndex();
+        if (di != null) {
+            String lower = di.trim().toLowerCase();
+            if (lower.equals("change_no") || lower.endsWith(".change_no")) {
+                return true;
+            }
+        }
+        String label = node.getLabel();
+        return label != null && label.contains("变更单号");
+    }
+
+    private static boolean isModifyReasonColumn(MenuHeaderColumnResp node) {
+        if (node == null) {
+            return false;
+        }
+        String di = node.getDataIndex();
+        if (di != null) {
+            String lower = di.trim().toLowerCase();
+            if (lower.equals("modify_reason") || lower.endsWith(".modify_reason")) {
+                return true;
+            }
+        }
+        String label = node.getLabel();
+        return label != null && label.contains("变更原因");
+    }
+
+    private static boolean isCreatorColumn(MenuHeaderColumnResp node) {
+        if (node == null) {
+            return false;
+        }
+        String di = node.getDataIndex();
+        if (di != null) {
+            String lower = di.trim().toLowerCase();
+            if (lower.equals("created_by")
+                    || lower.endsWith(".created_by")
+                    || lower.equals("create_by")
+                    || lower.endsWith(".create_by")) {
+                return true;
+            }
+        }
+        String label = node.getLabel();
+        return label != null && (label.contains("创建人") || label.contains("变更申请人"));
+    }
+
+    private static boolean isCreateTimeColumn(MenuHeaderColumnResp node) {
+        if (node == null) {
+            return false;
+        }
+        String di = node.getDataIndex();
+        if (di != null) {
+            String lower = di.trim().toLowerCase();
+            if (lower.equals("created_date")
+                    || lower.endsWith(".created_date")
+                    || lower.equals("create_date")
+                    || lower.endsWith(".create_date")
+                    || lower.equals("create_time")
+                    || lower.endsWith(".create_time")
+                    || lower.equals("created_time")
+                    || lower.endsWith(".created_time")) {
+                return true;
+            }
+        }
+        String label = node.getLabel();
+        return label != null && (label.contains("创建时间") || label.contains("消息发送时间"));
     }
 
     private static MenuHeaderColumnResp copyHeaderColumn(MenuHeaderColumnResp node) {
@@ -854,7 +988,7 @@ public final class PhysicalQueryMapper {
                 .build();
     }
 
-    /** 确保变更单固有属性字段 (id, change_no, source_id, modify_reason, read_status) 在表头树中存在 */
+    /** 确保变更单固有属性字段 (change_no, modify_reason) 在表头树中存在 */
     public static void ensureChangeColumnsInHeader(
             MenuHeaderColumnResp headerRoot, String primaryTable, Long rootModuleId) {
         if (headerRoot == null) {
@@ -868,19 +1002,56 @@ public final class PhysicalQueryMapper {
 
         List<MenuHeaderColumnResp> extraColumns = new ArrayList<>();
         addChangeColumnIfAbsent(
-                extraColumns, headerRoot, primaryTable, rootModuleId, "id", "变更ID", 100);
-        addChangeColumnIfAbsent(
                 extraColumns, headerRoot, primaryTable, rootModuleId, "change_no", "变更单号", 180);
         addChangeColumnIfAbsent(
-                extraColumns, headerRoot, primaryTable, rootModuleId, "source_id", "原单ID", 100);
-        addChangeColumnIfAbsent(
                 extraColumns, headerRoot, primaryTable, rootModuleId, "modify_reason", "变更原因", 200);
-        addChangeColumnIfAbsent(
-                extraColumns, headerRoot, primaryTable, rootModuleId, "read_status", "读取状态", 100);
 
         if (!extraColumns.isEmpty()) {
             headerRoot.getChildren().addAll(0, extraColumns);
         }
+    }
+
+    private static boolean isExcludedChangeHeaderColumn(MenuHeaderColumnResp child) {
+        if (child == null) {
+            return false;
+        }
+        String label = child.getLabel();
+        if (label != null
+                && (label.contains("变更ID")
+                        || label.contains("原单ID")
+                        || label.contains("读取状态")
+                        || label.contains("更新人")
+                        || label.contains("修改人")
+                        || label.contains("更新时间")
+                        || label.contains("修改时间")
+                        || label.contains("主体ID"))) {
+            return true;
+        }
+        String di = child.getDataIndex();
+        if (di != null) {
+            String lower = di.trim().toLowerCase();
+            return lower.equals("id")
+                    || lower.endsWith(".id")
+                    || lower.equals("source_id")
+                    || lower.endsWith(".source_id")
+                    || lower.equals("read_status")
+                    || lower.endsWith(".read_status")
+                    || lower.equals("updated_by")
+                    || lower.endsWith(".updated_by")
+                    || lower.equals("update_by")
+                    || lower.endsWith(".update_by")
+                    || lower.equals("updated_date")
+                    || lower.endsWith(".updated_date")
+                    || lower.equals("update_date")
+                    || lower.endsWith(".update_date")
+                    || lower.equals("updated_time")
+                    || lower.endsWith(".updated_time")
+                    || lower.equals("update_time")
+                    || lower.endsWith(".update_time")
+                    || lower.equals("subject_id")
+                    || lower.endsWith(".subject_id");
+        }
+        return false;
     }
 
     private static void addChangeColumnIfAbsent(

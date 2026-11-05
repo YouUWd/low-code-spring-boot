@@ -135,7 +135,7 @@ public class JooqSqlBuilder {
     /** 构建包含主表与 1:1/N:1 关联从表的 SelectJoinStep */
     public SelectJoinStep<Record> buildSelectFrom(StatementContext context) {
 
-        List<Field<?>> fields =
+        Set<Field<?>> fields =
                 context.getFields().stream()
                         .map(
                                 item ->
@@ -147,7 +147,7 @@ public class JooqSqlBuilder {
                                                         item.getTableName()
                                                                 + "."
                                                                 + item.getColumnName()))
-                        .collect(Collectors.toList());
+                        .collect(Collectors.toSet());
         SelectJoinStep<Record> query;
         if (CollectionUtils.isEmpty(fields)) {
             query = context.getDsl().select(DSL.asterisk()).from(context.getTableName());

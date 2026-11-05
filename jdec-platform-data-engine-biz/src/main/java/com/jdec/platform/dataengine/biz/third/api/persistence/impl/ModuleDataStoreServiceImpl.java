@@ -4,6 +4,7 @@ import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.collection.ListUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
+import com.jdec.platform.dataengine.api.dto.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.BusinessFormStatusReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
@@ -15,7 +16,6 @@ import com.jdec.platform.dataengine.biz.dto.ModuleDataStoreDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.dto.context.ModuleDetailQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.ModuleQueryContext;
-import com.jdec.platform.dataengine.biz.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.biz.enums.PermissionType;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.service.ModuleBizDataService;
@@ -180,6 +180,10 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
             }
             case APPROVAL_REALTIME_SAVE -> {
                 // 实时新增,修改 // 实时新增 是个全局更新 必须要有 detailData
+                if (detailData == null) {
+                    throw new BusinessException(
+                            ApiResponseCodeEnum.BAD_REQUEST.getCode(), "实时保存时，详情数据不能为空");
+                }
                 // todo 校验字段权限是否可编辑可写入
                 moduleDataPreCheckService.prePermissionCheck(
                         nestedSaveData, detailData, permissionType, moduleCacheMap);

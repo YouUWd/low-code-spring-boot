@@ -7,9 +7,13 @@ import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.TokenContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
+import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.security.JwtTokenProvider;
 import com.jdec.platform.shared.security.model.LoginUser;
 import io.jsonwebtoken.Claims;
+import jakarta.servlet.http.HttpServletResponse;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -17,10 +21,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.context.request.async.AsyncRequestTimeoutException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 /**
@@ -134,6 +136,48 @@ public class ConfigNotifyController {
         }
     }
 
+    /**
+     * SSE 超时异常处理：超时属于连接正常生命周期，不写响应体，浏览器 EventSource 感知到流结束会自动重连。
+     *
+     * <p>本端点声明了 {@code produces = text/event-stream}，响应 Content-Type 在进入方法前已被固定。 若交给全局 {@code
+     * GlobalExceptionHandler} 返回 {@code ApiResponse}，Spring 找不到能写 {@code text/event-stream}
+     * 的消息转换器，会抛 {@code HttpMessageNotWritableException}。
+     */
+    @ExceptionHandler(AsyncRequestTimeoutException.class)
+    public void handleAsyncTimeout(AsyncRequestTimeoutException e) {
+        log.info("SSE 连接超时，连接已释放: {}", e.getMessage());
+    }
+
+    /**
+     * SSE 端点专用异常处理：直接向响应流写 JSON，绕过消息转换器。
+     *
+     * <p>同理，响应已预设 {@code text/event-stream}，全局异常处理器的 JSON 序列化无法写出。 这里先重置响应头，再手动序列化 {@link
+     * ApiResponse}，避免二次抛出 {@code HttpMessageNotWritableException}。
+     */
+    @ExceptionHandler(Exception.class)
+    public void handleException(Exception e, HttpServletResponse response) throws IOException {
+        if (response.isCommitted()) {
+            log.debug("SSE 响应已提交，异常不再回写: {}", e.getMessage());
+            return;
+        }
+
+        ApiResponse<Object> body;
+        if (e instanceof BusinessException be) {
+            log.warn("SSE 鉴权/业务异常: code={}, message={}", be.getCode(), be.getMessage());
+            body = ApiResponse.customResponse(be.getCode(), be.getMessage(), be.getData());
+        } else {
+            log.warn("SSE 连接异常: {}", e.getMessage(), e);
+            body = ApiResponse.error(HttpStatus.INTERNAL_SERVER_ERROR.value(), "SSE 连接异常");
+        }
+
+        response.reset();
+        response.setStatus(HttpStatus.OK.value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        response.getWriter().write(objectMapper.writeValueAsString(body));
+        response.flushBuffer();
+    }
+
     /** 解析并校验 token（与 JwtAuthenticationInterceptor 等价的强度） */
     private LoginUser authenticate(String token) {
         if (!org.springframework.util.StringUtils.hasText(token)) {
@@ -156,7 +200,7 @@ public class ConfigNotifyController {
             throw new BusinessException(HttpStatus.UNAUTHORIZED.value(), "令牌已失效，请重新登录");
         }
 
-        // 与拦截器一致：userId 取自 "userId" claim（而非 subject）
+        // 与拦截器一致
         Long userId = claims.get("userId", Long.class);
         String username = claims.get("username", String.class);
         Long subjectId = claims.get("subjectId", Long.class);

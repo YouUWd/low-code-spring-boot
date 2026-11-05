@@ -283,28 +283,28 @@ public class ExternalObjectDuplicateCheckService implements ExternalObjectDuplic
                 new DuplicateField(
                         ExternalObjectTable.BASIC_INFO,
                         "uscc",
-                        "统一社会信用代码【%s】在外部对象【%s】中已经存在，请核对后重新填写！",
+                        "该[统一社会信用代码]已存在！",
                         ExternalObjectWordValues::compactUpper));
         map.put(
                 "basic_info.short_name",
                 new DuplicateField(
                         ExternalObjectTable.BASIC_INFO,
                         "short_name",
-                        "外部对象简称【%s】在外部对象【%s】中已经存在，请核对后重新填写！",
+                        "该[外部对象简称]已存在！",
                         ExternalObjectWordValues::trim));
         map.put(
                 "basic_info.en_short_name",
                 new DuplicateField(
                         ExternalObjectTable.BASIC_INFO,
                         "en_short_name",
-                        "外部对象英文简称【%s】在外部对象【%s】中已经存在，请核对后重新填写！",
+                        "该[外部对象英文简称]已存在！",
                         ExternalObjectWordValues::trim));
         map.put(
                 "basic_info.en_full_name",
                 new DuplicateField(
                         ExternalObjectTable.BASIC_INFO,
                         "en_full_name",
-                        "外部对象英文名全称【%s】在外部对象【%s】中已经存在，请核对后重新填写！",
+                        "该[外部对象英文名全称]已存在！",
                         ExternalObjectWordValues::trim));
         return Collections.unmodifiableMap(map);
     }

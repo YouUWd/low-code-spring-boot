@@ -465,20 +465,83 @@ public class DynamicQueryService {
             return;
         }
 
-        // filterFields为空时，返回本模块所有字段
+        ModuleTreeDTO moduleTreeDTO =
+                configApi.getModuleTree(AppContext.getProjectNo(), null, rootNode.getId());
+
+        List<ModuleFieldDTO> moduleFields = new ArrayList<>();
+
+        Set<Long> queryModuleIds = new HashSet<>();
+
         if (moduleIdToFieldMap.isEmpty()) {
-            List<ModuleFieldDTO> moduleFields =
-                    dataModuleConfigService.listFieldsByModuleIds(Arrays.asList(rootNode.getId()));
+            // filterFields为空时，返回本模块所有字段
+            queryModuleIds.add(rootNode.getId());
+            moduleFields =
+                    dataModuleConfigService.listFieldsByModuleIds(queryModuleIds, moduleTreeDTO);
             moduleIdToFieldMap.put(
                     rootNode.getId(),
                     moduleFields.stream()
                             .filter(ele -> ele.getModuleId().equals(rootNode.getId()))
                             .collect(Collectors.toList()));
+        } else {
+            queryModuleIds.addAll(moduleTreeDTO.getAllowedModuleIds());
+            moduleFields =
+                    dataModuleConfigService.listFieldsByModuleIds(queryModuleIds, moduleTreeDTO);
+
+            // 合并模块查询字段，添加白名单字段
+            for (Long moduleId : queryModuleIds) {
+                // 过滤调Map中已经有的模块字段
+                if (moduleIdToFieldMap.containsKey(moduleId)) {
+                    Set<ModuleFieldDTO> filteredFields =
+                            moduleFields.stream()
+                                    .filter(
+                                            ele ->
+                                                    ele.getModuleId().equals(moduleId)
+                                                            && (!moduleIdToFieldMap
+                                                                    .get(moduleId)
+                                                                    .stream()
+                                                                    .anyMatch(
+                                                                            item ->
+                                                                                    item.getColumnName()
+                                                                                                    .equals(
+                                                                                                            ele
+                                                                                                                    .getColumnName())
+                                                                                            && item.getTableName()
+                                                                                                    .equals(
+                                                                                                            ele
+                                                                                                                    .getTableName()))))
+                                    .collect(Collectors.toSet());
+                    moduleIdToFieldMap
+                            .computeIfAbsent(moduleId, k -> new ArrayList<>())
+                            .addAll(filteredFields);
+                } else {
+                    moduleIdToFieldMap.put(
+                            moduleId,
+                            moduleFields.stream()
+                                    .filter(ele -> ele.getModuleId().equals(moduleId))
+                                    .collect(Collectors.toList()));
+                }
+            }
         }
 
         List<ModuleFieldDTO> moduleFileds = new ArrayList<>();
         if (moduleIdToFieldMap.containsKey(rootNode.getId())) {
-            moduleFileds.addAll(moduleIdToFieldMap.get(rootNode.getId()));
+            List<ModuleFieldDTO> filterModuleFields =
+                    moduleIdToFieldMap.get(rootNode.getId()).stream()
+                            .filter(
+                                    ele ->
+                                            !moduleFileds.stream()
+                                                    .anyMatch(
+                                                            item ->
+                                                                    item.getTableName()
+                                                                                    .equals(
+                                                                                            ele
+                                                                                                    .getTableName())
+                                                                            && item.getColumnName()
+                                                                                    .equals(
+                                                                                            ele
+                                                                                                    .getColumnName())))
+                            .collect(Collectors.toList());
+            moduleFileds.addAll(filterModuleFields);
         }
 
         List<ModuleFieldDTO> finalModuleFileds = moduleFileds;
@@ -512,9 +575,6 @@ public class DynamicQueryService {
                         .queryType(queryType)
                         .dataRightConfigResps(dataRightconfigs)
                         .build();
-
-        ModuleTreeDTO moduleTreeDTO =
-                configApi.getModuleTree(AppContext.getProjectNo(), null, rootNode.getId());
 
         Map<Long, Map<Long, List<ReferenceQueryParam>>> referenceQueryParamMap = new HashMap<>();
 
@@ -738,7 +798,24 @@ public class DynamicQueryService {
             List<ModuleFieldDTO> moduleFileds = new ArrayList<>();
             if (moduleIdToFieldMap.containsKey(childNode.getId())) {
                 log.debug("模块id:{},模块名称:{}有字段在查询列表,", childNode.getId(), childNode.getModuleName());
-                moduleFileds = moduleIdToFieldMap.get(childNode.getId());
+
+                List<ModuleFieldDTO> filterModuleFields =
+                        moduleIdToFieldMap.get(childNode.getId()).stream()
+                                .filter(
+                                        ele ->
+                                                !moduleFileds.stream()
+                                                        .anyMatch(
+                                                                item ->
+                                                                        item.getTableName()
+                                                                                        .equals(
+                                                                                                ele
+                                                                                                        .getTableName())
+                                                                                && item.getColumnName()
+                                                                                        .equals(
+                                                                                                ele
+                                                                                                        .getColumnName())))
+                                .collect(Collectors.toList());
+                moduleFileds.addAll(filterModuleFields);
             }
 
             List<ModuleFieldDTO> finalModuleFileds = moduleFileds;

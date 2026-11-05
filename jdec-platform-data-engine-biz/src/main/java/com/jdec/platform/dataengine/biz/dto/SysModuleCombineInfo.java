@@ -4,6 +4,7 @@ import cn.hutool.core.collection.CollectionUtil;
 import com.jdec.platform.config.api.dto.common.*;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.response.SysFieldResp;
+import com.jdec.platform.dataengine.api.common.SomeCustomizedFieldsConfig;
 import java.io.Serializable;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -66,5 +67,29 @@ public class SysModuleCombineInfo implements Serializable {
                     .collect(Collectors.toSet());
         }
         return Collections.emptySet();
+    }
+
+    public Set<String> getUnCheckedPermissionFullFieldName() {
+        if (CollectionUtil.isEmpty(this.allTables)) {
+            return Collections.emptySet();
+        }
+        return getCustomizedFieldConfig(
+                SomeCustomizedFieldsConfig.CustomizedType.UN_PERMISSION_FIELDS_SET);
+    }
+
+    private Set<String> getCustomizedFieldConfig(SomeCustomizedFieldsConfig.CustomizedType type) {
+        Set<String> fullSet = new HashSet<>();
+        for (String tableName : this.allTables) {
+            Set<String> fs =
+                    SomeCustomizedFieldsConfig.getCustomizedFieldConfigSet(
+                            this.moduleInfo.getProjectNo(), tableName, type);
+            fs.stream().forEach(x -> fullSet.add(tableName + "." + x));
+            TableRelationDTO tableRelationDTO = this.subTableRelationMap.get(tableName);
+            if (tableRelationDTO != null) {
+                fullSet.add(
+                        tableRelationDTO.getJoinTable() + "." + tableRelationDTO.getJoinField());
+            }
+        }
+        return fullSet;
     }
 }

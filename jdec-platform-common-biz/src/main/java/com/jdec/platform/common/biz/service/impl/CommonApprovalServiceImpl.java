@@ -231,12 +231,19 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         savePrepositionProcessorService.preProcess(req.getNestedModuleData());
         boolean realTimeSave =
                 Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save");
+        // 变更提交（change_save）：与无审批链保存、有审批链新增保存使用同一套保存校验，
+        // 落库前只校验前端提交的模块，查重排除本次变更的原单据
+        boolean changeSubmit =
+                Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("change_save");
         // 提交前判断主单ID：有主单ID时保存后按主单ID加载数据库整单数据校验；
         // 主单ID没有值时从数据库查不到整单数据，改为基于前端提交的模块数据校验
         ModuleTreeDTO moduleTree = realTimeSave ? null : moduleTreeOf(req.getNestedModuleData());
         boolean mainRecordExists =
                 moduleTree != null && hasMainRecordId(moduleTree, req.getNestedModuleData());
-        if (!realTimeSave && !mainRecordExists && req.getNestedModuleData() != null) {
+        if (!realTimeSave && changeSubmit && req.getNestedModuleData() != null) {
+            // 变更提交：与保存校验一致，落库前基于前端提交的数据校验，查重排除原单据
+            checkChangeOnSave(moduleTree, req.getNestedModuleData());
+        } else if (!realTimeSave && !mainRecordExists && req.getNestedModuleData() != null) {
             // 前端未提交的模块按该模块校验全部不通过处理，所有需要校验的模块都通过后才允许提交
             Long rootModuleId =
                     moduleTree == null || moduleTree.getRootModuleId() == null
@@ -246,7 +253,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         }
         DynamicSaveResp result = dataEngineApi.save(req);
         if (realTimeSave) return result.getDataId();
-        if (mainRecordExists) {
+        if (mainRecordExists && !changeSubmit) {
             submitCheckRouter.check(
                     result.getModuleId(),
                     result.getDataId(),
@@ -280,8 +287,15 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
                 || req.getNestedModuleData().getModuleId() == null) {
             return;
         }
-        NestedModuleDataDTO nestedModuleData = req.getNestedModuleData();
-        ModuleTreeDTO moduleTree = moduleTreeOf(nestedModuleData);
+        checkChangeOnSave(moduleTreeOf(req.getNestedModuleData()), req.getNestedModuleData());
+    }
+
+    /**
+     * 变更类单据落库前的保存校验（变更申请单保存、变更提交共用）。
+     *
+     * <p>校验数据完全取自前端提交的变更数据，未提交的模块不参与校验；查重时按变更的原单据（提交结构第一行的主表主键）排除， 原单据及其同业务编号的其它版本都不作为重复比对对象。
+     */
+    private void checkChangeOnSave(ModuleTreeDTO moduleTree, NestedModuleDataDTO nestedModuleData) {
         Long rootModuleId =
                 moduleTree == null || moduleTree.getRootModuleId() == null
                         ? nestedModuleData.getModuleId()

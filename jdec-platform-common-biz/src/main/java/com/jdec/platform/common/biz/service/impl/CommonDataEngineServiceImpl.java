@@ -22,6 +22,7 @@ import com.jdec.platform.config.api.dto.common.*;
 import com.jdec.platform.config.api.dto.response.*;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.dataengine.api.DataEngineApi;
+import com.jdec.platform.dataengine.api.dto.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.DynamicDetailQueryReq;
@@ -66,6 +67,7 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
     private static final Set<String> ALWAYS_INCLUDE_FIELDS =
             Set.of(
+                    "id",
                     "node_id",
                     "parent_node_id",
                     "sort_order",
@@ -197,16 +199,15 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                 .filter(ele -> modulePermissionFields.contains(ele.getId()))
                                 .map(ModuleFieldDTO::getId)
                                 .collect(Collectors.toSet()));
-
-                // 返回内置返回的字段，不需要根据权限进行判断
-                fieldIds.addAll(
-                        rootNode.getModule(targetMenu.getModuleId()).getFields().stream()
-                                .filter(ele -> ALWAYS_INCLUDE_FIELDS.contains(ele.getColumnName()))
-                                .map(ModuleFieldDTO::getId)
-                                .collect(Collectors.toSet()));
             }
 
             checkedFieldIds.addAll(fieldIds);
+        }
+
+        if (CollectionUtils.isEmpty(checkedFieldIds)) {
+            throw new BusinessException(
+                    ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getCode(),
+                    ApiResponseCodeEnum.BAD_MODULE_RIGHT_NODE_ERROR.getMessage());
         }
 
         // 获取根模块的business_status字段，手动加入到查询列表中
@@ -365,6 +366,17 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             }
         }
 
+        if ("apply-change".equals(menuDetailQueryReq.getBtnType())) {
+            if (dynamicDetailQueryReq.getChangeRequestId() <= 0) {
+                queryModel = QueryModel.CHANGE_REQUEST;
+            } else {
+                queryModel = QueryModel.VIEW;
+            }
+        } else if ("change".equals(menuDetailQueryReq.getBtnType())) {
+            // 变更走新建权限
+            queryModel = QueryModel.CREATE;
+        }
+
         // 获取SysField列表并按id映射
         Map<Long, SysFieldResp> fieldIdMap =
                 sysFieldApi
@@ -384,16 +396,17 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                                         + e.getValue().getColumnName(),
                                         Map.Entry::getValue));
 
-        if ("apply-change".equals(menuDetailQueryReq.getBtnType())) {
-            if (dynamicDetailQueryReq.getChangeRequestId() <= 0) {
-                queryModel = QueryModel.CHANGE_REQUEST;
-            } else {
-                queryModel = QueryModel.VIEW;
-            }
-        } else if ("change".equals(menuDetailQueryReq.getBtnType())) {
-            // 变更走新建权限
-            queryModel = QueryModel.CREATE;
-        }
+        // 从schema获取表及字段信息
+        List<TableInfoResp> tableInfoList =
+                sysFieldApi.getAllTablesWithColumns(
+                        AppContext.getProjectNo(), AppContext.getSubjectId());
+
+        // 获取表列信息并按表名映射
+        Map<String, List<ColumnInfoResp>> tableColumnInfoMap =
+                tableInfoList.stream()
+                        .collect(
+                                Collectors.toMap(
+                                        TableInfoResp::getTableName, TableInfoResp::getColumns));
 
         // 构建模块元数据配置列表 (ModuleMetaDTO)
         ModuleMetaDTO metaDTO =
@@ -405,7 +418,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                         nameToWorldConfMap,
                         fieldNameMap,
                         rootNode,
-                        queryModel);
+                        queryModel,
+                        tableColumnInfoMap);
 
         if (dynamicDetailQueryReq.getId() <= 0) {
             detailData = buildTemplateTree(metaDTO);
@@ -551,7 +565,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             Map<String, FieldWordCloudDTO> worldCloudConfigMap,
             Map<String, SysFieldResp> fieldNameMap,
             ModuleTreeDTO moduleTreeDTO,
-            QueryModel queryModel) {
+            QueryModel queryModel,
+            Map<String, List<ColumnInfoResp>> tableColumnInfoMap) {
         if (moduleTreeDTO == null || moduleTreeDTO.getModuleMap() == null) {
             return null;
         }
@@ -564,7 +579,11 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
         ModulePermissionDTO modPerm = permMap != null ? permMap.get(rootModuleId) : null;
 
         if (parentModuleInfo.getFields() != null) {
-            String primaryTable = parentModuleInfo.getPrimaryTable();
+            Set<String> moduleTables =
+                    parentModuleInfo.getFields().stream()
+                            .map(ModuleFieldDTO::getTableName)
+                            .collect(Collectors.toSet());
+
             for (ModuleFieldDTO f : parentModuleInfo.getFields()) {
                 String col = f.getColumnName();
                 String fullKey =
@@ -626,6 +645,59 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
 
                 fieldMetaMap.put(fullKey, fMeta);
             }
+
+            // 构建白名单字段权限
+            moduleTables.forEach(
+                    tableName -> {
+                        for (String columnName : ALWAYS_INCLUDE_FIELDS) {
+                            if (!fieldMetaMap.containsKey(tableName + "." + columnName)) {
+                                if (fieldNameMap.containsKey(tableName + "." + columnName)) {
+                                    fieldMetaMap.put(
+                                            tableName + "." + columnName,
+                                            FieldMetaDTO.builder()
+                                                    .displayName(
+                                                            fieldNameMap
+                                                                    .get(
+                                                                            tableName
+                                                                                    + "."
+                                                                                    + columnName)
+                                                                    .getDisplayName())
+                                                    .apply(false)
+                                                    .view(true)
+                                                    .edit(false)
+                                                    .permissionCode(1)
+                                                    .build());
+                                } else if (tableColumnInfoMap.containsKey(tableName)) {
+                                    ColumnInfoResp targetColumn =
+                                            tableColumnInfoMap.get(tableName).stream()
+                                                    .filter(
+                                                            column ->
+                                                                    column.getColumnName()
+                                                                            .equals(columnName))
+                                                    .findFirst()
+                                                    .orElse(null);
+                                    if (Objects.nonNull(targetColumn)) {
+                                        fieldMetaMap.put(
+                                                tableName + "." + columnName,
+                                                FieldMetaDTO.builder()
+                                                        .displayName(
+                                                                StringUtils.isNotBlank(
+                                                                                targetColumn
+                                                                                        .getDisplayName())
+                                                                        ? targetColumn
+                                                                                .getDisplayName()
+                                                                        : targetColumn
+                                                                                .getColumnComment())
+                                                        .apply(false)
+                                                        .view(true)
+                                                        .edit(false)
+                                                        .permissionCode(1)
+                                                        .build());
+                                    }
+                                }
+                            }
+                        }
+                    });
         }
 
         parentModuleMeta.fields(fieldMetaMap);
@@ -674,7 +746,8 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
                                 worldCloudConfigMap,
                                 fieldNameMap,
                                 moduleTreeDTO,
-                                queryModel));
+                                queryModel,
+                                tableColumnInfoMap));
             }
         }
 
