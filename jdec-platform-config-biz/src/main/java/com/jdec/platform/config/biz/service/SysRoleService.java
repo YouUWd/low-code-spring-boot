@@ -815,6 +815,8 @@ public class SysRoleService implements SysRoleApi {
         LambdaQueryWrapper<SysRole> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(SysRole::getProjectNo, AppContext.getProjectNo());
         wrapper.eq(SysRole::getSubjectId, AppContext.getSubjectId());
+        // 与 getUserRolesByUserIdAndSubjectId 保持一致的角色顺序（按角色ID升序）
+        wrapper.orderByAsc(SysRole::getId);
         if (query.getRoleId() != null) {
             wrapper.eq(SysRole::getId, query.getRoleId());
         }
@@ -1332,6 +1334,8 @@ public class SysRoleService implements SysRoleApi {
             }
         }
 
+        // 与 getRoleConfigPage 保持一致的角色顺序（按角色ID升序）
+        result.sort(Comparator.comparing(UserRoleListResp::getRoleId));
         // 返回合并后的结果（两个路径都为空时返回空列表，否则返回合并结果）
         return result;
     }
