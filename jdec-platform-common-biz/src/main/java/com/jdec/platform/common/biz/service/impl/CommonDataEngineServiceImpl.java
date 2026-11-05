@@ -650,7 +650,11 @@ public class CommonDataEngineServiceImpl implements CommonDataEngineService {
             moduleTables.forEach(
                     tableName -> {
                         for (String columnName : ALWAYS_INCLUDE_FIELDS) {
-                            if (!fieldMetaMap.containsKey(tableName + "." + columnName)) {
+                            if (!fieldMetaMap.containsKey(tableName + "." + columnName)
+                                    || fieldMetaMap
+                                                    .get(tableName + "." + columnName)
+                                                    .getPermissionCode()
+                                            == 0) {
                                 if (fieldNameMap.containsKey(tableName + "." + columnName)) {
                                     fieldMetaMap.put(
                                             tableName + "." + columnName,
