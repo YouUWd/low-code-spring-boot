@@ -32,14 +32,14 @@ public class MonitorLoginInfo implements Serializable {
     @Schema(description = "角色名称（日志侧补全，调用方无需传）")
     private String roleName;
 
-    @Schema(description = "部门id（日志侧补全，调用方无需传；人力库为多值，取首个）")
-    private Long deptId;
+    @Schema(description = "部门id（日志侧补全，调用方无需传；人力库为多值，按逗号拼接存放）")
+    private String deptId;
 
     @Schema(description = "部门名称（日志侧补全，调用方无需传）")
     private String deptName;
 
-    @Schema(description = "岗位id（日志侧补全，调用方无需传；人力库为多值，取首个）")
-    private Long jobId;
+    @Schema(description = "岗位id（日志侧补全，调用方无需传；人力库为多值，按逗号拼接存放）")
+    private String jobId;
 
     @Schema(description = "岗位名称（日志侧补全，调用方无需传）")
     private String jobName;
