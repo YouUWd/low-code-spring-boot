@@ -38,13 +38,24 @@ public class ModuleTreeDiffService {
     private static final Set<String> EXCLUDE_FIELDS =
             Set.of(
                     "id",
+                    "node_id",
+                    "parent_node_id",
+                    "sort_order",
+                    "active",
+                    "status",
+                    "business_status",
+                    "deleted",
+                    "business_no",
+                    "source_id",
+                    "subject_id",
+                    "parent_id",
+                    "info_id",
                     "pid",
                     "version_no",
                     "created_by",
                     "updated_by",
                     "created_date",
-                    "updated_date",
-                    "source_id");
+                    "updated_date");
 
     private static final Set<String> REMOVED_FIELDS = Set.of("id", "pid", "relation_no");
 
@@ -387,8 +398,12 @@ public class ModuleTreeDiffService {
         }
 
         // ========= 任意一方是JSON字符串，解析为JsonNode对比 =========
-        boolean sourceIsJsonStr = source instanceof String && isJsonStr((String) source);
-        boolean targetIsJsonStr = target instanceof String && isJsonStr((String) target);
+        boolean sourceIsJsonStr =
+                (source instanceof String && isJsonStr((String) source))
+                        || source instanceof JsonNode;
+        boolean targetIsJsonStr =
+                target instanceof String && isJsonStr((String) target)
+                        || target instanceof JsonNode;
         if (sourceIsJsonStr || targetIsJsonStr) {
             return compareAnyJsonSide(source, target);
         }
@@ -966,7 +981,7 @@ public class ModuleTreeDiffService {
     }
 
     /** 递归移除节点中的指定字段（如 id、pid、relation_no） */
-    private static void removeFields(JsonNode node) {
+    public static void removeFields(JsonNode node) {
         if (node == null) {
             return;
         }

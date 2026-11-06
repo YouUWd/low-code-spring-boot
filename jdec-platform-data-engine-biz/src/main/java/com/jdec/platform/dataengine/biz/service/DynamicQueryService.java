@@ -34,6 +34,7 @@ import com.jdec.platform.dataengine.biz.enums.ReferenceBizType;
 import com.jdec.platform.dataengine.biz.referencequery.*;
 import com.jdec.platform.dataengine.biz.third.api.DetailBizQueryService;
 import com.jdec.platform.dataengine.biz.third.api.data.DetailDataProcessFactory;
+import com.jdec.platform.dataengine.biz.third.api.data.impl.ModuleTreeDiffService;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import java.sql.Timestamp;
@@ -313,7 +314,7 @@ public class DynamicQueryService {
                                 }
 
                                 // 先去除固定字段
-                                removeFields(newWord);
+                                ModuleTreeDiffService.removeFields(newWord);
 
                                 JsonNode oldWord;
 
@@ -329,6 +330,9 @@ public class DynamicQueryService {
                                     log.warn("wordList转为Json对象", wordList);
                                     throw new RuntimeException(e);
                                 }
+
+                                // 先去除固定字段
+                                ModuleTreeDiffService.removeFields(oldWord);
 
                                 // 新版本数据回填
                                 log.debug(
@@ -1956,25 +1960,6 @@ public class DynamicQueryService {
         }
 
         return getRecordDataByName(primaryTable, ids, fields, moduleInfo);
-    }
-
-    /** 递归移除节点中的指定字段（如 id、pid、relation_no） */
-    private void removeFields(JsonNode node) {
-        if (node == null) {
-            return;
-        }
-        if (node instanceof ObjectNode objectNode) {
-            for (String field : REMOVED_FIELDS) {
-                objectNode.remove(field);
-            }
-            for (Iterator<JsonNode> it = objectNode.elements(); it.hasNext(); ) {
-                removeFields(it.next());
-            }
-        } else if (node instanceof ArrayNode arrayNode) {
-            for (JsonNode item : arrayNode) {
-                removeFields(item);
-            }
-        }
     }
 
     /**
