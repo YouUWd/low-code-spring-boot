@@ -91,6 +91,7 @@ springdoc:
 # ===== 企业微信配置 - 测试环境 =====
 wechat:
   work:
+    api-base-url: http://192.168.60.6
     subjects:
       # 主体1: environment (环保公司)
       environment:

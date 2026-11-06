@@ -2,6 +2,7 @@ package com.jdec.platform.dataengine.biz.third.api.detail.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.bean.copier.CopyOptions;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.dataengine.api.dto.enums.QueryType;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
@@ -13,6 +14,7 @@ import com.jdec.platform.dataengine.biz.dto.context.DetailModuleQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.StatementContext;
 import com.jdec.platform.dataengine.biz.service.MetadataCacheService;
 import com.jdec.platform.dataengine.biz.third.api.condition.ConditionBuilderFactory;
+import com.jdec.platform.dataengine.biz.third.api.data.impl.ModuleTreeDiffService;
 import com.jdec.platform.dataengine.biz.third.api.detail.DetailModuleDataQueryService;
 import com.jdec.platform.dataengine.biz.third.api.module.ModuleInfoWithPermissionService;
 import com.jdec.platform.dataengine.biz.third.api.select.SelectBuilderFactory;
@@ -221,7 +223,9 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
                 return null;
             }
             try {
-                return objectMapper.readTree(jsonStr);
+                JsonNode jsonNode = objectMapper.readTree(jsonStr);
+                ModuleTreeDiffService.removeFields(jsonNode);
+                return jsonNode;
             } catch (Exception e) {
                 return jsonStr;
             }
@@ -231,7 +235,9 @@ public class DetailModuleDataQueryServiceImpl implements DetailModuleDataQuerySe
             if ((trimmed.startsWith("{") && trimmed.endsWith("}"))
                     || (trimmed.startsWith("[") && trimmed.endsWith("]"))) {
                 try {
-                    return objectMapper.readTree(trimmed);
+                    JsonNode jsonNode = objectMapper.readTree(trimmed);
+                    ModuleTreeDiffService.removeFields(jsonNode);
+                    return jsonNode;
                 } catch (Exception ignored) {
                     return val;
                 }
