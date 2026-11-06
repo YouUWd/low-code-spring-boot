@@ -63,7 +63,8 @@ public record ExternalObjectSnapshot(
             String name,
             String memberName,
             String mobilePhoneNo,
-            String identityNo) {}
+            String identityNo,
+            String gender) {}
 
     /** 公司地址（address），与主档一对一。 */
     public record AddressRow(

@@ -75,6 +75,10 @@ public class Member extends Model<Member> {
     @TableField("position")
     private String position;
 
+    /** 性别（type=EMPLOYEE时必填，值如：男/女） */
+    @TableField("gender")
+    private String gender;
+
     /** 展示排序序号 */
     @TableField("sort_order")
     private Integer sortOrder;
@@ -134,6 +138,8 @@ public class Member extends Model<Member> {
     public static final String DEPT_LEADER_FLAG = "dept_leader_flag";
 
     public static final String POSITION = "position";
+
+    public static final String GENDER = "gender";
 
     public static final String SORT_ORDER = "sort_order";
 

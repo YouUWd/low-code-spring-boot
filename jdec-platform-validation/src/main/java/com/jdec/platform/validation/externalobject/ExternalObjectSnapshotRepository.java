@@ -328,7 +328,8 @@ public class ExternalObjectSnapshotRepository {
                                         record.get("name", String.class),
                                         record.get("member_name", String.class),
                                         record.get("mobile_phone_no", String.class),
-                                        record.get("identity_no", String.class)))
+                                        record.get("identity_no", String.class),
+                                        record.get("gender", String.class)))
                 .toList();
     }
 

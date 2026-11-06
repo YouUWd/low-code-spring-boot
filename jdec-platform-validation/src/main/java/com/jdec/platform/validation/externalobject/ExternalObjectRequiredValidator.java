@@ -20,7 +20,8 @@ import org.springframework.stereotype.Component;
  *   <li>对象性质本身最先校验；对象性质无值时，依赖对象性质的必填项按“不适用”处理；
  *   <li>一对多子表（member、company_contact、financial_account、digital_account）没有记录时不参与必填校验，
  *       存在记录时逐行校验行内必填项；
- *   <li>人员构成按类型判断校验字段：公司节点行（组织架构根节点，代表外部对象自身）不是人员行、不参与校验，部门行只校验部门名称，员工行（类型为空按默认员工）校验手机号码，个人性质只校验手机号码；
+ *   <li>人员构成按类型判断校验字段（与对象性质无关）：公司节点行（组织架构根节点，代表外部对象自身）不是人员行、不参与校验，部门行只校验部门名称，员工行（类型为空按默认员工，或显式
+ *       EMPLOYEE/员工）校验手机号码与性别；
  *   <li>一对一子表（basic_info、address、credit_rating）没有记录时，视为一行所有字段均为空， 按该子表的必填规则逐项收集字段级提示，不再提示“数据不存在”；
  *   <li>参保人数按正整数判断是否已填：库中该列为 {@code INT DEFAULT 0}，值为 0 或负数时按未填提示；
  *   <li>三级子表（member_contact）没有记录时不参与必填校验；
@@ -62,7 +63,7 @@ public class ExternalObjectRequiredValidator {
 
     /** 一对多子表模块缺失时按“一行空值”参与校验，以下为其空行。 */
     private static final ExternalObjectSnapshot.MemberRow EMPTY_MEMBER =
-            new ExternalObjectSnapshot.MemberRow(null, null, null, null, null, null);
+            new ExternalObjectSnapshot.MemberRow(null, null, null, null, null, null, null);
 
     private static final ExternalObjectSnapshot.CompanyContactRow EMPTY_COMPANY_CONTACT =
             new ExternalObjectSnapshot.CompanyContactRow(null, null, null, null);
@@ -275,12 +276,14 @@ public class ExternalObjectRequiredValidator {
                 // 公司节点是组织架构的根节点（外部对象自身），不是人员行，不校验手机号码
                 continue;
             }
-            if (!flags.individual() && ExternalObjectValues.isDepartmentType(member.type())) {
-                // 部门行只校验部门名称
+            if (ExternalObjectValues.isDepartmentType(member.type())) {
+                // 部门行只校验部门名称（与对象性质无关）
                 requireText(member.name(), "人员构成 - 部门名称", messages);
             } else {
-                // 员工行（类型为空按默认员工处理）与个人性质的人员行校验手机号码
+                // 员工行（类型为空按默认员工，或显式 EMPLOYEE/员工）校验手机号码与性别，
+                // 仅取决于 member 记录类型，与对象性质无关
                 requireText(member.mobilePhoneNo(), "人员构成 - 手机号码", messages);
+                requireText(member.gender(), "人员构成 - 性别", messages);
             }
         }
     }

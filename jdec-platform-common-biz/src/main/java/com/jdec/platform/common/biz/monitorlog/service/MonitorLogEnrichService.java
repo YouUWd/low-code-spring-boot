@@ -160,7 +160,7 @@ public class MonitorLogEnrichService {
     /**
      * 按用户id 查人力库 {@code user} 表。
      *
-     * <p>部门id、岗位id 在人力库为逗号分隔的多值字符串，日志只记录首个值。
+     * <p>部门id、岗位id 在人力库为逗号分隔的多值字符串，日志按原样（逗号拼接）记录全部值。
      *
      * @return 用户信息，用户不存在或查询失败返回 {@code null}
      */
@@ -197,9 +197,9 @@ public class MonitorLogEnrichService {
                     record.get("userName", String.class),
                     record.get("avatar", String.class),
                     record.get("userNumber", String.class),
-                    firstValueAsLong(record.get("deptId", String.class)),
+                    record.get("deptId", String.class),
                     record.get("deptName", String.class),
-                    firstValueAsLong(record.get("jobId", String.class)),
+                    record.get("jobId", String.class),
                     record.get("jobName", String.class));
         } catch (Exception e) {
             log.warn("监控日志用户信息补全失败: userId={}", userId, e);
@@ -231,19 +231,6 @@ public class MonitorLogEnrichService {
         return dataSourceResolver.getDSLContext(dsName);
     }
 
-    /** 逗号分隔的多值字符串取首个值并转 Long，非数字返回 null */
-    private Long firstValueAsLong(String value) {
-        if (isNotBlank(value)) {
-            String first = value.split(",")[0].trim();
-            try {
-                return Long.valueOf(first);
-            } catch (NumberFormatException e) {
-                log.warn("监控日志用户信息补全：id 非数字，忽略该值 value={}", value);
-            }
-        }
-        return null;
-    }
-
     private boolean isNotBlank(String value) {
         return value != null && !value.trim().isEmpty();
     }
@@ -253,8 +240,8 @@ public class MonitorLogEnrichService {
             String userName,
             String avatar,
             String userNumber,
-            Long deptId,
+            String deptId,
             String deptName,
-            Long jobId,
+            String jobId,
             String jobName) {}
 }

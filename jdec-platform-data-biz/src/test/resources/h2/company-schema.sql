@@ -94,6 +94,7 @@ CREATE TABLE `member` (
   `code` varchar(64) DEFAULT NULL COMMENT '外部部门号（如: W12234）或工号',
   `leader_id` bigint DEFAULT NULL COMMENT '部门负责人ID（type=DEPT时有效，关联本表员工ID）',
   `position` varchar(100) DEFAULT NULL COMMENT '职务/岗位（type=EMPLOYEE时有效）',
+  `gender` varchar(16) DEFAULT NULL COMMENT '性别（type=EMPLOYEE时必填，值如：男/女）',
   `sort_order` int DEFAULT '0' COMMENT '展示排序序号',
   `status` varchar(4000) DEFAULT NULL COMMENT '状态（1:在职/启用, 0:离职/停用）',
   `created_by` bigint DEFAULT NULL COMMENT '创建人ID',

@@ -219,7 +219,8 @@ public class ExternalObjectSaveSnapshotConverter {
                             text(row.get("member.name")),
                             text(row.get("member.member_name")),
                             text(row.get("member.mobile_phone_no")),
-                            text(row.get("member.identity_no"))));
+                            text(row.get("member.identity_no")),
+                            text(row.get("member.gender"))));
         }
         return result;
     }
