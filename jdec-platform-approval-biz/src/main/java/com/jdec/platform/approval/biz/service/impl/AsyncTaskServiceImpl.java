@@ -34,7 +34,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.env.Environment;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -71,8 +71,7 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
     /** 取消按钮：取消只回退单据状态，不产生业务变更，日志 remark 不记录变更明细 */
     private static final String BUTTON_CANCEL = "cancel";
 
-    @Value("${app.company.business-no}")
-    private String companyBusinessNo;
+    private final Environment environment;
 
     // ==================== 企业微信消息（无事务，纯 IO） ====================
     @Override
@@ -420,9 +419,13 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
             ApprovalProcessDTO approvalProcessDTO, String slug, Object sourceData) {
         Long createdBy = (Long) getFieldValueFromSource(sourceData, "created_by");
         UserDetailResp createByUser = sysUserApi.getUserDetailByUserId(createdBy);
-        List<String> columns = List.of("title", "formal_url");
-        Map<String, Object> projectInfo =
-                projectApiClient.getProjectInfoByNo(companyBusinessNo, columns);
+        String businessNo =
+                environment.getProperty("app." + AppContext.getProjectNo() + ".business-no");
+        if (Objects.isNull(businessNo)) throw new BusinessException("获取businessNo失败");
+        String envUrl = environment.getProperty("app." + AppContext.getProjectNo() + ".url");
+        String businessUrl = Objects.nonNull(envUrl) ? envUrl : "formal_url";
+        List<String> columns = List.of("title", businessUrl);
+        Map<String, Object> projectInfo = projectApiClient.getProjectInfoByNo(businessNo, columns);
         // 系统内置参数
         switch (slug) {
             case "systemName":
