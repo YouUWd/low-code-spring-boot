@@ -198,6 +198,23 @@ class DataPersistenceTest {
                 .when(configApi.getProjectTableRelations(nullable(String.class)))
                 .thenReturn(mockProjectRelations);
 
+        lenient()
+                .when(configApi.getProjectModuleTree(any(), any()))
+                .thenAnswer(
+                        inv -> {
+                            List<ModuleTreeDTO> trees = new ArrayList<>();
+                            ModuleTreeDTO studentTree = configApi.getModuleTree("school", 1L, 101L);
+                            if (studentTree != null) {
+                                trees.add(studentTree);
+                            }
+                            ModuleTreeDTO companyTree =
+                                    configApi.getModuleTree("company", 1L, 1001L);
+                            if (companyTree != null) {
+                                trees.add(companyTree);
+                            }
+                            return trees;
+                        });
+
         savePlanCompiler = new SavePlanCompiler();
         savePlanExecutor = new SavePlanExecutor(jooqDataContextFactory);
         dataPersistenceService =
@@ -824,5 +841,27 @@ class DataPersistenceTest {
                                                 && sql.toLowerCase().contains("`course_name` =")
                                                 && sql.toLowerCase().contains("where")),
                 "未找到针对记录 301 的更新 SQL: " + executedSqlList);
+    }
+
+    @Test
+    @DisplayName("纯逻辑 moduleCode 保存：入参不带 moduleId，全链路自动按 moduleCode 加载元数据并保存")
+    void testSaveByModuleCode() {
+        DataRow studentRow = new DataRow();
+        studentRow.putValue("student", "name", "王五");
+        studentRow.putValue("student", "status", 1);
+
+        DataBlock rootBlock =
+                DataBlock.builder()
+                        .moduleCode("MOD-SCHOOL-STUDENT")
+                        .records(List.of(studentRow))
+                        .build();
+
+        DataSaveResp resp = dataPersistenceService.save(rootBlock);
+
+        assertNotNull(resp);
+        assertNotNull(resp.getRootId());
+        assertNotNull(resp.getData());
+        assertEquals(101L, resp.getData().getModuleId());
+        assertEquals("MOD-SCHOOL-STUDENT", resp.getData().getModuleCode());
     }
 }

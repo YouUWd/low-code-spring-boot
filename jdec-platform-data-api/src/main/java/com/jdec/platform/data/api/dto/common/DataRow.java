@@ -142,6 +142,17 @@ public class DataRow implements Serializable {
                 .orElse(null);
     }
 
+    /** 根据子模块业务编码查找首个匹配的子区块 */
+    public DataBlock getChild(String moduleCode) {
+        if (children == null || children.isEmpty() || moduleCode == null || moduleCode.isBlank()) {
+            return null;
+        }
+        return children.stream()
+                .filter(b -> moduleCode.equalsIgnoreCase(b.getModuleCode()))
+                .findFirst()
+                .orElse(null);
+    }
+
     /** 根据子模块 ID 获取所有匹配的子区块 */
     public List<DataBlock> getChildren(Long childModuleId) {
         if (children == null || children.isEmpty() || childModuleId == null) {
@@ -149,6 +160,16 @@ public class DataRow implements Serializable {
         }
         return children.stream()
                 .filter(b -> childModuleId.equals(b.getModuleId()))
+                .collect(Collectors.toList());
+    }
+
+    /** 根据子模块业务编码获取所有匹配的子区块 */
+    public List<DataBlock> getChildren(String moduleCode) {
+        if (children == null || children.isEmpty() || moduleCode == null || moduleCode.isBlank()) {
+            return Collections.emptyList();
+        }
+        return children.stream()
+                .filter(b -> moduleCode.equalsIgnoreCase(b.getModuleCode()))
                 .collect(Collectors.toList());
     }
 

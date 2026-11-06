@@ -2,6 +2,7 @@ package com.jdec.platform.data.api.dto.common;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
@@ -35,12 +36,25 @@ public class DataBlock implements Serializable {
     @Schema(description = "业务模块 ID", example = "1001")
     private Long moduleId;
 
+    @Schema(description = "业务模块编码", example = "COMPANY-ROOT")
+    @JsonProperty("module_code")
+    private String moduleCode;
+
     @Schema(description = "区块内的行记录列表")
     private List<DataRow> records;
 
     /** 便捷工厂：根据模块 ID 与多行记录构建 */
     public static DataBlock of(Long moduleId, List<DataRow> records) {
         return DataBlock.builder().moduleId(moduleId).records(records).build();
+    }
+
+    /** 便捷工厂：根据模块 ID、模块编码与多行记录构建 */
+    public static DataBlock of(Long moduleId, String moduleCode, List<DataRow> records) {
+        return DataBlock.builder()
+                .moduleId(moduleId)
+                .moduleCode(moduleCode)
+                .records(records)
+                .build();
     }
 
     /** 便捷工厂：根据模块 ID 与单行记录构建 */
@@ -51,9 +65,27 @@ public class DataBlock implements Serializable {
                 .build();
     }
 
+    /** 便捷工厂：根据模块 ID、模块编码与单行记录构建 */
+    public static DataBlock of(Long moduleId, String moduleCode, DataRow singleRecord) {
+        return DataBlock.builder()
+                .moduleId(moduleId)
+                .moduleCode(moduleCode)
+                .records(singleRecord != null ? List.of(singleRecord) : Collections.emptyList())
+                .build();
+    }
+
     /** 空区块工厂 */
     public static DataBlock empty(Long moduleId) {
         return DataBlock.builder().moduleId(moduleId).records(Collections.emptyList()).build();
+    }
+
+    /** 空区块工厂 (带模块编码) */
+    public static DataBlock empty(Long moduleId, String moduleCode) {
+        return DataBlock.builder()
+                .moduleId(moduleId)
+                .moduleCode(moduleCode)
+                .records(Collections.emptyList())
+                .build();
     }
 
     /** 获取首条单据主记录 (单据详情场景便捷访问) */

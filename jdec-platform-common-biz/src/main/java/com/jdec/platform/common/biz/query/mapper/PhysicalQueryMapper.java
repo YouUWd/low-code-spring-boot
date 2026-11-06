@@ -636,6 +636,7 @@ public final class PhysicalQueryMapper {
                 childrenNodes.add(
                         ModuleDataNode.builder()
                                 .moduleId(subModId)
+                                .moduleCode(childNode.getModuleCode())
                                 .menuId(subMenuId)
                                 .record(childItems)
                                 .build());
@@ -644,6 +645,17 @@ public final class PhysicalQueryMapper {
 
         List<ModuleDataNode> finalChildren = childrenNodes.isEmpty() ? null : childrenNodes;
         return DataRecordItem.builder().row(flatRow).children(finalChildren).build();
+    }
+
+    /** 兼容历史重载：moduleCode 现已由底层 DataBlock 原生携带，不再依赖外部 moduleCodeResolver */
+    public static DataRecordItem toDataRecordItem(
+            DataRow dataRow,
+            Map<Long, Long> moduleToMenuMap,
+            Map<String, Set<String>> requestedTableColumnsMap,
+            Function<Long, Long> moduleToMenuFallback,
+            Function<Long, String> moduleCodeResolver) {
+        return toDataRecordItem(
+                dataRow, moduleToMenuMap, requestedTableColumnsMap, moduleToMenuFallback);
     }
 
     public static List<DataRecordItem> extractTargetRecords(
@@ -1226,17 +1238,19 @@ public final class PhysicalQueryMapper {
             }
             String tableName = spec.getTableName().trim();
             List<String> currentCols = spec.getColumns();
-            if (currentCols != null) {
-                boolean hasWildcard = false;
-                for (String c : currentCols) {
-                    if (c != null && "*".equals(c.trim())) {
-                        hasWildcard = true;
-                        break;
-                    }
+            if (currentCols == null) {
+                // columns 为 null 表示全字段投影（包含所有业务字段与系统字段），无需补列，保持 null
+                continue;
+            }
+            boolean hasWildcard = false;
+            for (String c : currentCols) {
+                if (c != null && "*".equals(c.trim())) {
+                    hasWildcard = true;
+                    break;
                 }
-                if (hasWildcard) {
-                    continue;
-                }
+            }
+            if (hasWildcard) {
+                continue;
             }
 
             List<String> actualSysCols =

@@ -46,39 +46,48 @@ public class DataQueryService {
 
     /** 标准动态列表全量查询门面 (QueryReq -> DataBlock，不分页，跳过 COUNT 统计) */
     public DataBlock queryList(QueryReq req) {
-        QueryPlan plan = queryPlanCompiler.compile(req, planMetaLoader.load(req.getModuleId()));
+        PlanMeta meta = planMetaLoader.load(req);
+        QueryPlanCompiler.normalizeReqModule(req, meta);
+        QueryPlan plan = queryPlanCompiler.compile(req, meta);
         return queryPlanExecutor.executeList(plan);
     }
 
     /** 标准通用查询门面 (QueryReq -> DataPage<DataBlock>) */
     public DataPage<DataBlock> query(QueryReq req) {
-        QueryPlan plan = queryPlanCompiler.compile(req, planMetaLoader.load(req.getModuleId()));
+        PlanMeta meta = planMetaLoader.load(req);
+        QueryPlanCompiler.normalizeReqModule(req, meta);
+        QueryPlan plan = queryPlanCompiler.compile(req, meta);
         return queryPlanExecutor.execute(plan);
     }
 
     /** 标准动态数据集数量统计 (QueryReq -> Long) */
     public Long count(QueryReq req) {
-        QueryPlan plan = queryPlanCompiler.compile(req, planMetaLoader.load(req.getModuleId()));
+        PlanMeta meta = planMetaLoader.load(req);
+        QueryPlanCompiler.normalizeReqModule(req, meta);
+        QueryPlan plan = queryPlanCompiler.compile(req, meta);
         return queryPlanExecutor.executeCount(plan);
     }
 
     /** 标准单据详情精准查询门面 (DetailQueryReq -> DataBlock 读写同源区块) */
     public DataBlock getDetail(DetailQueryReq req) {
-        return getDetail(req, planMetaLoader.load(req.getModuleId()));
+        return getDetail(req, planMetaLoader.load(req));
     }
 
     /** 标准单据详情精准查询门面（复用调用方已加载的元数据快照） */
     public DataBlock getDetail(DetailQueryReq req, PlanMeta meta) {
+        QueryPlanCompiler.normalizeReqModule(req, meta);
         QueryPlan plan = queryPlanCompiler.compileDetail(req, meta);
         DataPage<DataBlock> page = queryPlanExecutor.execute(plan);
         return page != null && page.getData() != null
                 ? page.getData()
-                : DataBlock.empty(req.getModuleId());
+                : DataBlock.empty(req.getModuleId(), req.getModuleCode());
     }
 
     /** 标准字段搜索下拉候选项查询 (OptionReq -> List<DataOptionResp>) */
     public List<DataOptionResp> getOptions(OptionReq req) {
-        QueryPlan plan = queryPlanCompiler.compile(req, planMetaLoader.load(req.getModuleId()));
+        PlanMeta meta = planMetaLoader.load(req);
+        QueryPlanCompiler.normalizeReqModule(req, meta);
+        QueryPlan plan = queryPlanCompiler.compile(req, meta);
         List<Object> values =
                 queryPlanExecutor.executeDistinctOptions(
                         plan, req.getTableName(), req.getColumnName(), req.getDirection());

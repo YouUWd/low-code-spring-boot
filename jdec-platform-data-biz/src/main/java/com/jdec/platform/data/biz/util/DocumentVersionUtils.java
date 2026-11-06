@@ -72,8 +72,14 @@ public final class DocumentVersionUtils {
 
         DataRow mergedRow = mergeDataRow(baseFirst, patchFirst);
 
+        String moduleCode =
+                base != null && base.getModuleCode() != null
+                        ? base.getModuleCode()
+                        : (patch != null ? patch.getModuleCode() : null);
+
         return DataBlock.builder()
                 .moduleId(moduleId)
+                .moduleCode(moduleCode)
                 .records(Collections.singletonList(mergedRow))
                 .build();
     }
@@ -168,13 +174,25 @@ public final class DocumentVersionUtils {
                     }
                 }
                 mergedChildren.add(
-                        DataBlock.builder().moduleId(childModId).records(newRows).build());
+                        DataBlock.builder()
+                                .moduleId(childModId)
+                                .moduleCode(patchChildBlock.getModuleCode())
+                                .records(newRows)
+                                .build());
             } else {
                 // 两边均有数据 -> 做行级比对与合并
                 List<DataRow> mergedChildRows =
                         mergeChildRows(baseChildBlock.getRecords(), patchChildBlock.getRecords());
+                String childCode =
+                        baseChildBlock.getModuleCode() != null
+                                ? baseChildBlock.getModuleCode()
+                                : patchChildBlock.getModuleCode();
                 mergedChildren.add(
-                        DataBlock.builder().moduleId(childModId).records(mergedChildRows).build());
+                        DataBlock.builder()
+                                .moduleId(childModId)
+                                .moduleCode(childCode)
+                                .records(mergedChildRows)
+                                .build());
             }
         }
 
@@ -392,7 +410,11 @@ public final class DocumentVersionUtils {
                 copyRecords.add(cloneRow(r));
             }
         }
-        return DataBlock.builder().moduleId(source.getModuleId()).records(copyRecords).build();
+        return DataBlock.builder()
+                .moduleId(source.getModuleId())
+                .moduleCode(source.getModuleCode())
+                .records(copyRecords)
+                .build();
     }
 
     public static DataRow cloneRow(DataRow source) {
