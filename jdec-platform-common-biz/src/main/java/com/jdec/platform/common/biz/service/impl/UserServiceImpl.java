@@ -8,9 +8,11 @@ import com.jdec.platform.hr.api.DepartmentApi;
 import com.jdec.platform.hr.api.bo.DepartmentBO;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -74,16 +76,14 @@ public class UserServiceImpl implements UserService {
             return Collections.emptyList();
         }
 
-        // 1. 用户数据：走 SysRoleApi 既有方法（sys_user 已在角色保存时同步主体下用户，无需再调 HR 取用户）
-        UserSwitchDataResp data = sysRoleApi.getUserSwitchData(userName);
-        List<UserSwitchDataResp.SysUserInfo> sysUsers =
-                (data == null || data.getSysUsers() == null)
-                        ? Collections.emptyList()
-                        : data.getSysUsers();
+        // 1. 取人逻辑：通过 AppContext 拿到项目编码与主体 → 查角色列表 → 角色带出角色用户、角色主体
+        //    → 从 sys_user 带出符合的用户数据（sys_user 已在角色保存时同步主体下用户，无需再调 HR 取用户）
+        List<UserSwitchDataResp.SysUserInfo> sysUsers = sysRoleApi.getUserTreeUsers(userName);
 
-        // 2. 用户节点按 userId 去重后，再按所属部门分桶
+        // 2. 用户节点（一人可能多部门）按部门分桶：每个 (用户, 部门) 各生成一个节点，
+        //    使其同时出现在多个部门分支下，而非只挂在最后一个部门
         Map<String, List<UserSearchTreeNodeResp>> usersByDepartId = new LinkedHashMap<>();
-        for (UserSearchTreeNodeResp userNode : buildUserNodes(sysUsers).values()) {
+        for (UserSearchTreeNodeResp userNode : buildUserNodes(sysUsers)) {
             usersByDepartId
                     .computeIfAbsent(userNode.getDepartId(), key -> new ArrayList<>())
                     .add(userNode);
@@ -120,13 +120,15 @@ public class UserServiceImpl implements UserService {
     }
 
     /**
-     * 系统用户 → 用户节点（按 userId 去重）
+     * 系统用户 → 用户节点。
      *
-     * <p>一个用户可能挂在多个部门下（{@code departIds} 为逗号分隔），与原实现一致：逐部门覆盖写入，最终归属最后一个非空部门。
+     * <p>一个用户可能挂在多个部门下（{@code departIds} 为逗号分隔），需要为每个部门各生成一个节点， 使其同时出现在多个部门分支下；按 (userId, departId)
+     * 去重，避免重复数据导致同部门出现多次。
      */
-    private Map<Long, UserSearchTreeNodeResp> buildUserNodes(
+    private List<UserSearchTreeNodeResp> buildUserNodes(
             List<UserSwitchDataResp.SysUserInfo> sysUsers) {
-        Map<Long, UserSearchTreeNodeResp> userMap = new LinkedHashMap<>();
+        List<UserSearchTreeNodeResp> nodes = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
         for (UserSwitchDataResp.SysUserInfo user : sysUsers) {
             String deptIds = user.getDepartIds();
             if (deptIds == null || deptIds.isEmpty()) {
@@ -137,8 +139,10 @@ public class UserServiceImpl implements UserService {
                 if (deptId.isEmpty()) {
                     continue;
                 }
-                userMap.put(
-                        user.getUserId(),
+                if (!seen.add(user.getUserId() + ":" + deptId)) {
+                    continue;
+                }
+                nodes.add(
                         UserSearchTreeNodeResp.builder()
                                 .id(USER_ID_PREFIX + user.getUserId())
                                 .sysId(user.getId())
@@ -155,7 +159,7 @@ public class UserServiceImpl implements UserService {
                                 .build());
             }
         }
-        return userMap;
+        return nodes;
     }
 
     /**

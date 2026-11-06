@@ -269,7 +269,7 @@ class CompanyChangeListQueryTest {
         assertTrue(req.getColumns().contains("change_no"));
         assertTrue(req.getColumns().contains("source_id"));
         assertTrue(req.getColumns().contains("modify_reason"));
-        assertFalse(req.getColumns().contains("read_status"));
+        assertTrue(req.getColumns().contains("read_status"));
 
         // 验证必须包含主表创建人为当前用户的 source_id IN (286L) 条件
         assertTrue(

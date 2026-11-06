@@ -807,7 +807,6 @@ public final class PhysicalQueryMapper {
                 continue;
             }
             Map<String, Object> merged = new LinkedHashMap<>(recordMap);
-            merged.remove("read_status");
             if (merged.get("id") != null) {
                 merged.put("change_id", merged.get("id"));
             }
