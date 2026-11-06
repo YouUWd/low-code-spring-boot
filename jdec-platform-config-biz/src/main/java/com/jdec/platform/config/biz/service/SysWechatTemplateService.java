@@ -153,10 +153,6 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         if (template == null || template.getDeleted() == 1) {
             throw new BusinessException(404, "模板不存在");
         }
-        if (!Objects.equals(template.getProjectNo(), projectNo)
-                || (subjectId != null && !Objects.equals(template.getSubjectId(), subjectId))) {
-            throw new BusinessException(403, "无权访问此模板");
-        }
         LoginUser loginUser = SecurityUtils.getLoginUserOrThrow();
         String phone = loginUser.getPhone();
         if (!StringUtils.hasText(phone)) {
