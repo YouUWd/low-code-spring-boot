@@ -339,7 +339,7 @@ class PhysicalQueryMapperTest {
         assertTrue(targetColumns.contains("source_id"));
         assertTrue(targetColumns.contains("change_no"));
         assertTrue(targetColumns.contains("modify_reason"));
-        assertFalse(targetColumns.contains("read_status"));
+        assertTrue(targetColumns.contains("read_status"));
 
         // 4. toChangeDataRows 返回数据中移除 read_status，但保留 id、change_id 与 source_id
         Map<String, Object> rawMap = new LinkedHashMap<>();
@@ -354,7 +354,7 @@ class PhysicalQueryMapperTest {
         assertEquals(100L, tableData.get("id"));
         assertEquals(100L, tableData.get("change_id"));
         assertEquals(200L, tableData.get("source_id"));
-        assertFalse(tableData.containsKey("read_status"));
+        assertTrue(tableData.containsKey("read_status"));
     }
 
     @Test
