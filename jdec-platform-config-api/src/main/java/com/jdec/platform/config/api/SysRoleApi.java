@@ -59,4 +59,15 @@ public interface SysRoleApi {
      * @return 用户切换数据
      */
     UserSwitchDataResp getUserSwitchData(String userName);
+
+    /**
+     * 获取人员架构树所需的用户数据。
+     *
+     * <p>取人逻辑：通过 {@link com.jdec.platform.shared.context.AppContext} 拿到项目编码与主体 → 查角色列表 →
+     * 角色带出角色用户、角色主体 → 从 sys_user 带出符合的用户数据（角色直接绑定用户 + 主体下用户；角色保存时已同步主体下用户到 sys_user）。
+     *
+     * @param userName 用户名称（模糊查询）
+     * @return 系统用户列表（去重）
+     */
+    List<UserSwitchDataResp.SysUserInfo> getUserTreeUsers(String userName);
 }

@@ -74,12 +74,9 @@ public class UserServiceImpl implements UserService {
             return Collections.emptyList();
         }
 
-        // 1. 用户数据：走 SysRoleApi 既有方法（sys_user 已在角色保存时同步主体下用户，无需再调 HR 取用户）
-        UserSwitchDataResp data = sysRoleApi.getUserSwitchData(userName);
-        List<UserSwitchDataResp.SysUserInfo> sysUsers =
-                (data == null || data.getSysUsers() == null)
-                        ? Collections.emptyList()
-                        : data.getSysUsers();
+        // 1. 取人逻辑：通过 AppContext 拿到项目编码与主体 → 查角色列表 → 角色带出角色用户、角色主体
+        //    → 从 sys_user 带出符合的用户数据（sys_user 已在角色保存时同步主体下用户，无需再调 HR 取用户）
+        List<UserSwitchDataResp.SysUserInfo> sysUsers = sysRoleApi.getUserTreeUsers(userName);
 
         // 2. 用户节点按 userId 去重后，再按所属部门分桶
         Map<String, List<UserSearchTreeNodeResp>> usersByDepartId = new LinkedHashMap<>();

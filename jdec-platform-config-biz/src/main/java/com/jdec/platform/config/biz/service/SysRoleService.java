@@ -2153,25 +2153,53 @@ public class SysRoleService implements SysRoleApi {
      */
     @Override
     public UserSwitchDataResp getUserSwitchData(String userName) {
-        java.time.LocalDate today = java.time.LocalDate.now();
         String projectNo = AppContext.getProjectNo();
         Long subjectId = AppContext.getSubjectId();
+        List<SysUser> sysUsers = queryScopeUsers(projectNo, subjectId, userName);
+        List<Long> subjectIds = queryScopeSubjectIds(projectNo, subjectId);
+        return UserSwitchDataResp.builder()
+                .sysUsers(toSysUserInfoList(sysUsers))
+                .subjectIds(subjectIds)
+                .build();
+    }
 
-        // 1. 根据请求头中的主体ID和项目编码查询角色列表
+    /**
+     * 获取人员架构树所需的用户数据。
+     *
+     * <p>取人逻辑：通过 {@link AppContext} 拿到项目编码与主体 → 查角色列表 → 角色带出角色用户、角色主体 → 从 sys_user
+     * 带出符合的用户数据（角色直接绑定用户 + 主体下用户；角色保存时已同步主体下用户到 sys_user）。
+     *
+     * @param userName 用户名称（模糊查询）
+     * @return 系统用户列表（去重）
+     */
+    @Override
+    public List<UserSwitchDataResp.SysUserInfo> getUserTreeUsers(String userName) {
+        List<SysUser> sysUsers =
+                queryScopeUsers(AppContext.getProjectNo(), AppContext.getSubjectId(), userName);
+        return toSysUserInfoList(sysUsers);
+    }
+
+    /**
+     * 按「项目编码 + 主体」定位角色，再经角色用户、角色主体从 sys_user 取出符合的用户。
+     *
+     * @param projectNo 项目编码
+     * @param subjectId 主体ID
+     * @param userName 用户名称（模糊查询）
+     * @return 系统用户列表（去重）
+     */
+    private List<SysUser> queryScopeUsers(String projectNo, Long subjectId, String userName) {
+        java.time.LocalDate today = java.time.LocalDate.now();
+
+        // 1. 根据项目编码 + 主体查询角色列表
         List<SysRole> roles =
                 sysRoleMapper.selectList(
                         Wrappers.<SysRole>lambdaQuery()
                                 .eq(SysRole::getSubjectId, subjectId)
                                 .eq(SysRole::getProjectNo, projectNo)
                                 .select(SysRole::getId));
-
         if (roles.isEmpty()) {
-            return UserSwitchDataResp.builder()
-                    .sysUsers(Collections.emptyList())
-                    .subjectIds(Collections.emptyList())
-                    .build();
+            return Collections.emptyList();
         }
-
         List<Long> roleIds = roles.stream().map(SysRole::getId).toList();
 
         // 2. 通过角色用户关联表查询用户ID（有效期内）
@@ -2212,7 +2240,7 @@ public class SysRoleService implements SysRoleApi {
                         .distinct()
                         .toList();
 
-        // 4. 查询 sys_user 表的用户信息（角色直接绑定用户 + 主体下用户；角色保存时已同步主体下用户到 sys_user）
+        // 4. 查询 sys_user（角色直接绑定用户 + 主体下用户）
         boolean hasUserNameFilter = userName != null && !userName.trim().isEmpty();
         Map<Long, SysUser> sysUserMap = new LinkedHashMap<>();
         if (!userIds.isEmpty()) {
@@ -2233,28 +2261,67 @@ public class SysRoleService implements SysRoleApi {
                                     .like(hasUserNameFilter, SysUser::getUserName, userName))
                     .forEach(u -> sysUserMap.putIfAbsent(u.getUserId(), u));
         }
-        List<SysUser> sysUsers = new ArrayList<>(sysUserMap.values());
+        return new ArrayList<>(sysUserMap.values());
+    }
 
-        // 5. 转换为响应对象
-        List<UserSwitchDataResp.SysUserInfo> userInfoList =
-                sysUsers.stream()
-                        .map(
-                                user ->
-                                        UserSwitchDataResp.SysUserInfo.builder()
-                                                .id(user.getId())
-                                                .userId(user.getUserId())
-                                                .userType(user.getUserType())
-                                                .userName(user.getUserName())
-                                                .workNumber(user.getWorkNumber())
-                                                .userAvatar(user.getUserAvatar())
-                                                .subjectId(user.getSubjectId())
-                                                .sex(user.getSex())
-                                                .departIds(user.getDepartIds())
-                                                .departName(user.getDepartName())
-                                                .build())
-                        .toList();
+    /**
+     * 查询角色作用范围内的主体ID列表（有效期内）。
+     *
+     * @param projectNo 项目编码
+     * @param subjectId 主体ID
+     * @return 主体ID列表（去重）
+     */
+    private List<Long> queryScopeSubjectIds(String projectNo, Long subjectId) {
+        java.time.LocalDate today = java.time.LocalDate.now();
+        List<SysRole> roles =
+                sysRoleMapper.selectList(
+                        Wrappers.<SysRole>lambdaQuery()
+                                .eq(SysRole::getSubjectId, subjectId)
+                                .eq(SysRole::getProjectNo, projectNo)
+                                .select(SysRole::getId));
+        if (roles.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<Long> roleIds = roles.stream().map(SysRole::getId).toList();
+        return sysRoleSubjectMapper
+                .selectList(
+                        Wrappers.<SysRoleSubject>lambdaQuery()
+                                .in(SysRoleSubject::getRoleId, roleIds)
+                                .eq(SysRoleSubject::getStatus, 0))
+                .stream()
+                .filter(
+                        rs ->
+                                isEffectiveDateValid(
+                                        rs.getEffectiveType(),
+                                        rs.getEffectiveStartDate(),
+                                        rs.getEffectiveEndDate(),
+                                        today))
+                .map(SysRoleSubject::getSubjectId)
+                .distinct()
+                .toList();
+    }
 
-        return UserSwitchDataResp.builder().sysUsers(userInfoList).subjectIds(subjectIds).build();
+    /** SysUser -> SysUserInfo 列表转换 */
+    private List<UserSwitchDataResp.SysUserInfo> toSysUserInfoList(List<SysUser> sysUsers) {
+        if (sysUsers == null || sysUsers.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return sysUsers.stream()
+                .map(
+                        user ->
+                                UserSwitchDataResp.SysUserInfo.builder()
+                                        .id(user.getId())
+                                        .userId(user.getUserId())
+                                        .userType(user.getUserType())
+                                        .userName(user.getUserName())
+                                        .workNumber(user.getWorkNumber())
+                                        .userAvatar(user.getUserAvatar())
+                                        .subjectId(user.getSubjectId())
+                                        .sex(user.getSex())
+                                        .departIds(user.getDepartIds())
+                                        .departName(user.getDepartName())
+                                        .build())
+                .toList();
     }
 
     /** 将 SysRoleUser 列表转换为 RoleUserReq 列表 */
