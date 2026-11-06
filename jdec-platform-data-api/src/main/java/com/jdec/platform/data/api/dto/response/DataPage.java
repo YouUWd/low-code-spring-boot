@@ -78,6 +78,16 @@ public class DataPage<T> implements Serializable {
                 .build();
     }
 
+    public static DataPage<DataBlock> empty(
+            Long moduleId, String moduleCode, Integer pageNo, Integer pageSize) {
+        return DataPage.<DataBlock>builder()
+                .pageNo(pageNo != null ? pageNo : 1)
+                .pageSize(pageSize != null ? pageSize : 20)
+                .total(0L)
+                .data(DataBlock.empty(moduleId, moduleCode))
+                .build();
+    }
+
     public static <T> DataPage<T> empty() {
         return empty(1, 20);
     }

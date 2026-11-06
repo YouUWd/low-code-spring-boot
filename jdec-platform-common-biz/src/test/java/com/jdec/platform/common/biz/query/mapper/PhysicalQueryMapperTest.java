@@ -3,6 +3,7 @@ package com.jdec.platform.common.biz.query.mapper;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.jdec.platform.common.api.dto.response.DataRecordItem;
@@ -513,5 +514,26 @@ class PhysicalQueryMapperTest {
                 PhysicalQueryMapper.supplementShadowColumns(
                         tableSpecs, tree, 1001L, Set.of("business_status", "created_by", "nature"));
         assertEquals(Set.of("info.nature"), shadowKeys);
+    }
+
+    @Test
+    @DisplayName("测试 supplementSystemColumns：当 TableSpec.columns 为 null 时，保持全字段投影语义，不被覆盖为仅系统字段")
+    void testSupplementSystemColumns_whenColumnsNull_keepNullForFullProjection() {
+        ModuleTreeDTO tree = buildTestModuleTree(true, true);
+        List<TableSpec> tableSpecs = new ArrayList<>();
+        tableSpecs.add(TableSpec.builder().moduleId(1001L).tableName("info").columns(null).build());
+
+        Map<String, Set<String>> requestedMap = new HashMap<>();
+        requestedMap.put("info", null);
+
+        PhysicalQueryMapper.supplementSystemColumns(
+                tableSpecs,
+                tree,
+                1001L,
+                table -> Set.of("id", "company_name", "business_no", "business_status", "deleted"),
+                requestedMap);
+
+        assertNull(tableSpecs.get(0).getColumns(), "columns=null 时必须保持为 null，避免全字段投影退化为只查系统字段");
+        assertNull(requestedMap.get("info"), "requestedMap 对应表的白名单必须保持为 null（全放行）");
     }
 }

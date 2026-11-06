@@ -25,6 +25,9 @@ public class ModuleDataNode implements Serializable {
     @Schema(description = "模块 ID", example = "1001")
     private Long moduleId;
 
+    @Schema(description = "模块标识编码", example = "COMPANY-ROOT")
+    private String moduleCode;
+
     @Schema(description = "菜单 ID", example = "1001")
     private Long menuId;
 

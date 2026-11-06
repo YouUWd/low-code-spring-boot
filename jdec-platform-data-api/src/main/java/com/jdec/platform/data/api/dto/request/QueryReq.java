@@ -1,7 +1,7 @@
 package com.jdec.platform.data.api.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
-import jakarta.validation.constraints.NotNull;
 import java.io.Serializable;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,9 +28,12 @@ import lombok.experimental.SuperBuilder;
 @Schema(description = "业务数据动态查询基础请求模型")
 public class QueryReq implements Serializable {
 
-    @NotNull(message = "查询主模块 ID 不能为空")
-    @Schema(description = "根主模块 ID", requiredMode = Schema.RequiredMode.REQUIRED, example = "1001")
+    @Schema(description = "根主模块 ID (与 moduleCode 二选一)", example = "1001")
     private Long moduleId;
+
+    @Schema(description = "根主模块编码 (与 moduleId 二选一)", example = "COMPANY-ROOT")
+    @JsonProperty("module_code")
+    private String moduleCode;
 
     @Schema(
             description =

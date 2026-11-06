@@ -44,6 +44,15 @@ public class DataPersistenceService {
     public DataSaveResp save(DataBlock block, PlanMeta meta) {
         SavePlan plan = savePlanCompiler.compile(block, meta);
         Long rootId = savePlanExecutor.execute(plan);
+        if (block != null
+                && block.getModuleCode() == null
+                && meta != null
+                && meta.hasModuleTree()) {
+            block.setModuleCode(meta.moduleTree().getRootModule().getModuleCode());
+        }
+        if (block != null && block.getModuleId() == null && meta != null && meta.hasModuleTree()) {
+            block.setModuleId(meta.moduleTree().getRootModuleId());
+        }
         return DataSaveResp.builder().rootId(rootId).data(block).build();
     }
 
@@ -55,7 +64,14 @@ public class DataPersistenceService {
 
     /** 根模块 ID 无法解析时返回 null，把「空请求」的错误信息统一交给编译器抛出。 */
     private PlanMeta loadMetaOrNull(DataBlock block) {
+        if (block == null) {
+            return null;
+        }
         Long moduleId = SavePlanCompiler.resolveRootModuleId(block);
-        return moduleId != null ? planMetaLoader.load(moduleId) : null;
+        String moduleCode = block.getModuleCode();
+        if (moduleId != null || (moduleCode != null && !moduleCode.isBlank())) {
+            return planMetaLoader.load(moduleId, moduleCode);
+        }
+        return null;
     }
 }

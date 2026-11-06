@@ -52,6 +52,7 @@ public class QueryPlanCompiler {
         if (req == null) {
             throw new IllegalArgumentException("候选项请求不能为空");
         }
+        normalizeReqModule(req, meta);
         if (req.getModuleId() == null
                 || req.getColumnName() == null
                 || req.getColumnName().isBlank()) {
@@ -96,6 +97,7 @@ public class QueryPlanCompiler {
         if (req == null) {
             throw new IllegalArgumentException("详情查询请求不能为空");
         }
+        normalizeReqModule(req, meta);
         if (req.getModuleId() == null || req.getId() == null) {
             throw new IllegalArgumentException("模块 ID 和单据 ID 不能为空");
         }
@@ -130,6 +132,7 @@ public class QueryPlanCompiler {
         if (req == null) {
             throw new IllegalArgumentException("查询请求不能为空");
         }
+        normalizeReqModule(req, meta);
         Long rootModuleId = req.getModuleId();
         if (rootModuleId == null) {
             throw new IllegalArgumentException("查询主模块 ID 不能为空");
@@ -925,5 +928,49 @@ public class QueryPlanCompiler {
             orderFields.add(DSL.field(DSL.name(primaryTable, "id")).desc());
         }
         return orderFields;
+    }
+
+    /** 若请求中未传入 moduleId 但传入了 moduleCode，自动从元数据快照中解析出对应的 moduleId */
+    public static void normalizeReqModule(QueryReq req, PlanMeta meta) {
+        if (req == null) {
+            return;
+        }
+        if (req.getModuleId() == null
+                && req.getModuleCode() != null
+                && meta != null
+                && meta.hasModuleTree()) {
+            if (meta.moduleTree().getModuleMap() != null) {
+                for (com.jdec.platform.config.api.dto.common.ModuleInfo info :
+                        meta.moduleTree().getModuleMap().values()) {
+                    if (info != null
+                            && req.getModuleCode().equalsIgnoreCase(info.getModuleCode())) {
+                        req.setModuleId(info.getModuleId());
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
+    /** 若候选项请求中未传入 moduleId 但传入了 moduleCode，自动从元数据快照中解析出对应的 moduleId */
+    public static void normalizeReqModule(OptionReq req, PlanMeta meta) {
+        if (req == null) {
+            return;
+        }
+        if (req.getModuleId() == null
+                && req.getModuleCode() != null
+                && meta != null
+                && meta.hasModuleTree()) {
+            if (meta.moduleTree().getModuleMap() != null) {
+                for (com.jdec.platform.config.api.dto.common.ModuleInfo info :
+                        meta.moduleTree().getModuleMap().values()) {
+                    if (info != null
+                            && req.getModuleCode().equalsIgnoreCase(info.getModuleCode())) {
+                        req.setModuleId(info.getModuleId());
+                        break;
+                    }
+                }
+            }
+        }
     }
 }

@@ -67,6 +67,18 @@ public class SavePlanCompiler {
         }
 
         Long moduleId = resolveRootModuleId(block);
+        if (moduleId == null
+                && block.getModuleCode() != null
+                && meta != null
+                && meta.hasModuleTree()
+                && meta.moduleTree().getModuleMap() != null) {
+            for (ModuleInfo info : meta.moduleTree().getModuleMap().values()) {
+                if (info != null && block.getModuleCode().equalsIgnoreCase(info.getModuleCode())) {
+                    moduleId = info.getModuleId();
+                    break;
+                }
+            }
+        }
         if (moduleId == null) {
             throw new IllegalArgumentException("保存请求或模块 ID 不能为空");
         }
@@ -289,8 +301,12 @@ public class SavePlanCompiler {
         // 3. 检查 DataRow 自身的 children 列表 (List<DataBlock>)
         if (rawRow.getChildren() != null && !rawRow.getChildren().isEmpty()) {
             for (DataBlock childBlock : rawRow.getChildren()) {
-                if (childBlock != null && childBlock.getModuleId() != null) {
-                    childPlans.add(compileNode(childBlock, moduleId, meta, projectRelations, tree));
+                if (childBlock != null) {
+                    childBlock = ensureModuleId(childBlock, tree);
+                    if (childBlock.getModuleId() != null) {
+                        childPlans.add(
+                                compileNode(childBlock, moduleId, meta, projectRelations, tree));
+                    }
                 }
             }
         }
@@ -300,14 +316,32 @@ public class SavePlanCompiler {
         if (rowChildrenObj != null) {
             List<DataBlock> rowChildren = parseRowChildren(rowChildrenObj);
             for (DataBlock rowChildNode : rowChildren) {
-                if (rowChildNode != null && rowChildNode.getModuleId() != null) {
-                    childPlans.add(
-                            compileNode(rowChildNode, moduleId, meta, projectRelations, tree));
+                if (rowChildNode != null) {
+                    rowChildNode = ensureModuleId(rowChildNode, tree);
+                    if (rowChildNode.getModuleId() != null) {
+                        childPlans.add(
+                                compileNode(rowChildNode, moduleId, meta, projectRelations, tree));
+                    }
                 }
             }
         }
 
         return cleanRow;
+    }
+
+    private static DataBlock ensureModuleId(DataBlock block, ModuleTreeDTO tree) {
+        if (block == null || block.getModuleId() != null) {
+            return block;
+        }
+        if (block.getModuleCode() != null && tree != null && tree.getModuleMap() != null) {
+            for (com.jdec.platform.config.api.dto.common.ModuleInfo info :
+                    tree.getModuleMap().values()) {
+                if (info != null && block.getModuleCode().equalsIgnoreCase(info.getModuleCode())) {
+                    return block.toBuilder().moduleId(info.getModuleId()).build();
+                }
+            }
+        }
+        return block;
     }
 
     private static String findMatchingKeyIgnoreCase(Map<String, Object> map, String targetKey) {

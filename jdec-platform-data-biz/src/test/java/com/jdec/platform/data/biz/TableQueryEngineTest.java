@@ -48,6 +48,7 @@ public class TableQueryEngineTest {
         ModuleInfo rootInfo =
                 ModuleInfo.builder()
                         .moduleId(10L)
+                        .moduleCode("COMPANY-INFO")
                         .moduleName("企业信息")
                         .primaryTable("company_info")
                         .parentId(0L)
@@ -57,6 +58,7 @@ public class TableQueryEngineTest {
         ModuleInfo childInfo =
                 ModuleInfo.builder()
                         .moduleId(20L)
+                        .moduleCode("COMPANY-MEMBER")
                         .moduleName("成员信息")
                         .primaryTable("company_member")
                         .parentId(10L)
@@ -106,6 +108,9 @@ public class TableQueryEngineTest {
                             String name = invocation.getMethod().getName();
                             if ("getModuleTree".equals(name)) {
                                 return tree;
+                            }
+                            if ("getProjectModuleTree".equals(name)) {
+                                return List.of(tree);
                             }
                             if ("getProjectTableRelations".equals(name)) {
                                 return relations;
@@ -188,6 +193,7 @@ public class TableQueryEngineTest {
         DataBlock block = dataQueryService.getDetail(req);
         assertNotNull(block);
         assertEquals(10L, block.getModuleId());
+        assertEquals("COMPANY-INFO", block.getModuleCode());
         assertEquals(1, block.getRecords().size());
 
         DataRow row = block.getRecords().get(0);
@@ -200,11 +206,36 @@ public class TableQueryEngineTest {
         assertEquals(1, row.getChildren().size());
         DataBlock childBlock = row.getChildren().get(0);
         assertEquals(20L, childBlock.getModuleId());
+        assertEquals("COMPANY-MEMBER", childBlock.getModuleCode());
         assertEquals(1, childBlock.getRecords().size());
         DataRow childRow = childBlock.getRecords().get(0);
         assertNotNull(childRow.getTable("company_member"));
         Map<String, Object> memberInfo = childRow.getTable("company_member");
         assertEquals("张三", memberInfo.get("member_name"));
+
+        // 测试 DataRow 逻辑编码提取
+        DataBlock childByCode = row.getChild("COMPANY-MEMBER");
+        assertNotNull(childByCode);
+        assertEquals(20L, childByCode.getModuleId());
+        assertEquals("COMPANY-MEMBER", childByCode.getModuleCode());
+    }
+
+    @Test
+    @DisplayName("纯逻辑 moduleCode 详情查询：无需 moduleId，全链路自动转译与装配")
+    void testGetDetailByModuleCode() {
+        DetailQueryReq req = DetailQueryReq.builder().moduleCode("COMPANY-INFO").id(100L).build();
+
+        DataBlock block = dataQueryService.getDetail(req);
+        assertNotNull(block);
+        assertEquals(10L, block.getModuleId());
+        assertEquals("COMPANY-INFO", block.getModuleCode());
+        assertEquals(1, block.getRecords().size());
+
+        DataRow row = block.getFirstRecord();
+        assertNotNull(row);
+        DataBlock child = row.getChild("COMPANY-MEMBER");
+        assertNotNull(child);
+        assertEquals("COMPANY-MEMBER", child.getModuleCode());
     }
 
     @Test

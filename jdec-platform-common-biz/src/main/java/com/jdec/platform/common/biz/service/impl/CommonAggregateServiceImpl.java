@@ -177,12 +177,13 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 (rootModuleInfo != null && rootModuleInfo.getEnableChange() != null)
                         ? rootModuleInfo.getEnableChange()
                         : 0;
+        String rootModuleCode = rootModuleInfo != null ? rootModuleInfo.getModuleCode() : null;
 
         MenuActionContext actionCtx =
                 MenuActionContext.builder()
                         .projectNo(AppContext.getProjectNo())
                         .rootModuleId(rootModuleId)
-                        .moduleCode(rootModuleInfo != null ? rootModuleInfo.getModuleCode() : null)
+                        .moduleCode(rootModuleCode)
                         .primaryTable(primaryTable)
                         .enableActive(enableActive)
                         .enableChange(enableChange)
@@ -205,7 +206,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                     headerRoot,
                     queryPersonalizeFlagQuietly(menuId),
                     rootModulePerm,
-                    buildEmptyModuleDataNode(rootModuleId, menuId),
+                    buildEmptyModuleDataNode(rootModuleId, rootModuleCode, menuId),
                     emptyActions.getGlobalActions(),
                     approvalEnabled ? Collections.emptyList() : null,
                     emptyActions.getCustomActions(),
@@ -267,6 +268,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         ModuleDataNode rootNode =
                 ModuleDataNode.builder()
                         .moduleId(rootModuleId)
+                        .moduleCode(rootModuleCode)
                         .menuId(menuId)
                         .total(total)
                         .record(recordItems)
@@ -326,6 +328,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         if (primaryTable == null || primaryTable.isBlank()) {
             throw new BusinessException("原单根模块主表未配置，无法推导变更表名: moduleId=" + rootModuleId);
         }
+        ModuleInfo rootModuleInfo = moduleTree != null ? moduleTree.getModule(rootModuleId) : null;
+        String rootModuleCode = rootModuleInfo != null ? rootModuleInfo.getModuleCode() : null;
 
         PhysicalQueryMapper.ensureChangeColumnsInHeader(headerRoot, primaryTable, rootModuleId);
         MenuHeaderColumnResp prunedHeader = PhysicalQueryMapper.pruneHeaderToFirstLevel(headerRoot);
@@ -341,6 +345,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             ModuleDataNode rootNode =
                     ModuleDataNode.builder()
                             .moduleId(rootModuleId)
+                            .moduleCode(rootModuleCode)
                             .menuId(menuId)
                             .total(0L)
                             .record(Collections.emptyList())
@@ -387,6 +392,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         ModuleDataNode rootNode =
                 ModuleDataNode.builder()
                         .moduleId(rootModuleId)
+                        .moduleCode(rootModuleCode)
                         .menuId(menuId)
                         .total(total)
                         .record(recordItems)
@@ -439,15 +445,20 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         Long roleId = UserContext.getRoleId();
         PrimaryFilterResult filterResult =
                 resolveMenuSystemFilters(moduleTree, rootModuleId, roleId, 3);
+        ModuleInfo targetMod = moduleTree.getModule(targetCtx.targetModuleId());
+        String targetModuleCode = targetMod != null ? targetMod.getModuleCode() : null;
+
         if (filterResult.isEmpty()) {
-            return buildEmptyModuleDataNode(targetCtx.targetModuleId(), targetCtx.targetMenuId());
+            return buildEmptyModuleDataNode(
+                    targetCtx.targetModuleId(), targetModuleCode, targetCtx.targetMenuId());
         }
         finalFilters.addAll(filterResult.filters());
 
         List<Long> latestEnabledIds =
                 fetchLatestEnabledVersionIds(rootModuleId, primaryTable, finalFilters, finalSorts);
         if (CollectionUtils.isEmpty(latestEnabledIds)) {
-            return buildEmptyModuleDataNode(targetCtx.targetModuleId(), targetCtx.targetMenuId());
+            return buildEmptyModuleDataNode(
+                    targetCtx.targetModuleId(), targetModuleCode, targetCtx.targetMenuId());
         }
 
         FilterItem idInFilter = FilterItem.in(primaryTable, "id", latestEnabledIds);
@@ -492,6 +503,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         return ModuleDataNode.builder()
                 .moduleId(targetCtx.targetModuleId())
+                .moduleCode(targetModuleCode)
                 .menuId(targetCtx.targetMenuId())
                 .total((long) finalRecords.size())
                 .record(finalRecords)
@@ -531,9 +543,16 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                                 .tables(tableSpecs)
                                 .build());
 
+        ModuleInfo rootModuleInfo = moduleTree != null ? moduleTree.getModule(rootModuleId) : null;
+        String rootModuleCode =
+                dataBlock != null && dataBlock.getModuleCode() != null
+                        ? dataBlock.getModuleCode()
+                        : (rootModuleInfo != null ? rootModuleInfo.getModuleCode() : null);
+
         ModuleDataNode dataTree =
                 ModuleDataNode.builder()
                         .moduleId(rootModuleId)
+                        .moduleCode(rootModuleCode)
                         .menuId(menuId)
                         .record(new ArrayList<>())
                         .build();
@@ -1385,8 +1404,13 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
     }
 
     private ModuleDataNode buildEmptyModuleDataNode(Long moduleId, Long menuId) {
+        return buildEmptyModuleDataNode(moduleId, null, menuId);
+    }
+
+    private ModuleDataNode buildEmptyModuleDataNode(Long moduleId, String moduleCode, Long menuId) {
         return ModuleDataNode.builder()
                 .moduleId(moduleId)
+                .moduleCode(moduleCode)
                 .menuId(menuId)
                 .total(0L)
                 .record(Collections.emptyList())

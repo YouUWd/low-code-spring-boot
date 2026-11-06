@@ -110,8 +110,10 @@ public class QueryPlanExecutor {
 
         QueryNodePlan rootPlan = plan.getRootNodePlan();
         String primaryTable = rootPlan.getPrimaryTable();
+        String rootModCode =
+                rootPlan.getModuleMeta() != null ? rootPlan.getModuleMeta().getModuleCode() : null;
         if (primaryTable == null || primaryTable.isBlank()) {
-            return DataBlock.empty(rootPlan.getModuleId());
+            return DataBlock.empty(rootPlan.getModuleId(), rootModCode);
         }
 
         // 不分页执行：pageSize 与 offset 均为 null
@@ -183,7 +185,9 @@ public class QueryPlanExecutor {
                     rootRows, rootPlan.getModuleId(), rootPlan.getChildren(), rawDataByNode);
         }
 
-        return DataBlock.of(rootPlan.getModuleId(), rootRows);
+        String rootModCode =
+                rootPlan.getModuleMeta() != null ? rootPlan.getModuleMeta().getModuleCode() : null;
+        return DataBlock.of(rootPlan.getModuleId(), rootModCode, rootRows);
     }
 
     /** 递归分批批量拉取各层子模块/子表数据 (利用 fk IN (:parentIds)) */

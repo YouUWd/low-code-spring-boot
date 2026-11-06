@@ -78,9 +78,14 @@ public class TreeResultAssembler {
                 if (parentContainer.getChildren() == null) {
                     parentContainer.setChildren(new ArrayList<>());
                 }
+                String virtualModCode =
+                        virtualPlan.getModuleMeta() != null
+                                ? virtualPlan.getModuleMeta().getModuleCode()
+                                : null;
                 DataBlock virtualNode =
                         DataBlock.builder()
                                 .moduleId(virtualModuleId)
+                                .moduleCode(virtualModCode)
                                 .records(Collections.singletonList(thisVirtualContainer))
                                 .build();
                 parentContainer.getChildren().add(virtualNode);
@@ -178,12 +183,20 @@ public class TreeResultAssembler {
                 targetContainer.setChildren(new ArrayList<>());
             }
 
+            String childModCode =
+                    childPlan.getModuleMeta() != null
+                            ? childPlan.getModuleMeta().getModuleCode()
+                            : null;
             if (pkVal instanceof Number pkNum) {
                 List<DataRow> matchedChildren =
                         groupedByFk.getOrDefault(pkNum.longValue(), Collections.emptyList());
 
                 DataBlock childModuleNode =
-                        DataBlock.builder().moduleId(childModId).records(matchedChildren).build();
+                        DataBlock.builder()
+                                .moduleId(childModId)
+                                .moduleCode(childModCode)
+                                .records(matchedChildren)
+                                .build();
                 targetContainer.getChildren().add(childModuleNode);
 
                 // 4. 🌟 递归自相似：以当前匹配的子实体列表为父级，直接向下装配孙模块
@@ -199,6 +212,7 @@ public class TreeResultAssembler {
                 DataBlock childModuleNode =
                         DataBlock.builder()
                                 .moduleId(childModId)
+                                .moduleCode(childModCode)
                                 .records(Collections.emptyList())
                                 .build();
                 targetContainer.getChildren().add(childModuleNode);

@@ -1,8 +1,8 @@
 package com.jdec.platform.data.api.dto.request;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 import java.io.Serializable;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -18,9 +18,12 @@ import lombok.experimental.SuperBuilder;
 @Schema(description = "业务字段搜索下拉候选项请求参数")
 public class OptionReq implements Serializable {
 
-    @NotNull(message = "查询主模块 ID 不能为空")
-    @Schema(description = "当前模块 ID，用于锚定根模块上下文与数据隔离范围", example = "1001")
+    @Schema(description = "当前模块 ID (与 moduleCode 二选一)", example = "1001")
     private Long moduleId;
+
+    @Schema(description = "当前模块编码 (与 moduleId 二选一)", example = "COMPANY-ROOT")
+    @JsonProperty("module_code")
+    private String moduleCode;
 
     @Schema(description = "目标物理表名 (为 null 或空时默认为当前主模块的物理主表)", example = "info")
     private String tableName;

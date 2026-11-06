@@ -1,9 +1,13 @@
 package com.jdec.platform.data.biz.plan;
 
+import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
+import com.jdec.platform.data.api.dto.request.OptionReq;
+import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.shared.context.AppContext;
+import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -38,5 +42,60 @@ public class PlanMetaLoader {
         ModuleTreeDTO tree = configApi.getModuleTree(projectNo, subjectId, rootModuleId);
         ProjectTableRelationsDTO relations = configApi.getProjectTableRelations(projectNo);
         return new PlanMeta(tree, relations);
+    }
+
+    /** 自动根据 QueryReq 中的 moduleId 或 moduleCode 加载元数据快照。 */
+    public PlanMeta load(QueryReq req) {
+        if (req == null) {
+            throw new IllegalArgumentException("加载元数据快照时查询请求不能为空");
+        }
+        return load(req.getModuleId(), req.getModuleCode());
+    }
+
+    /** 自动根据 OptionReq 中的 moduleId 或 moduleCode 加载元数据快照。 */
+    public PlanMeta load(OptionReq req) {
+        if (req == null) {
+            throw new IllegalArgumentException("加载元数据快照时候选项请求不能为空");
+        }
+        return load(req.getModuleId(), req.getModuleCode());
+    }
+
+    /**
+     * 支持根据 moduleId（优先）或 moduleCode（兜底）加载指定模块的元数据快照。
+     *
+     * @param rootModuleId 根模块 ID
+     * @param moduleCode 根模块或子模块编码
+     * @return 元数据快照
+     */
+    public PlanMeta load(Long rootModuleId, String moduleCode) {
+        if (rootModuleId != null) {
+            return load(rootModuleId);
+        }
+        if (moduleCode == null || moduleCode.isBlank()) {
+            throw new IllegalArgumentException("加载元数据快照时模块 ID 与编码不能同时为空");
+        }
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+        List<ModuleTreeDTO> projectTrees = configApi.getProjectModuleTree(projectNo, subjectId);
+        if (projectTrees != null) {
+            for (ModuleTreeDTO tree : projectTrees) {
+                if (tree.getRootModule() != null
+                        && moduleCode.equalsIgnoreCase(tree.getRootModule().getModuleCode())) {
+                    ProjectTableRelationsDTO relations =
+                            configApi.getProjectTableRelations(projectNo);
+                    return new PlanMeta(tree, relations);
+                }
+                if (tree.getModuleMap() != null) {
+                    for (ModuleInfo info : tree.getModuleMap().values()) {
+                        if (info != null && moduleCode.equalsIgnoreCase(info.getModuleCode())) {
+                            ProjectTableRelationsDTO relations =
+                                    configApi.getProjectTableRelations(projectNo);
+                            return new PlanMeta(tree, relations);
+                        }
+                    }
+                }
+            }
+        }
+        return new PlanMeta(null, null);
     }
 }

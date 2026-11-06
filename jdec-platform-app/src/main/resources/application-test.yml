@@ -157,9 +157,9 @@ config:
 
 monitor-center:
   base-url: http://localhost:5009
-
+# 当前测试环境是内部测试环境
 app:
   company:
     business-no: P260812103331
-    url: user_url
+    url: internal_url
 
