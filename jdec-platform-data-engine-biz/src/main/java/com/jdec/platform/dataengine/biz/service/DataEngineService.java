@@ -6,7 +6,6 @@ import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.request.*;
 import com.jdec.platform.dataengine.api.dto.response.*;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
-import com.jdec.platform.dataengine.biz.operatelog.annotation.SaveOperateLog;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataApprovalBizService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataStoreService;
 import java.util.*;
@@ -33,7 +32,6 @@ public class DataEngineService implements DataEngineApi {
     }
 
     @Override
-    @SaveOperateLog
     public DynamicSaveResp save(DynamicSaveReq req) {
         return moduleDataStoreService.save(req);
     }
