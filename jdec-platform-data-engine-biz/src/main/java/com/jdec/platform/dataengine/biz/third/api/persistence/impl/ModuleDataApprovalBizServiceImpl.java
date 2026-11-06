@@ -105,9 +105,9 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                                 .rootModuleId(rootModule.getModuleInfo().getModuleId())
                                 .build());
         if ((req.getIsCurrentStepFinish()
-                        && (req.getBusinessStatus() == 99 || req.getBusinessStatus() == -99))
-                || (Integer.valueOf(1).equals(req.getBusinessStatus())
-                        && "reject".equals(req.getOp()))) {
+                && (req.getBusinessStatus() == 99 || req.getBusinessStatus() == -99))) {
+            // || (Integer.valueOf(1).equals(req.getBusinessStatus()) &&
+            // "reject".equals(req.getOp()))
             // 终态时候 删除快照数据
             moduleSnapShotDataService.deleteModuleDataTempSnapshot(
                     ModuleSnapShotDataContext.builder()
