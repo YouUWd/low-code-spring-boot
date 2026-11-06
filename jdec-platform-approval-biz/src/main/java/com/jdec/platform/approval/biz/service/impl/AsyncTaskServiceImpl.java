@@ -318,16 +318,22 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
     private void sendWechatMessageById(Long templateId, ApprovalProcessDTO approvalProcessDTO) {
         WechatTemplateEntryResp template = sysWechatTemplateApi.getTemplateById(templateId);
         String content = formatWechatMessage(template, approvalProcessDTO);
-        List<String> userIds = getSendUserList(approvalProcessDTO, templateId);
-        SendWechatMessageReq sendWechatMessageReq = new SendWechatMessageReq();
-        sendWechatMessageReq.setMessageTitle(template.getTemplateTitle());
-        sendWechatMessageReq.setMessageType("markdown");
-        sendWechatMessageReq.setMessageContent(content);
-        sendWechatMessageReq.setReceivers(userIds);
-        sysWechatTemplateApi.sendWechatMessage(
-                AppContext.getProjectNo(), approvalProcessDTO.getSubjectId(), sendWechatMessageReq);
-        saveWeChatMessageLog(
-                approvalProcessDTO, userIds.stream().map(Long::valueOf).toList(), content);
+        List<UserDetailResp> userIds = getSendUserList(approvalProcessDTO, templateId);
+        Map<Long, List<UserDetailResp>> map =
+                userIds.stream().collect(Collectors.groupingBy(UserDetailResp::getSubjectId));
+        map.forEach(
+                (subjectId, list) -> {
+                    List<Long> ids = list.stream().map(UserDetailResp::getUserId).toList();
+                    List<String> phones = list.stream().map(UserDetailResp::getPhone).toList();
+                    SendWechatMessageReq sendWechatMessageReq = new SendWechatMessageReq();
+                    sendWechatMessageReq.setMessageTitle(template.getTemplateTitle());
+                    sendWechatMessageReq.setMessageType("markdown");
+                    sendWechatMessageReq.setMessageContent(content);
+                    sendWechatMessageReq.setReceivers(phones);
+                    sysWechatTemplateApi.sendWechatMessage(
+                            AppContext.getProjectNo(), subjectId, sendWechatMessageReq);
+                    saveWeChatMessageLog(approvalProcessDTO, ids, content);
+                });
     }
 
     // 发送提交和取消消息-----------------------------------
@@ -340,16 +346,22 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
                         approvalProcessDTO.getModuleId(),
                         triggerType);
         String content = formatWechatMessage(template, approvalProcessDTO);
-        List<String> userIds = getSendUserList(approvalProcessDTO, template.getId());
-        SendWechatMessageReq sendWechatMessageReq = new SendWechatMessageReq();
-        sendWechatMessageReq.setMessageTitle(template.getTemplateTitle());
-        sendWechatMessageReq.setMessageType("markdown");
-        sendWechatMessageReq.setMessageContent(content);
-        sendWechatMessageReq.setReceivers(userIds);
-        sysWechatTemplateApi.sendWechatMessage(
-                AppContext.getProjectNo(), approvalProcessDTO.getSubjectId(), sendWechatMessageReq);
-        saveWeChatMessageLog(
-                approvalProcessDTO, userIds.stream().map(Long::valueOf).toList(), content);
+        List<UserDetailResp> userIds = getSendUserList(approvalProcessDTO, template.getId());
+        Map<Long, List<UserDetailResp>> map =
+                userIds.stream().collect(Collectors.groupingBy(UserDetailResp::getSubjectId));
+        map.forEach(
+                (subjectId, list) -> {
+                    List<Long> ids = list.stream().map(UserDetailResp::getUserId).toList();
+                    List<String> phones = list.stream().map(UserDetailResp::getPhone).toList();
+                    SendWechatMessageReq sendWechatMessageReq = new SendWechatMessageReq();
+                    sendWechatMessageReq.setMessageTitle(template.getTemplateTitle());
+                    sendWechatMessageReq.setMessageType("markdown");
+                    sendWechatMessageReq.setMessageContent(content);
+                    sendWechatMessageReq.setReceivers(phones);
+                    sysWechatTemplateApi.sendWechatMessage(
+                            AppContext.getProjectNo(), subjectId, sendWechatMessageReq);
+                    saveWeChatMessageLog(approvalProcessDTO, ids, content);
+                });
     }
 
     // 组装消息
@@ -514,7 +526,8 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
     }
 
     // 获取消息接收人列表------------------------------------------------------------------
-    private List<String> getSendUserList(ApprovalProcessDTO approvalProcessDTO, Long templateId) {
+    private List<UserDetailResp> getSendUserList(
+            ApprovalProcessDTO approvalProcessDTO, Long templateId) {
         // 1. 查询微信模板
         WechatTemplateDetailResp sysWeChatTemplate =
                 sysWechatTemplateApi.getTemplateById(templateId);
@@ -604,11 +617,11 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
         // 6. 二维数组扁平化 + 去重
         //        List<Object> result = userList.stream().flatMap(List::stream).distinct().toList();
 
-        List<String> result = new ArrayList<>();
+        List<UserDetailResp> result = new ArrayList<>();
         for (Long userId : userList) {
             UserDetailResp resp = sysUserApi.getUserDetailByUserId(userId);
             if (Objects.nonNull(resp)) {
-                result.add(resp.getPhone());
+                result.add(resp);
             }
         }
 
