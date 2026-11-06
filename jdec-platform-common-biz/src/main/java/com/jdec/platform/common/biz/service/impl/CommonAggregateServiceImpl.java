@@ -730,49 +730,74 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             throw new BusinessException("当前菜单对应模块未开启变更申请功能 (enableChange != 1)");
         }
 
-        String primaryTable = moduleTree != null ? moduleTree.getPrimaryTable() : null;
+        String primaryTable = moduleTree.getPrimaryTable();
         if (primaryTable == null || primaryTable.isBlank()) {
             throw new BusinessException("原单根模块主表未配置，无法推导变更表名: moduleId=" + rootModuleId);
         }
 
         Long userId = getEffectiveUserId();
-        List<Long> myPrimaryIds = fetchUserCreatedPrimaryTableIds(primaryTable, userId);
-        if (CollectionUtils.isEmpty(myPrimaryIds)) {
-            log.warn(
-                    "[ChangeRead-Denied] 当前用户在原单主表无创建记录，无权操作此变更单: menuId={}, userId={}, changeId={}",
-                    menuId,
-                    userId,
-                    changeId);
-            throw new BusinessException("变更单不存在或当前用户无权操作: changeId=" + changeId);
-        }
-
         String changeTable = primaryTable + "_change";
-        List<Map<String, Object>> exists =
+
+        // 变更单本身保存了原单 id (source_id)，按主键取单据后回查原单创建人即可，
+        // 无需全量拉取当前用户创建的所有原单 ID 再拼 IN 条件
+        List<Map<String, Object>> changeRows =
                 dataApi.querySingleTableList(
                         SingleTableQueryReq.builder()
                                 .tableName(changeTable)
-                                .columns(List.of("id", "read_status"))
+                                .columns(List.of("id", "source_id", "read_status"))
                                 .filters(
                                         List.of(
                                                 FilterItem.eq(changeTable, "id", changeId),
-                                                FilterItem.builder()
-                                                        .tableName(changeTable)
-                                                        .columnName("source_id")
-                                                        .operator("IN")
-                                                        .value(myPrimaryIds)
-                                                        .build(),
                                                 FilterItem.eq(changeTable, "deleted", (byte) 0)))
+                                .limit(1)
                                 .build());
-        if (CollectionUtils.isEmpty(exists)) {
+        if (CollectionUtils.isEmpty(changeRows)) {
             log.warn(
-                    "[ChangeRead-NotFound] 未找到匹配的变更单或当前用户无权操作: menuId={}, changeId={}, userId={}",
+                    "[ChangeRead-NotFound] 变更单不存在或已删除: menuId={}, changeId={}, userId={}, changeTable={}",
                     menuId,
                     changeId,
-                    userId);
+                    userId,
+                    changeTable);
             throw new BusinessException("变更单不存在或当前用户无权操作: changeId=" + changeId);
         }
 
-        Object currentReadStatus = exists.get(0).get("read_status");
+        Map<String, Object> changeRow = changeRows.getFirst();
+        Long sourceId = toLong(changeRow.get("source_id"));
+        if (sourceId == null) {
+            log.warn(
+                    "[ChangeRead-InvalidSource] 变更单缺少有效的 source_id: menuId={}, userId={}, changeId={}, changeTable={}",
+                    menuId,
+                    userId,
+                    changeId,
+                    changeTable);
+            throw new BusinessException("变更单不存在或当前用户无权操作: changeId=" + changeId);
+        }
+
+        // 仅原单据创建人可以标记已读；非原单据创建人查看时跳过更新，未读状态仍留给原单据创建人
+        List<Map<String, Object>> primaryRows =
+                dataApi.querySingleTableList(
+                        SingleTableQueryReq.builder()
+                                .tableName(primaryTable)
+                                .columns(Collections.singletonList("id"))
+                                .filters(
+                                        List.of(
+                                                FilterItem.eq(primaryTable, "id", sourceId),
+                                                FilterItem.eq(primaryTable, "created_by", userId),
+                                                FilterItem.eq(primaryTable, "deleted", (byte) 0)))
+                                .limit(1)
+                                .build());
+        if (CollectionUtils.isEmpty(primaryRows)) {
+            log.info(
+                    "[ChangeRead-SkipNonCreator] 当前用户非原单据创建人，跳过标记已读直接返回成功: menuId={}, userId={}, changeId={}, sourceId={}, primaryTable={}",
+                    menuId,
+                    userId,
+                    changeId,
+                    sourceId,
+                    primaryTable);
+            return true;
+        }
+
+        Object currentReadStatus = changeRow.get("read_status");
         if (currentReadStatus != null && Integer.parseInt(currentReadStatus.toString()) == 1) {
             log.info(
                     "[ChangeRead-AlreadyRead] 变更单已经是已读状态，直接返回成功: menuId={}, changeId={}",
@@ -789,7 +814,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         .set(DSL.field(DSL.name("updated_by")), UserContext.getOperateUserId())
                         .set(DSL.field(DSL.name("updated_date")), LocalDateTime.now())
                         .where(DSL.field(DSL.name("id"), Long.class).eq(changeId))
-                        .and(DSL.field(DSL.name("source_id"), Long.class).in(myPrimaryIds))
+                        .and(DSL.field(DSL.name("source_id"), Long.class).eq(sourceId))
                         .and(DSL.field(DSL.name("deleted"), Byte.class).eq((byte) 0))
                         .execute();
 
@@ -1395,15 +1420,10 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             }
             List<Long> ids = new ArrayList<>(records.size());
             for (Map<String, Object> map : records) {
-                if (map != null && map.get("id") != null) {
-                    Object idVal = map.get("id");
-                    if (idVal instanceof Number num) {
-                        ids.add(num.longValue());
-                    } else {
-                        try {
-                            ids.add(Long.parseLong(String.valueOf(idVal)));
-                        } catch (NumberFormatException ignored) {
-                        }
+                if (map != null) {
+                    Long id = toLong(map.get("id"));
+                    if (id != null) {
+                        ids.add(id);
                     }
                 }
             }
@@ -1416,6 +1436,21 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                     ex.getMessage());
             return Collections.emptyList();
         }
+    }
+
+    /** 将查询结果中的数值/字符串主键统一转换为 Long，无法解析时返回 null */
+    private static Long toLong(Object value) {
+        if (value instanceof Number num) {
+            return num.longValue();
+        }
+        if (value != null) {
+            try {
+                return Long.parseLong(String.valueOf(value).trim());
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
     }
 
     private Table<?> resolveTable(String tableName) {

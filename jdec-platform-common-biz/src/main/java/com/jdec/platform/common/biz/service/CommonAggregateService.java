@@ -82,9 +82,11 @@ public interface CommonAggregateService {
     /**
      * 基于菜单 ID 将指定变更申请单设置为已读 (read_status = 1)
      *
+     * <p>仅当当前用户为原单据创建人时更新单据级 read_status；非原单据创建人查看时直接返回 true，不更新已读状态。
+     *
      * @param menuId 菜单 ID
      * @param changeId 变更单 ID
-     * @return 是否成功设置为已读
+     * @return 是否处理成功
      */
     Boolean markChangeAsRead(Long menuId, Long changeId);
 

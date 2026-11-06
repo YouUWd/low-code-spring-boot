@@ -604,28 +604,18 @@ class CompanyChangeListQueryTest {
         Long menuId = 200L;
         Long changeId = 15L;
         Long rootModuleId = 1001L;
+        Long sourceId = 286L;
+        mockChangeEnabledModule(menuId, rootModuleId);
 
-        when(openMenuApi.getModuleIdByMenuId(menuId)).thenReturn(rootModuleId);
-        ModuleInfo moduleInfo =
-                ModuleInfo.builder()
-                        .moduleId(rootModuleId)
-                        .primaryTable("info")
-                        .enableChange(1)
-                        .build();
-        ModuleTreeDTO moduleTree =
-                ModuleTreeDTO.builder()
-                        .rootModuleId(rootModuleId)
-                        .rootModule(moduleInfo)
-                        .moduleMap(Map.of(rootModuleId, moduleInfo))
-                        .fieldMap(new HashMap<>())
-                        .fieldToModuleMap(new HashMap<>())
-                        .build();
-        when(configApi.getModuleTree(any(), any(), eq(rootModuleId))).thenReturn(moduleTree);
-
-        // 模拟当前用户的主表创建记录 (id: 286L) 与该未读变更单 (id: 15L, read_status: 0)
+        // 变更单按主键点查返回 source_id，原单再按主键点查确认创建人是当前用户
         when(dataApi.querySingleTableList(any()))
-                .thenReturn(List.of(Map.of("id", 286L))) // fetchUserCreatedPrimaryTableIds
-                .thenReturn(List.of(Map.of("id", changeId, "read_status", 0))); // 校验变更单存在且属于用户
+                .thenReturn(
+                        List.of(
+                                Map.of(
+                                        "id", changeId,
+                                        "source_id", sourceId,
+                                        "read_status", 0)))
+                .thenReturn(List.of(Map.of("id", sourceId)));
 
         Boolean result = service.markChangeAsRead(menuId, changeId);
         assertTrue(result);
@@ -633,6 +623,26 @@ class CompanyChangeListQueryTest {
         String executedSql = executedSqls.get(0).toLowerCase();
         assertTrue(executedSql.contains("update `info_change`"));
         assertTrue(executedSql.contains("`read_status` = ?"));
+        assertTrue(executedSql.contains("`source_id` = ?"));
+        assertFalse(executedSql.contains(" in ("));
+
+        // 两次查询均为按主键的点查，不再全量拉取当前用户创建的原单 ID
+        ArgumentCaptor<SingleTableQueryReq> reqCaptor =
+                ArgumentCaptor.forClass(SingleTableQueryReq.class);
+        verify(dataApi, org.mockito.Mockito.times(2)).querySingleTableList(reqCaptor.capture());
+        List<SingleTableQueryReq> reqs = reqCaptor.getAllValues();
+        assertEquals("info_change", reqs.get(0).getTableName());
+        assertEquals(Integer.valueOf(1), reqs.get(0).getLimit());
+        assertTrue(reqs.get(0).getColumns().contains("source_id"));
+        assertTrue(reqs.get(0).getColumns().contains("read_status"));
+        assertEquals("info", reqs.get(1).getTableName());
+        assertEquals(Integer.valueOf(1), reqs.get(1).getLimit());
+        assertTrue(
+                reqs.get(1).getFilters().stream()
+                        .anyMatch(
+                                f ->
+                                        "id".equals(f.getColumnName())
+                                                && sourceId.equals(f.getValue())));
     }
 
     @Test
@@ -641,28 +651,17 @@ class CompanyChangeListQueryTest {
         Long menuId = 200L;
         Long changeId = 16L;
         Long rootModuleId = 1001L;
+        Long sourceId = 286L;
+        mockChangeEnabledModule(menuId, rootModuleId);
 
-        when(openMenuApi.getModuleIdByMenuId(menuId)).thenReturn(rootModuleId);
-        ModuleInfo moduleInfo =
-                ModuleInfo.builder()
-                        .moduleId(rootModuleId)
-                        .primaryTable("info")
-                        .enableChange(1)
-                        .build();
-        ModuleTreeDTO moduleTree =
-                ModuleTreeDTO.builder()
-                        .rootModuleId(rootModuleId)
-                        .rootModule(moduleInfo)
-                        .moduleMap(Map.of(rootModuleId, moduleInfo))
-                        .fieldMap(new HashMap<>())
-                        .fieldToModuleMap(new HashMap<>())
-                        .build();
-        when(configApi.getModuleTree(any(), any(), eq(rootModuleId))).thenReturn(moduleTree);
-
-        // 模拟当前用户主表记录与已读变更单 (read_status: 1)
         when(dataApi.querySingleTableList(any()))
-                .thenReturn(List.of(Map.of("id", 286L)))
-                .thenReturn(List.of(Map.of("id", changeId, "read_status", 1)));
+                .thenReturn(
+                        List.of(
+                                Map.of(
+                                        "id", changeId,
+                                        "source_id", sourceId,
+                                        "read_status", 1)))
+                .thenReturn(List.of(Map.of("id", sourceId)));
 
         Boolean result = service.markChangeAsRead(menuId, changeId);
         assertTrue(result);
@@ -670,12 +669,69 @@ class CompanyChangeListQueryTest {
     }
 
     @Test
-    @DisplayName("测试 Service 标记已读: 变更单不存在或非当前用户主表数据时抛出 BusinessException")
-    void testServiceMarkChangeAsRead_notFoundOrNoPermission_throwsException() {
+    @DisplayName("测试 Service 标记已读: 变更单不存在时抛出 BusinessException 且不再回查原单")
+    void testServiceMarkChangeAsRead_notFound_throwsException() {
         Long menuId = 200L;
         Long changeId = 999L;
         Long rootModuleId = 1001L;
+        mockChangeEnabledModule(menuId, rootModuleId);
 
+        when(dataApi.querySingleTableList(any())).thenReturn(Collections.emptyList());
+
+        assertThrows(
+                BusinessException.class,
+                () -> {
+                    service.markChangeAsRead(menuId, changeId);
+                });
+        verify(dataApi, org.mockito.Mockito.times(1)).querySingleTableList(any());
+        assertTrue(executedSqls.isEmpty());
+    }
+
+    @Test
+    @DisplayName("测试 Service 标记已读: 变更单缺少 source_id 时抛出 BusinessException")
+    void testServiceMarkChangeAsRead_missingSourceId_throwsException() {
+        Long menuId = 200L;
+        Long changeId = 17L;
+        Long rootModuleId = 1001L;
+        mockChangeEnabledModule(menuId, rootModuleId);
+
+        when(dataApi.querySingleTableList(any()))
+                .thenReturn(List.of(Map.of("id", changeId, "read_status", 0)));
+
+        assertThrows(
+                BusinessException.class,
+                () -> {
+                    service.markChangeAsRead(menuId, changeId);
+                });
+        verify(dataApi, org.mockito.Mockito.times(1)).querySingleTableList(any());
+        assertTrue(executedSqls.isEmpty());
+    }
+
+    @Test
+    @DisplayName("测试 Service 标记已读: 当前用户非原单创建人时跳过更新并直接返回 true")
+    void testServiceMarkChangeAsRead_notPrimaryCreator_returnsTrueWithoutUpdate() {
+        Long menuId = 200L;
+        Long changeId = 18L;
+        Long rootModuleId = 1001L;
+        Long sourceId = 286L;
+        mockChangeEnabledModule(menuId, rootModuleId);
+
+        when(dataApi.querySingleTableList(any()))
+                .thenReturn(
+                        List.of(
+                                Map.of(
+                                        "id", changeId,
+                                        "source_id", sourceId,
+                                        "read_status", 0)))
+                .thenReturn(Collections.emptyList());
+
+        Boolean result = service.markChangeAsRead(menuId, changeId);
+        assertTrue(result);
+        verify(dataApi, org.mockito.Mockito.times(2)).querySingleTableList(any());
+        assertTrue(executedSqls.isEmpty(), "非原单据创建人不应产生更新 SQL");
+    }
+
+    private void mockChangeEnabledModule(Long menuId, Long rootModuleId) {
         when(openMenuApi.getModuleIdByMenuId(menuId)).thenReturn(rootModuleId);
         ModuleInfo moduleInfo =
                 ModuleInfo.builder()
@@ -692,16 +748,5 @@ class CompanyChangeListQueryTest {
                         .fieldToModuleMap(new HashMap<>())
                         .build();
         when(configApi.getModuleTree(any(), any(), eq(rootModuleId))).thenReturn(moduleTree);
-
-        // 变更单不存在或不在用户主表 ID 中
-        when(dataApi.querySingleTableList(any()))
-                .thenReturn(List.of(Map.of("id", 286L)))
-                .thenReturn(Collections.emptyList());
-
-        assertThrows(
-                BusinessException.class,
-                () -> {
-                    service.markChangeAsRead(menuId, changeId);
-                });
     }
 }

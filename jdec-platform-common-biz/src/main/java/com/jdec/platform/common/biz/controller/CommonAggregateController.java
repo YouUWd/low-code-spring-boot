@@ -179,7 +179,8 @@ public class CommonAggregateController {
     @PostMapping("/menu/{menuId}/change/{changeId}/read")
     @Operation(
             summary = "基于菜单 ID 将指定变更申请单设置为已读",
-            description = "将 ${primaryTable}_change 表中指定 changeId 的记录更新为已读状态 (read_status=1)")
+            description =
+                    "仅当当前用户为原单据创建人时，将 ${primaryTable}_change 表中指定 changeId 的记录更新为已读状态 (read_status=1)；非原单据创建人直接返回 true，不更新已读状态")
     public ApiResponse<Boolean> markChangeAsRead(
             @PathVariable Long menuId, @PathVariable Long changeId) {
         try {
