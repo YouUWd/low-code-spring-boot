@@ -697,7 +697,8 @@ public final class PhysicalQueryMapper {
             String primaryTable,
             Set<String> actualChangeTableColumns) {
         Set<String> targetColumns =
-                new LinkedHashSet<>(List.of("id", "change_no", "source_id", "modify_reason"));
+                new LinkedHashSet<>(
+                        List.of("id", "change_no", "source_id", "modify_reason", "read_status"));
 
         List<Long> checkedFieldIds = collectCheckedFieldIds(headerRoot);
         if (!CollectionUtils.isEmpty(checkedFieldIds)) {
@@ -826,6 +827,7 @@ public final class PhysicalQueryMapper {
         MenuHeaderColumnResp pruned = copyHeaderColumn(headerRoot);
         pruned.setSorted(null);
         pruned.setSearchType(null);
+        pruned.setFixed(null);
         if (headerRoot.getChildren() != null) {
             List<MenuHeaderColumnResp> firstLevel = new ArrayList<>();
             for (MenuHeaderColumnResp child : headerRoot.getChildren()) {
@@ -847,6 +849,7 @@ public final class PhysicalQueryMapper {
                 prunedChild.setChildren(null);
                 prunedChild.setSorted(null);
                 prunedChild.setSearchType(null);
+                prunedChild.setFixed(null);
                 renameChangeHeaderColumn(prunedChild);
                 firstLevel.add(prunedChild);
             }
