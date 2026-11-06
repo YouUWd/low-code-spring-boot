@@ -12,7 +12,6 @@ import com.jdec.platform.config.api.dto.response.WechatTemplateDetailResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateEntryResp;
 import com.jdec.platform.config.api.dto.response.WechatTemplateParamEntryResp;
 import com.jdec.platform.shared.context.AppContext;
-import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.model.PageResult;
@@ -103,9 +102,9 @@ public class SysWechatTemplateController {
     public ApiResponse<Boolean> testSendMessage(
             @Parameter(description = "模板ID", required = true) @PathVariable Long id) {
         String projectNo = AppContext.getProjectNo();
-        Long subjectId = UserContext.getSubjectId();
+        Long subjectId = AppContext.getSubjectId();
         if (subjectId == null) {
-            throw new BusinessException("无法确定当前用户所属主体，无法发送测试消息");
+            throw new BusinessException("无法确定当前项目所属主体，无法发送测试消息");
         }
         log.info("测试发送微信模板消息: id={}, projectNo={}, subjectId={}", id, projectNo, subjectId);
         boolean result = sysWechatTemplateService.testSendMessage(projectNo, subjectId, id);

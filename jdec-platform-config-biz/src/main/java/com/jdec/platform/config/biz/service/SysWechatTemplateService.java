@@ -180,7 +180,7 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
         sendReq.setMessageContent(content);
         sendReq.setMessageType("markdown");
 
-        return sendWechatMessage(projectNo, subjectId, sendReq);
+        return sendWechatMessage(projectNo, loginUser.getSubjectId(), sendReq);
     }
 
     @Override
