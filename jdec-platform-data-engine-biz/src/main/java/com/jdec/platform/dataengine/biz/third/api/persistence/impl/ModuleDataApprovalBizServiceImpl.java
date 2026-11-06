@@ -58,6 +58,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                                 .projectNo(AppContext.getProjectNo())
                                 .subjectId(AppContext.getSubjectId())
                                 .roleId(UserContext.getRoleId())
+                                .isBuildFieldPro(true)
                                 .build());
         SysModuleCombineInfo rootModule = moduleCacheMap.get(req.getModuleId());
         if (rootModule == null) {
@@ -171,7 +172,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                 ApprovalProcessResultResp.builder()
                         .nestedModuleData(result)
                         .remark(remark)
-                        .referenceDataRemark(remarkReferenceData)
+                        .referenceDataRemark(tmpReferenceData == null ? null : remarkReferenceData)
                         .build();
         return resp;
     }

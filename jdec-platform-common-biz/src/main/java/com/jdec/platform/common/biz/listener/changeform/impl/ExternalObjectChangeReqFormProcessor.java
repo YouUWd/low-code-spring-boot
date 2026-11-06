@@ -78,7 +78,7 @@ public class ExternalObjectChangeReqFormProcessor
             String url =
                     "http://"
                             + sysConfigItemResp.getValue()
-                            + "externalDetail/"
+                            + "/externalDetail/"
                             + sourceId
                             + "?btnType=apply-change&changeRequestId="
                             + id;
@@ -112,7 +112,12 @@ public class ExternalObjectChangeReqFormProcessor
                 UserDetailResp userDetailResp = sysUserApi.getUserDetailByUserId(userId);
                 paramMap.put(
                         "created_by", userDetailResp != null ? userDetailResp.getUserName() : "");
-                sb.append(userDetailResp != null ? userDetailResp.getUserName() : "|");
+                sb.append(
+                        userDetailResp != null
+                                ? sb.length() > 0
+                                        ? "|" + userDetailResp.getUserName()
+                                        : userDetailResp.getUserName()
+                                : "");
                 messageReceiverList.add(
                         userDetailResp != null ? userDetailResp.getShortName() : "");
             }
@@ -127,7 +132,9 @@ public class ExternalObjectChangeReqFormProcessor
                                 : "");
                 sb.append(
                         registrationByUserDetailResp != null
-                                ? registrationByUserDetailResp.getUserName()
+                                ? sb.length() > 0
+                                        ? "|" + registrationByUserDetailResp.getUserName()
+                                        : registrationByUserDetailResp.getUserName()
                                 : "");
                 messageReceiverList.add(
                         registrationByUserDetailResp != null

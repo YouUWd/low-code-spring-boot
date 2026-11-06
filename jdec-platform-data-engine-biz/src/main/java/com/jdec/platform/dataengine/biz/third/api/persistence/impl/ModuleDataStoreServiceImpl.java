@@ -11,6 +11,8 @@ import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.ChangeApplySaveResp;
 import com.jdec.platform.dataengine.api.dto.response.DynamicSaveResp;
 import com.jdec.platform.dataengine.api.event.ChangeApplyEvent;
+import com.jdec.platform.dataengine.biz.decoupleprocess.event.ModuleDataSaveChangeLogEvent;
+import com.jdec.platform.dataengine.biz.dto.BasicSaveModel;
 import com.jdec.platform.dataengine.biz.dto.ChangeItemDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleDataStoreDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
@@ -23,6 +25,7 @@ import com.jdec.platform.dataengine.biz.service.ModuleMetaDataService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.*;
 import com.jdec.platform.dataengine.biz.util.JsonUtil;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.context.RequestContextSnapshotHolder;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.time.LocalDateTime;
@@ -315,6 +318,25 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                     ModuleTreeDataUtils.getLeafRowDataId(
                             moduleDataStoreDTO.getParamData(), moduleCacheMap);
             resp.setChildDataId(data);
+        }
+        if (!isApproval) {
+            ModuleDataSaveChangeLogEvent event =
+                    new ModuleDataSaveChangeLogEvent(ModuleDataSaveChangeLogEvent.class);
+            event.setOriginalData(detailData);
+            event.setChangedData(nestedSaveData);
+            event.setIsApproval(isApproval);
+            event.setModuleCacheMap(moduleCacheMap);
+            event.setRequestContextSnapshot(RequestContextSnapshotHolder.get());
+            event.setStructureRootModuleId(rootModuleId);
+            event.setRootDataId(dataId);
+            event.setSaveModel(
+                    BasicSaveModel.builder()
+                            .saveType(saveType)
+                            .loginUser(UserContext.getLoginUser())
+                            .projectNo(AppContext.getProjectNo())
+                            .subjectId(AppContext.getSubjectId())
+                            .build());
+            applicationEventPublisher.publishEvent(event);
         }
         resp.setModuleId(rootModuleId);
         resp.setBusinessNo(moduleDataStoreDTO.getMainTableBusinessNo());
