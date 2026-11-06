@@ -218,15 +218,18 @@ public class CompanyCustomServiceImpl implements CompanyCustomService {
                 LambdaQueryWrapper<Member> memberLambdaQueryWrapper = new LambdaQueryWrapper<>();
                 memberLambdaQueryWrapper.in(Member::getType, "employee", "员工");
                 memberLambdaQueryWrapper.eq(Member::getCompanyId, id);
+                memberLambdaQueryWrapper.eq(Member::getDeleted, 0);
                 return memberMapper.selectCount(memberLambdaQueryWrapper);
             case "COMPANY-MEMBER-V", "W_L_LXR":
                 LambdaQueryWrapper<Address> addressLambdaQueryWrapper = new LambdaQueryWrapper<>();
                 addressLambdaQueryWrapper.eq(Address::getCompanyId, id);
+                addressLambdaQueryWrapper.eq(Address::getDeleted, 0);
                 Long addressCount = addressMapper.selectCount(addressLambdaQueryWrapper);
 
                 LambdaQueryWrapper<CompanyContact> companyContactLambdaQueryWrapper =
                         new LambdaQueryWrapper<>();
                 companyContactLambdaQueryWrapper.eq(CompanyContact::getCompanyId, id);
+                companyContactLambdaQueryWrapper.eq(CompanyContact::getDeleted, 0);
                 Long companyContactCount =
                         companyContactMapper.selectCount(companyContactLambdaQueryWrapper);
 
@@ -234,12 +237,14 @@ public class CompanyCustomServiceImpl implements CompanyCustomService {
             case "COMPANY-FINANCE-V", "W_CWXX":
                 LambdaQueryWrapper<FinancialAccount> financialAccountLambdaQueryWrapper =
                         new LambdaQueryWrapper<>();
+                financialAccountLambdaQueryWrapper.eq(FinancialAccount::getDeleted, 0);
                 financialAccountLambdaQueryWrapper.eq(FinancialAccount::getCompanyId, id);
                 Long financialAcountCount =
                         financialAccountMapper.selectCount(financialAccountLambdaQueryWrapper);
 
                 LambdaQueryWrapper<DigitalAccount> digitalAccountLambdaQueryWrapper =
                         new LambdaQueryWrapper<>();
+                digitalAccountLambdaQueryWrapper.eq(DigitalAccount::getDeleted, 0);
                 digitalAccountLambdaQueryWrapper.eq(DigitalAccount::getCompanyId, id);
                 Long digitalAccountCount =
                         digitalAccountMapper.selectCount(digitalAccountLambdaQueryWrapper);
