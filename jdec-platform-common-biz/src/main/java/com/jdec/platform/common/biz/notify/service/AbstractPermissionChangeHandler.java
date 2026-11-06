@@ -52,12 +52,29 @@ public abstract class AbstractPermissionChangeHandler implements PermissionChang
     public void handle(ConfigChangeMessage message, ChangeType changeType, Long channelSubjectId) {
         Map<String, Object> payload = message.getPayload();
         Long roleId = toLong(payload == null ? null : payload.get("roleId"));
+        Set<Long> roleIds = toLongSet(payload == null ? null : payload.get("affectedRoleIds"));
+        // 兼容旧消息：未携带 affectedRoleIds 时回退到单值 roleId
+        if (roleIds.isEmpty() && roleId != null) {
+            roleIds = Set.of(roleId);
+        }
         Set<Long> userIds = toLongSet(payload == null ? null : payload.get("affectedUserIds"));
         Set<Long> subjectIds =
                 toLongSet(payload == null ? null : payload.get("affectedSubjectIds"));
 
         List<ClientSession> sessions =
-                resolveSessions(roleId, userIds, subjectIds, channelSubjectId);
+                resolveSessions(roleIds, userIds, subjectIds, channelSubjectId);
+
+        // 角色删除场景：彻底排除操作人本人（含 roleId 匹配路径），自己删除/编辑角色时不通知自己
+        if (strategy() == Strategy.ROLE_REMOVE) {
+            Long operatorUserId = toLong(payload == null ? null : payload.get("operatorUserId"));
+            if (operatorUserId != null) {
+                sessions =
+                        sessions.stream()
+                                .filter(s -> !operatorUserId.equals(s.getUserId()))
+                                .toList();
+            }
+        }
+
         ConfigChangeNotifyEvent event = buildEvent(message, changeType);
         log.info("配置变更 {} 匹配到 {} 个 SSE 会话，准备推送", changeType.getCode(), sessions.size());
         sendMessage(sessions, event);
@@ -65,22 +82,22 @@ public abstract class AbstractPermissionChangeHandler implements PermissionChang
 
     /** 根据策略与 payload 解析受影响会话（分层兜底，保证一定能找到目标） */
     protected List<ClientSession> resolveSessions(
-            Long roleId, Set<Long> userIds, Set<Long> subjectIds, Long channelSubjectId) {
+            Set<Long> roleIds, Set<Long> userIds, Set<Long> subjectIds, Long channelSubjectId) {
         switch (strategy()) {
             case LOGIN_USER:
                 return getAffectedClientSessionListWithLoginUser(userIds, subjectIds);
             case ROLE_REMOVE:
-                return getAffectedClientSessionListWithRoleRemove(roleId, userIds, subjectIds);
+                return getAffectedClientSessionListWithRoleRemove(roleIds, userIds, subjectIds);
             case SUBJECT_BROADCAST:
                 return getAffectedClientSessionListBySubject(channelSubjectId);
             case MOCK_USER:
             default:
-                if (roleId != null) {
+                if (!roleIds.isEmpty()) {
                     if (userIds.isEmpty() && subjectIds.isEmpty()) {
                         // 仅有角色维度时按角色广播
-                        return getAffectedClientSessionListByRole(roleId);
+                        return getAffectedClientSessionListByRole(roleIds);
                     }
-                    return getAffectedClientSessionListWithMockUser(roleId, userIds, subjectIds);
+                    return getAffectedClientSessionListWithMockUser(roleIds, userIds, subjectIds);
                 }
                 if (!userIds.isEmpty() || !subjectIds.isEmpty()) {
                     return getAffectedClientSessionListWithLoginUser(userIds, subjectIds);

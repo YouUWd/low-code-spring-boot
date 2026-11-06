@@ -39,10 +39,10 @@ public interface PermissionChangeMessageHandle {
 
     /** 按角色 + 受影响用户/主体匹配，并特别处理模拟登录（mock）视角 */
     default List<ClientSession> getAffectedClientSessionListWithMockUser(
-            Long roleId, Set<Long> userIds, Set<Long> subjectIds) {
+            Set<Long> roleIds, Set<Long> userIds, Set<Long> subjectIds) {
         List<ClientSession> result = new ArrayList<>();
         for (ClientSession s : SseSessionHolder.getAllSessions()) {
-            if (s.getRoleId() == null || !s.getRoleId().equals(roleId)) {
+            if (s.getRoleId() == null || !roleIds.contains(s.getRoleId())) {
                 continue;
             }
             Long effectiveUser =
@@ -56,13 +56,13 @@ public interface PermissionChangeMessageHandle {
     }
 
     /** 按角色匹配（忽略受影响用户/主体集合，用于仅知道 roleId 的场景） */
-    default List<ClientSession> getAffectedClientSessionListByRole(Long roleId) {
+    default List<ClientSession> getAffectedClientSessionListByRole(Set<Long> roleIds) {
         List<ClientSession> result = new ArrayList<>();
-        if (roleId == null) {
+        if (roleIds == null || roleIds.isEmpty()) {
             return result;
         }
         for (ClientSession s : SseSessionHolder.getAllSessions()) {
-            if (roleId.equals(s.getRoleId())) {
+            if (roleIds.contains(s.getRoleId())) {
                 result.add(s);
             }
         }
@@ -86,12 +86,12 @@ public interface PermissionChangeMessageHandle {
 
     /** 角色删除场景：登录人与被模拟人都要通知，故「角色匹配 或 用户/主体匹配」 */
     default List<ClientSession> getAffectedClientSessionListWithRoleRemove(
-            Long roleId, Set<Long> userIds, Set<Long> subjectIds) {
+            Set<Long> roleIds, Set<Long> userIds, Set<Long> subjectIds) {
         List<ClientSession> result = new ArrayList<>();
         for (ClientSession s : SseSessionHolder.getAllSessions()) {
             Long effectiveUser =
                     Boolean.TRUE.equals(s.getIsMockLogin()) ? s.getMockUserId() : s.getUserId();
-            boolean roleMatch = s.getRoleId() != null && s.getRoleId().equals(roleId);
+            boolean roleMatch = s.getRoleId() != null && roleIds.contains(s.getRoleId());
             boolean userMatch =
                     (effectiveUser != null && userIds.contains(effectiveUser))
                             || (s.getSubjectId() != null && subjectIds.contains(s.getSubjectId()));
