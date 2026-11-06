@@ -45,6 +45,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                     "business_status",
                     "created_by",
                     "created_date",
+                    "deleted",
                     "active",
                     "source_id",
                     "node_id",
