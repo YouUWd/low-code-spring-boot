@@ -7,11 +7,13 @@ import static org.mockito.Mockito.*;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.response.DataRightConfigResp;
+import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.config.open.api.OpenRolePermissionApi;
 import com.jdec.platform.data.api.DataApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.QueryReq;
+import com.jdec.platform.data.api.model.predicate.ComparisonPredicate;
 import com.jdec.platform.data.api.model.predicate.CompoundPredicate;
 import com.jdec.platform.data.api.model.predicate.Predicate;
 import com.jdec.platform.shared.context.UserContext;
@@ -20,6 +22,7 @@ import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import org.jooq.Condition;
 import org.jooq.impl.DSL;
 import org.junit.jupiter.api.AfterEach;
@@ -32,6 +35,7 @@ class DataPermissionConditionResolverTest {
 
     private OpenRolePermissionApi openRolePermissionApi;
     private DataApi dataApi;
+    private ConfigApi configApi;
     private DataPermissionConditionResolver resolver;
     private ModuleTreeDTO moduleTree;
 
@@ -41,7 +45,8 @@ class DataPermissionConditionResolverTest {
                 LoginUser.builder().userId(1L).roleId(1L).username("admin").build());
         openRolePermissionApi = mock(OpenRolePermissionApi.class);
         dataApi = mock(DataApi.class);
-        resolver = new DataPermissionConditionResolver(openRolePermissionApi, dataApi);
+        configApi = mock(ConfigApi.class);
+        resolver = new DataPermissionConditionResolver(openRolePermissionApi, dataApi, configApi);
 
         ModuleInfo rootModule =
                 ModuleInfo.builder()
@@ -271,5 +276,139 @@ class DataPermissionConditionResolverTest {
         Optional<Condition> condOpt = resolver.resolve(moduleTree, null);
         assertTrue(condOpt.isPresent());
         assertEquals(DSL.falseCondition(), condOpt.get());
+    }
+
+    @Test
+    @DisplayName("JSON类型字段权限过滤：应使用 JSON_CONTAINS 谓词操作符而非 IN")
+    void testJsonFieldUsesJsonContainsOperator() {
+        String jsonVal =
+                "{\"alias_value_no\":\"W260825142929\",\"alias_value_title\":\"客户\",\"uuid\":\"r3xEQ0BmWS\"}";
+        DataRightConfigResp config =
+                DataRightConfigResp.builder()
+                        .tableName("t_order")
+                        .dataList(
+                                List.of(
+                                        DataRightConfigResp.DataConfig.builder()
+                                                .permissionCheckAll(0)
+                                                .subjectId(0L)
+                                                .subjectCheckAll(0)
+                                                .columnName("cooperation_types")
+                                                .bizNames(List.of(jsonVal))
+                                                .build()))
+                        .build();
+
+        when(openRolePermissionApi.getRoleDataPermissionDetail(1L)).thenReturn(List.of(config));
+
+        ArgumentCaptor<QueryReq> captor = ArgumentCaptor.forClass(QueryReq.class);
+        DataRow row = new DataRow();
+        row.putTable("t_order", Map.of("id", 385L));
+        when(dataApi.queryList(captor.capture()))
+                .thenReturn(DataBlock.builder().view("ORDER").records(List.of(row)).build());
+
+        Optional<Condition> condOpt = resolver.resolve(moduleTree, null);
+        assertTrue(condOpt.isPresent());
+
+        QueryReq capturedReq = captor.getValue();
+        assertNotNull(capturedReq);
+        Predicate filter = capturedReq.getFilter();
+        assertNotNull(filter);
+
+        assertTrue(filter instanceof CompoundPredicate);
+        CompoundPredicate compound = (CompoundPredicate) filter;
+        boolean foundJsonContains =
+                compound.getPredicates().stream()
+                        .anyMatch(
+                                p ->
+                                        p instanceof ComparisonPredicate cp
+                                                && "cooperation_types".equals(cp.getColumnName())
+                                                && "JSON_CONTAINS".equals(cp.getOperator()));
+        assertTrue(foundJsonContains, "cooperation_types 必须使用 JSON_CONTAINS 操作符");
+    }
+
+    @Test
+    @DisplayName("无主体限制的JSON结构字段：基于取值特征识别并使用 JSON_CONTAINS 操作符")
+    void testNonSubjectJsonFieldRecognizedByValue() {
+        Map<String, Object> jsonMap = Map.of("alias_value_no", "W123", "alias_value_title", "供应商");
+        DataRightConfigResp config =
+                DataRightConfigResp.builder()
+                        .tableName("t_order")
+                        .dataList(
+                                List.of(
+                                        DataRightConfigResp.DataConfig.builder()
+                                                .permissionCheckAll(0)
+                                                .subjectId(null)
+                                                .subjectCheckAll(0)
+                                                .columnName("custom_json_col")
+                                                .bizNames(List.of(jsonMap))
+                                                .build()))
+                        .build();
+
+        when(openRolePermissionApi.getRoleDataPermissionDetail(1L)).thenReturn(List.of(config));
+
+        ArgumentCaptor<QueryReq> captor = ArgumentCaptor.forClass(QueryReq.class);
+        DataRow row = new DataRow();
+        row.putTable("t_order", Map.of("id", 385L));
+        when(dataApi.queryList(captor.capture()))
+                .thenReturn(DataBlock.builder().view("ORDER").records(List.of(row)).build());
+
+        Optional<Condition> condOpt = resolver.resolve(moduleTree, null);
+        assertTrue(condOpt.isPresent());
+
+        QueryReq capturedReq = captor.getValue();
+        assertNotNull(capturedReq);
+        Predicate filter = capturedReq.getFilter();
+        assertNotNull(filter);
+
+        assertTrue(filter instanceof ComparisonPredicate);
+        ComparisonPredicate cp = (ComparisonPredicate) filter;
+        assertEquals("custom_json_col", cp.getColumnName());
+        assertEquals("JSON_CONTAINS", cp.getOperator());
+    }
+
+    @Test
+    @DisplayName("通过 INFORMATION_SCHEMA 元数据识别 JSON 列：生成 JSON_CONTAINS 谓词操作符")
+    void testJsonFieldRecognizedFromInformationSchema() {
+        DataRightConfigResp config =
+                DataRightConfigResp.builder()
+                        .tableName("t_order")
+                        .dataList(
+                                List.of(
+                                        DataRightConfigResp.DataConfig.builder()
+                                                .permissionCheckAll(0)
+                                                .subjectId(101L)
+                                                .subjectCheckAll(0)
+                                                .columnName("dynamic_tag_col")
+                                                .bizNames(List.of("VIP", "PARTNER"))
+                                                .build()))
+                        .build();
+
+        when(openRolePermissionApi.getRoleDataPermissionDetail(1L)).thenReturn(List.of(config));
+        when(configApi.getTableJsonColumnNames(any(), eq("t_order")))
+                .thenReturn(Set.of("dynamic_tag_col"));
+
+        ArgumentCaptor<QueryReq> captor = ArgumentCaptor.forClass(QueryReq.class);
+        DataRow row = new DataRow();
+        row.putTable("t_order", Map.of("id", 100L));
+        when(dataApi.queryList(captor.capture()))
+                .thenReturn(DataBlock.builder().view("ORDER").records(List.of(row)).build());
+
+        Optional<Condition> condOpt = resolver.resolve(moduleTree, null);
+        assertTrue(condOpt.isPresent());
+
+        QueryReq capturedReq = captor.getValue();
+        assertNotNull(capturedReq);
+        Predicate filter = capturedReq.getFilter();
+        assertNotNull(filter);
+
+        assertTrue(filter instanceof CompoundPredicate);
+        CompoundPredicate compound = (CompoundPredicate) filter;
+        boolean foundJsonContains =
+                compound.getPredicates().stream()
+                        .anyMatch(
+                                p ->
+                                        p instanceof ComparisonPredicate cp
+                                                && "dynamic_tag_col".equals(cp.getColumnName())
+                                                && "JSON_CONTAINS".equals(cp.getOperator()));
+        assertTrue(foundJsonContains, "来自 INFORMATION_SCHEMA 的 JSON 列必须使用 JSON_CONTAINS 操作符");
     }
 }

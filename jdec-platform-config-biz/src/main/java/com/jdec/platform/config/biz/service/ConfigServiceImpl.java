@@ -652,7 +652,8 @@ public class ConfigServiceImpl implements ConfigApi {
                 @CacheEvict(cacheNames = "config:module_tree", allEntries = true),
                 @CacheEvict(cacheNames = "config:project_module_tree", allEntries = true),
                 @CacheEvict(cacheNames = "config:project_table_relations", allEntries = true),
-                @CacheEvict(cacheNames = "config:table_columns", allEntries = true)
+                @CacheEvict(cacheNames = "config:table_columns", allEntries = true),
+                @CacheEvict(cacheNames = "config:table_json_columns", allEntries = true)
             })
     public void clearModuleCache(Long moduleId) {
         log.info("已通过注解式缓存精准淘汰模块 {} 的元数据缓存及全量模块树缓存", moduleId);
@@ -665,7 +666,8 @@ public class ConfigServiceImpl implements ConfigApi {
                 @CacheEvict(cacheNames = "config:module_tree", allEntries = true),
                 @CacheEvict(cacheNames = "config:project_module_tree", allEntries = true),
                 @CacheEvict(cacheNames = "config:project_table_relations", allEntries = true),
-                @CacheEvict(cacheNames = "config:table_columns", allEntries = true)
+                @CacheEvict(cacheNames = "config:table_columns", allEntries = true),
+                @CacheEvict(cacheNames = "config:table_json_columns", allEntries = true)
             })
     public void clearMetaCache() {
         log.info("已通过注解式缓存全量清空所有配置元数据缓存");
@@ -683,5 +685,19 @@ public class ConfigServiceImpl implements ConfigApi {
             return Collections.emptySet();
         }
         return sysSchemaApi.getTableColumnNames(projectNo, tableName);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @Cacheable(
+            cacheNames = "config:table_json_columns",
+            key =
+                    "(#projectNo != null ? #projectNo : '') + ':' + (#tableName != null ? #tableName.trim().toLowerCase() : '')",
+            unless = "#result == null || #result.isEmpty()")
+    public Set<String> getTableJsonColumnNames(String projectNo, String tableName) {
+        if (sysSchemaApi == null) {
+            return Collections.emptySet();
+        }
+        return sysSchemaApi.getTableJsonColumnNames(projectNo, tableName);
     }
 }

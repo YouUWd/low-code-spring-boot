@@ -34,4 +34,13 @@ public interface SysSchemaApi {
      * @return 实际物理列名集合 (全小写)
      */
     Set<String> getTableColumnNames(String projectNo, String tableName);
+
+    /**
+     * 获取指定项目数据源下物理表类型为 JSON 的列名集合 (从 INFORMATION_SCHEMA.COLUMNS 查询)
+     *
+     * @param projectNo 项目编码
+     * @param tableName 物理表名
+     * @return 实际物理 JSON 列名集合 (全小写)
+     */
+    Set<String> getTableJsonColumnNames(String projectNo, String tableName);
 }
