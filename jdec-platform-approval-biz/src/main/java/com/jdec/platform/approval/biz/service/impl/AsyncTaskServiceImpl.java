@@ -501,11 +501,15 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
                         JsonNode jsonNode =
                                 mapper.readTree(approvalProcessDTO.getReason().toString());
                         reason = jsonNode.path("comment").asText("");
-                        int idx = reason.indexOf("原因");
-                        if (idx >= 0) {
-                            reason = reason.substring(idx + 2);
-                            // 去掉紧跟的冒号（全角或半角）
-                            reason = reason.replaceFirst("^[：:]", "").trim();
+                        String[] prefixes = {"驳回原因", "取消原因"};
+                        String result = reason == null ? null : reason.trim();
+                        for (String prefix : prefixes) {
+                            if (Objects.nonNull(result) && result.startsWith(prefix)) {
+                                // 去掉开头的这4个字
+                                result = result.substring(prefix.length());
+                                // 去掉紧跟的冒号（全角或半角）和空格
+                                result = result.replaceFirst("^[：:]\\s*", "").trim();
+                            }
                         }
                     } catch (Exception e) {
                         reason = "";
