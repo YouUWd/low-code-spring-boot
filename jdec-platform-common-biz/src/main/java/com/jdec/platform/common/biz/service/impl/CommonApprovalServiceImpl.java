@@ -226,7 +226,6 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
 
     // 提交单据
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public Long businessSubmit(DynamicSaveReq req) {
         savePrepositionProcessorService.preProcess(req.getNestedModuleData());
         boolean realTimeSave =
