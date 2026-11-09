@@ -96,6 +96,26 @@ public class ReferenceRegistry {
                             ? resolveColumn(entity, reference.displayField())
                             : null;
             String name = StringUtils.hasText(reference.name()) ? reference.name() : sourceTable;
+            String viaTable = null;
+            String viaFkColumn = null;
+            String viaPkColumn = null;
+            String viaDisplayColumn = null;
+            if (reference.displayViaTarget() != Void.class) {
+                viaTable = resolveTableName(reference.displayViaTarget());
+                if (viaTable == null) {
+                    log.warn(
+                            "关联展示实体 {} 缺少 @TableName，忽略 {}.{} 的关联展示",
+                            reference.displayViaTarget().getName(),
+                            entity.getSimpleName(),
+                            field.getName());
+                } else {
+                    viaPkColumn = resolvePrimaryKeyColumn(reference.displayViaTarget());
+                    viaFkColumn = resolveColumn(entity, reference.displayViaField());
+                    viaDisplayColumn =
+                            resolveColumn(
+                                    reference.displayViaTarget(), reference.displayViaColumn());
+                }
+            }
             ReferenceMetadata metadata =
                     new ReferenceMetadata(
                             entity,
@@ -106,7 +126,11 @@ public class ReferenceRegistry {
                             name,
                             reference.target(),
                             targetTable,
-                            reference.targetField());
+                            reference.targetField(),
+                            viaTable,
+                            viaFkColumn,
+                            viaPkColumn,
+                            viaDisplayColumn);
             index.computeIfAbsent(
                             targetTable + "." + reference.targetField(), k -> new ArrayList<>())
                     .add(metadata);

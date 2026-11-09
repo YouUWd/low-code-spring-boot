@@ -34,8 +34,20 @@ public @interface Reference {
     /** 当前实体中作为外键的列名，留空则由属性名推导（驼峰转下划线，兼容 {@code @TableField}）。 */
     String sourceField() default "";
 
-    /** 引用方的展示字段（属性名，如 title/name），用于错误提示；留空则只输出记录ID。 */
+    /** 引用方的展示字段（属性名，如 title/name），用于错误提示；留空则只统计条数。 */
     String displayField() default "";
+
+    /**
+     * 关联展示：源记录中另一个外键属性（如 {@code menuId}），其值指向 {@link #displayViaTarget()} 的一条记录， 错误提示中将展示该记录的
+     * {@link #displayViaColumn()} 列值。适用于无名称列的关联表（如 sys_role_menu）。
+     */
+    String displayViaField() default "";
+
+    /** 关联展示实体（如 {@code SysMenu.class}），需带 {@code @TableName} 与主键；默认 {@code Void} 表示未启用。 */
+    Class<?> displayViaTarget() default Void.class;
+
+    /** 关联展示实体中作为名称的属性（如 {@code title}）。 */
+    String displayViaColumn() default "";
 
     /** 引用方业务名称（如「菜单」），用于错误提示；留空则使用表名。 */
     String name() default "";

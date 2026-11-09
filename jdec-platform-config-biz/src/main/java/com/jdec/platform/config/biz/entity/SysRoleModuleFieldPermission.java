@@ -22,11 +22,21 @@ public class SysRoleModuleFieldPermission implements Serializable {
     private Long id;
 
     /** 角色ID */
-    @Reference(target = SysRole.class, name = "字段权限")
+    @Reference(
+            target = SysRole.class,
+            name = "字段权限",
+            displayViaField = "moduleId",
+            displayViaTarget = SysModule.class,
+            displayViaColumn = "moduleName")
     private Long roleId;
 
     /** 模块ID */
-    @Reference(target = SysModule.class, name = "角色字段权限")
+    @Reference(
+            target = SysModule.class,
+            name = "角色字段权限",
+            displayViaField = "roleId",
+            displayViaTarget = SysRole.class,
+            displayViaColumn = "roleName")
     private Long moduleId;
 
     private Long moduleFieldId;

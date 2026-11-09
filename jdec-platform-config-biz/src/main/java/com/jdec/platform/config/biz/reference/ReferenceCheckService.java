@@ -117,36 +117,50 @@ public class ReferenceCheckService {
     /** 查询单个引用关系（一条 SQL，批量 IN），返回 目标键 -> 引用方记录行[主键, 展示名]。 */
     private Map<Object, List<Object[]>> queryReferences(
             ReferenceMetadata metadata, List<Object> keys) {
+        boolean hasVia = metadata.hasViaDisplay();
         boolean hasDisplay = StringUtils.hasText(metadata.displayField());
         String placeholders = keys.stream().map(id -> "?").collect(Collectors.joining(","));
         StringBuilder columns = new StringBuilder();
-        columns.append(metadata.sourceField())
-                .append(" AS src_val, ")
+        columns.append("s.")
+                .append(metadata.sourceField())
+                .append(" AS src_val, s.")
                 .append(metadata.sourcePk())
                 .append(" AS src_pk");
         if (hasDisplay) {
-            columns.append(", ").append(metadata.displayField()).append(" AS src_display");
+            columns.append(", s.").append(metadata.displayField()).append(" AS src_display");
+        } else if (hasVia) {
+            columns.append(", v.").append(metadata.viaDisplayColumn()).append(" AS src_display");
         }
-        String sql =
-                "SELECT "
-                        + columns
-                        + " FROM "
-                        + metadata.sourceTable()
-                        + " WHERE "
-                        + metadata.sourceField()
-                        + " IN ("
-                        + placeholders
-                        + ")";
+        StringBuilder sql = new StringBuilder();
+        sql.append("SELECT ")
+                .append(columns)
+                .append(" FROM ")
+                .append(metadata.sourceTable())
+                .append(" s");
+        if (hasVia) {
+            sql.append(" LEFT JOIN ")
+                    .append(metadata.viaTable())
+                    .append(" v ON s.")
+                    .append(metadata.viaFkColumn())
+                    .append(" = v.")
+                    .append(metadata.viaPkColumn());
+        }
+        sql.append(" WHERE s.")
+                .append(metadata.sourceField())
+                .append(" IN (")
+                .append(placeholders)
+                .append(")");
+        boolean rowHasDisplay = hasDisplay || hasVia;
         Map<Object, List<Object[]>> grouped = new LinkedHashMap<>();
         jdbcTemplate.query(
-                sql,
+                sql.toString(),
                 rs -> {
                     Object srcVal = rs.getObject("src_val");
                     if (srcVal == null) {
                         return;
                     }
                     Object[] row =
-                            hasDisplay
+                            rowHasDisplay
                                     ? new Object[] {
                                         rs.getObject("src_pk"), rs.getObject("src_display")
                                     }

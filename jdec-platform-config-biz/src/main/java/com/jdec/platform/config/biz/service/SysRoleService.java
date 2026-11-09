@@ -26,7 +26,6 @@ import com.jdec.platform.config.biz.mapper.SysUserMapper;
 import com.jdec.platform.config.biz.reference.ReferenceCheckService;
 import com.jdec.platform.config.biz.reference.ReferenceViolation;
 import com.jdec.platform.shared.context.AppContext;
-import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.datasource.DataSource;
 import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.enums.*;
@@ -536,7 +535,6 @@ public class SysRoleService implements SysRoleApi {
         try {
             Long subjectId = AppContext.getSubjectId();
             String projectNo = AppContext.getProjectNo();
-            Long operatorUserId = UserContext.getRealUserId();
 
             if (isUpdate) {
                 Set<Long> newUserSet = new HashSet<>(newUserIds);
@@ -558,28 +556,24 @@ public class SysRoleService implements SysRoleApi {
                 if (!addedUsers.isEmpty()) {
                     Map<String, Object> payload = new HashMap<>();
                     payload.put("affectedRoleIds", List.of(roleId));
-                    payload.put("operatorUserId", operatorUserId);
                     payload.put("affectedUserIds", addedUsers);
                     messagePublisher.publish(subjectId, projectNo, ChangeType.ROLE_ADD, payload);
                 }
                 if (!removedUsers.isEmpty()) {
                     Map<String, Object> payload = new HashMap<>();
                     payload.put("affectedRoleIds", List.of(roleId));
-                    payload.put("operatorUserId", operatorUserId);
                     payload.put("affectedUserIds", removedUsers);
                     messagePublisher.publish(subjectId, projectNo, ChangeType.ROLE_DELETE, payload);
                 }
                 if (!addedSubjects.isEmpty()) {
                     Map<String, Object> payload = new HashMap<>();
                     payload.put("affectedRoleIds", List.of(roleId));
-                    payload.put("operatorUserId", operatorUserId);
                     payload.put("affectedSubjectIds", addedSubjects);
                     messagePublisher.publish(subjectId, projectNo, ChangeType.ROLE_ADD, payload);
                 }
                 if (!removedSubjects.isEmpty()) {
                     Map<String, Object> payload = new HashMap<>();
                     payload.put("affectedRoleIds", List.of(roleId));
-                    payload.put("operatorUserId", operatorUserId);
                     payload.put("affectedSubjectIds", removedSubjects);
                     messagePublisher.publish(subjectId, projectNo, ChangeType.ROLE_DELETE, payload);
                 }
@@ -588,14 +582,12 @@ public class SysRoleService implements SysRoleApi {
                 if (!newUserIds.isEmpty()) {
                     Map<String, Object> payload = new HashMap<>();
                     payload.put("affectedRoleIds", List.of(roleId));
-                    payload.put("operatorUserId", operatorUserId);
                     payload.put("affectedUserIds", newUserIds);
                     messagePublisher.publish(subjectId, projectNo, ChangeType.ROLE_ADD, payload);
                 }
                 if (!newSubjectIds.isEmpty()) {
                     Map<String, Object> payload = new HashMap<>();
                     payload.put("affectedRoleIds", List.of(roleId));
-                    payload.put("operatorUserId", operatorUserId);
                     payload.put("affectedSubjectIds", newSubjectIds);
                     messagePublisher.publish(subjectId, projectNo, ChangeType.ROLE_ADD, payload);
                 }
@@ -1125,34 +1117,21 @@ public class SysRoleService implements SysRoleApi {
         // 5. 删除角色本身
         sysRoleMapper.deleteById(roleId);
 
-        // 6. 发送 ROLE_DELETE 消息
+        // 6. 发送 ROLE_DELETE 消息（推送受影响的用户与主体，不做排除）
         try {
             Long subjectId = AppContext.getSubjectId();
             String projectNo = AppContext.getProjectNo();
 
-            // 排除操作人本人：自己删除角色不应收到该角色变更通知
-            Long operatorUserId = UserContext.getRealUserId();
-            Set<Long> filteredUserIds =
-                    userIds.stream()
-                            .filter(id -> !Objects.equals(id, operatorUserId))
-                            .collect(Collectors.toSet());
-            List<Long> filteredSubjectIds =
-                    affectedSubjectIds.stream()
-                            .filter(id -> !Objects.equals(id, subjectId))
-                            .toList();
-
-            if (!filteredUserIds.isEmpty()) {
+            if (!userIds.isEmpty()) {
                 Map<String, Object> payload = new HashMap<>();
                 payload.put("affectedRoleIds", List.of(roleId));
-                payload.put("affectedUserIds", new ArrayList<>(filteredUserIds));
-                payload.put("operatorUserId", operatorUserId);
+                payload.put("affectedUserIds", new ArrayList<>(userIds));
                 messagePublisher.publish(subjectId, projectNo, ChangeType.ROLE_DELETE, payload);
             }
-            if (!filteredSubjectIds.isEmpty()) {
+            if (!affectedSubjectIds.isEmpty()) {
                 Map<String, Object> payload = new HashMap<>();
                 payload.put("affectedRoleIds", List.of(roleId));
-                payload.put("affectedSubjectIds", filteredSubjectIds);
-                payload.put("operatorUserId", operatorUserId);
+                payload.put("affectedSubjectIds", affectedSubjectIds);
                 messagePublisher.publish(subjectId, projectNo, ChangeType.ROLE_DELETE, payload);
             }
         } catch (Exception e) {

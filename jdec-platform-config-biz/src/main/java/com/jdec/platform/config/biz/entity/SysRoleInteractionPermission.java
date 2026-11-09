@@ -18,11 +18,21 @@ public class SysRoleInteractionPermission implements Serializable {
     private Long id;
 
     @Schema(description = "角色ID")
-    @Reference(target = SysRole.class, name = "交互权限关联")
+    @Reference(
+            target = SysRole.class,
+            name = "交互权限关联",
+            displayViaField = "permissionId",
+            displayViaTarget = SysInteractionPermission.class,
+            displayViaColumn = "name")
     private Long roleId;
 
     @Schema(description = "权限ID")
-    @Reference(target = SysInteractionPermission.class, name = "角色交互权限")
+    @Reference(
+            target = SysInteractionPermission.class,
+            name = "角色交互权限",
+            displayViaField = "roleId",
+            displayViaTarget = SysRole.class,
+            displayViaColumn = "roleName")
     private Long permissionId;
 
     @Schema(description = "模拟操作用户")

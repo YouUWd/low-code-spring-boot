@@ -18,7 +18,12 @@ public class SysRoleMenu implements Serializable {
     private Long id;
 
     @Schema(description = "角色id")
-    @Reference(target = SysRole.class, name = "菜单权限")
+    @Reference(
+            target = SysRole.class,
+            name = "菜单权限",
+            displayViaField = "menuId",
+            displayViaTarget = SysMenu.class,
+            displayViaColumn = "title")
     private Long roleId;
 
     @Schema(description = "菜单id")
