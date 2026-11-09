@@ -1932,7 +1932,7 @@ public class DynamicQueryService {
 
             if (createByUser != null) {
                 userInfoBuilder
-                        .id(createByUser.getId())
+                        .id(createByUser.getUserId())
                         .userName(createByUser.getUserName())
                         .userAvatar(createByUser.getUserAvatar())
                         .departName(createByUser.getDepartName())
@@ -2077,7 +2077,7 @@ public class DynamicQueryService {
 
         if (createByUser != null) {
             userInfoBuilder
-                    .id(createByUser.getId())
+                    .id(createByUser.getUserId())
                     .userName(createByUser.getUserName())
                     .userAvatar(createByUser.getUserAvatar())
                     .departName(createByUser.getDepartName())
