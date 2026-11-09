@@ -1,5 +1,6 @@
 package com.jdec.platform.data.api.model.predicate;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -18,6 +19,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 @Schema(description = "复合逻辑谓词（纯逻辑容器，用于 AND / OR / NOT 分组）")
 public class CompoundPredicate implements Predicate {
 

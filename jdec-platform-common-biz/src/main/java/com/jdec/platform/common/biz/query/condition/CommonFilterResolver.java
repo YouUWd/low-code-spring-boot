@@ -315,9 +315,6 @@ public class CommonFilterResolver {
 
         public static PrimaryFilterResult activeOnly(Long rootModuleId, String primaryTable) {
             FilterItem activeFilter = FilterItem.eq(primaryTable, ACTIVE_COLUMN, 1);
-            if (rootModuleId != null) {
-                activeFilter.setModuleId(rootModuleId);
-            }
             return of(List.of(activeFilter), Collections.emptyList());
         }
 
@@ -325,10 +322,6 @@ public class CommonFilterResolver {
                 Long rootModuleId, String primaryTable, List<Long> matchedIds) {
             FilterItem idFilter = FilterItem.in(primaryTable, ID_COLUMN, matchedIds);
             FilterItem activeFilter = FilterItem.eq(primaryTable, ACTIVE_COLUMN, 1);
-            if (rootModuleId != null) {
-                idFilter.setModuleId(rootModuleId);
-                activeFilter.setModuleId(rootModuleId);
-            }
             return of(List.of(idFilter, activeFilter), matchedIds);
         }
 

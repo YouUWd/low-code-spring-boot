@@ -5,6 +5,11 @@ import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.SingleTableQueryReq;
 import com.jdec.platform.data.api.dto.request.SortItem;
 import com.jdec.platform.data.api.dto.response.DataPage;
+import com.jdec.platform.data.api.model.predicate.ColumnRef;
+import com.jdec.platform.data.api.model.predicate.ComparisonPredicate;
+import com.jdec.platform.data.api.model.predicate.CompoundPredicate;
+import com.jdec.platform.data.api.model.predicate.FunctionExpr;
+import com.jdec.platform.data.api.model.predicate.Predicate;
 import com.jdec.platform.data.biz.plan.compiler.PredicateCompiler;
 import com.jdec.platform.shared.datasource.JooqDataContextFactory;
 import java.util.ArrayList;
@@ -32,6 +37,14 @@ import org.springframework.stereotype.Service;
  * 单表轻量查询服务实现 (SingleTableQueryService)
  *
  * <p>面向单张物理表的原子操作，直接使用 jOOQ 执行原生轻量 SQL，跳过元数据加载与复杂多表装配。
+ *
+ * <p>契约约束：
+ *
+ * <ul>
+ *   <li>1. 单表查询仅面向单一目标物理表；调用方应保证 filters / sorts 中仅引用当前目标表字段。
+ *   <li>2. 若复合过滤项中混杂了非目标表的字段引用，在单表物理作用域内该外表分支将被自动略过，并输出 WARN 告警日志。
+ *   <li>3. 软删除字段 (deleted) 完全作为普通字段参数由调用方按需传递，服务不做任何隐式追加或篡改，保持执行语义透明且正交。
+ * </ul>
  */
 @Slf4j
 @Service
@@ -247,6 +260,7 @@ public class SingleTableQueryService {
 
         Condition baseCond =
                 (businessStatus != null) ? fBizStatus.eq(businessStatus) : DSL.noCondition();
+        baseCond = baseCond.and(DSL.field(DSL.name("deleted")).eq((byte) 0));
         if (businessNos != null && !businessNos.isEmpty()) {
             baseCond = baseCond.and(fBizNo.in(businessNos));
         }
@@ -269,24 +283,64 @@ public class SingleTableQueryService {
     }
 
     private Condition compileFilters(List<FilterItem> filters, String tableName) {
-        if (filters == null || filters.isEmpty()) {
-            return null;
-        }
-
         Set<String> applicableTables = new HashSet<>();
         applicableTables.add(tableName.toLowerCase());
 
         List<Condition> conditions = new ArrayList<>();
-        for (FilterItem item : filters) {
-            if (item != null) {
-                var pred = item.toPredicate();
-                Condition cond = PredicateCompiler.compile(pred, null, tableName, applicableTables);
-                if (cond != null && !DSL.noCondition().equals(cond)) {
-                    conditions.add(cond);
+
+        if (filters != null) {
+            for (FilterItem item : filters) {
+                if (item != null) {
+                    var pred = item.toPredicate();
+                    Set<String> refTables = extractReferencedTables(pred);
+                    for (String ref : refTables) {
+                        if (!ref.equalsIgnoreCase(tableName)) {
+                            log.warn(
+                                    "单表查询 [{}] 接收到非目标表过滤字段引用 [{}], 单表物理作用域内该分支不生效", tableName, ref);
+                        }
+                    }
+
+                    Condition cond = PredicateCompiler.compile(pred, tableName, applicableTables);
+                    if (cond != null && !DSL.noCondition().equals(cond)) {
+                        conditions.add(cond);
+                    }
                 }
             }
         }
-        return conditions.isEmpty() ? null : DSL.and(conditions);
+
+        return DSL.and(conditions);
+    }
+
+    /** 从谓词 AST 中提取引用的所有物理表名称 (小写) */
+    private static Set<String> extractReferencedTables(Predicate predicate) {
+        Set<String> tables = new HashSet<>();
+        collectReferencedTables(predicate, tables);
+        return tables;
+    }
+
+    private static void collectReferencedTables(Predicate predicate, Set<String> tables) {
+        if (predicate == null) {
+            return;
+        }
+        if (predicate instanceof ComparisonPredicate comp) {
+            String tbl = comp.getTableName();
+            if (tbl == null && comp.getExpression() instanceof ColumnRef col) {
+                tbl = col.getTableName();
+            } else if (tbl == null
+                    && comp.getExpression() instanceof FunctionExpr fn
+                    && fn.getTargetColumn() != null) {
+                tbl = fn.getTargetColumn().getTableName();
+            }
+            if (tbl != null && !tbl.isBlank()) {
+                tables.add(tbl.trim().toLowerCase());
+            }
+        } else if (predicate instanceof CompoundPredicate comp) {
+            if (comp.getPredicates() != null) {
+                for (Predicate sub : comp.getPredicates()) {
+                    collectReferencedTables(sub, tables);
+                }
+            }
+        }
     }
 
     private List<OrderField<?>> compileSorts(List<SortItem> sorts) {

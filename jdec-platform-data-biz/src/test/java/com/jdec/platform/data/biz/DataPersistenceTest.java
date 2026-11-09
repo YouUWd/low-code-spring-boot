@@ -501,7 +501,7 @@ class DataPersistenceTest {
         DataRow row = new DataRow();
         row.putTable("student", studentRow);
 
-        DataBlock saveBlock = DataBlock.builder().moduleId(101L).records(List.of(row)).build();
+        DataBlock saveBlock = DataBlock.builder().view("101").records(List.of(row)).build();
 
         Long savedId = dataPersistenceService.save(saveBlock).getRootId();
 
@@ -531,7 +531,7 @@ class DataPersistenceTest {
         DataRow courseRecord = new DataRow();
         courseRecord.putTable("student_course", courseRow);
         courseRecord.setChildren(
-                List.of(DataBlock.builder().moduleId(108L).records(List.of(scoreItemRow)).build()));
+                List.of(DataBlock.builder().view("108").records(List.of(scoreItemRow)).build()));
 
         // 根记录: 学生 101 行对象 (包含 student 与 children)
         Map<String, Object> studentRow = new HashMap<>();
@@ -541,10 +541,9 @@ class DataPersistenceTest {
         DataRow rootRecord = new DataRow();
         rootRecord.putTable("student", studentRow);
         rootRecord.setChildren(
-                List.of(DataBlock.builder().moduleId(105L).records(List.of(courseRecord)).build()));
+                List.of(DataBlock.builder().view("105").records(List.of(courseRecord)).build()));
 
-        DataBlock saveBlock =
-                DataBlock.builder().moduleId(101L).records(List.of(rootRecord)).build();
+        DataBlock saveBlock = DataBlock.builder().view("101").records(List.of(rootRecord)).build();
 
         Long savedId = dataPersistenceService.save(saveBlock).getRootId();
         assertNotNull(savedId);
@@ -594,9 +593,9 @@ class DataPersistenceTest {
         DataRow virtualContainer = new DataRow();
         virtualContainer.setChildren(
                 List.of(
-                        DataBlock.builder().moduleId(1005L).records(List.of(addrDataRow)).build(),
+                        DataBlock.builder().view("1005").records(List.of(addrDataRow)).build(),
                         DataBlock.builder()
-                                .moduleId(1006L)
+                                .view("1006")
                                 .records(List.of(contactRow1, contactRow2))
                                 .build()));
 
@@ -610,12 +609,11 @@ class DataPersistenceTest {
         rootRecord.setChildren(
                 List.of(
                         DataBlock.builder()
-                                .moduleId(1020L)
+                                .view("1020")
                                 .records(List.of(virtualContainer))
                                 .build()));
 
-        DataBlock saveBlock =
-                DataBlock.builder().moduleId(1001L).records(List.of(rootRecord)).build();
+        DataBlock saveBlock = DataBlock.builder().view("1001").records(List.of(rootRecord)).build();
 
         Long savedId = dataPersistenceService.save(saveBlock).getRootId();
         assertNotNull(savedId);
@@ -646,7 +644,7 @@ class DataPersistenceTest {
         DataRow row = new DataRow();
         row.putTable("student", studentRow);
 
-        DataBlock saveBlock = DataBlock.builder().moduleId(101L).records(List.of(row)).build();
+        DataBlock saveBlock = DataBlock.builder().view("101").records(List.of(row)).build();
 
         Long savedId = dataPersistenceService.save(saveBlock).getRootId();
         assertEquals(1001L, savedId);
@@ -666,20 +664,19 @@ class DataPersistenceTest {
         addressRow.putValue("address", "comm_country", "唐");
 
         DataBlock addressBlock =
-                DataBlock.builder().moduleId(1005L).records(List.of(addressRow)).build();
+                DataBlock.builder().view("1005").records(List.of(addressRow)).build();
 
         DataRow commTreeRow = new DataRow();
         commTreeRow.addChild(addressBlock);
 
         DataBlock commTreeBlock =
-                DataBlock.builder().moduleId(1020L).records(List.of(commTreeRow)).build();
+                DataBlock.builder().view("1020").records(List.of(commTreeRow)).build();
 
         DataRow companyRow = new DataRow();
         companyRow.putValue("info", "company_name", "襄阳九鼎001");
         companyRow.addChild(commTreeBlock);
 
-        DataBlock rootBlock =
-                DataBlock.builder().moduleId(1001L).records(List.of(companyRow)).build();
+        DataBlock rootBlock = DataBlock.builder().view("1001").records(List.of(companyRow)).build();
 
         DataSaveResp resp = dataPersistenceService.save(rootBlock);
 
@@ -732,7 +729,7 @@ class DataPersistenceTest {
 
         DataBlock courseBlock =
                 DataBlock.builder()
-                        .moduleId(105L)
+                        .view("105")
                         .records(
                                 List.of(
                                         deletedExistingCourse,
@@ -746,8 +743,7 @@ class DataPersistenceTest {
         studentRow.putValue("student", "name", "张三");
         studentRow.addChild(courseBlock);
 
-        DataBlock rootBlock =
-                DataBlock.builder().moduleId(101L).records(List.of(studentRow)).build();
+        DataBlock rootBlock = DataBlock.builder().view("101").records(List.of(studentRow)).build();
 
         DataSaveResp resp = dataPersistenceService.save(rootBlock);
 
@@ -796,15 +792,14 @@ class DataPersistenceTest {
         remainingCourse.putValue("student_course", "course_name", "高等数学(修改后)");
 
         DataBlock courseBlock =
-                DataBlock.builder().moduleId(105L).records(List.of(remainingCourse)).build();
+                DataBlock.builder().view("105").records(List.of(remainingCourse)).build();
 
         DataRow studentRow = new DataRow();
         studentRow.putValue("student", "id", 100L);
         studentRow.putValue("student", "name", "李四");
         studentRow.addChild(courseBlock);
 
-        DataBlock rootBlock =
-                DataBlock.builder().moduleId(101L).records(List.of(studentRow)).build();
+        DataBlock rootBlock = DataBlock.builder().view("101").records(List.of(studentRow)).build();
 
         DataSaveResp resp = dataPersistenceService.save(rootBlock);
 
@@ -851,17 +846,13 @@ class DataPersistenceTest {
         studentRow.putValue("student", "status", 1);
 
         DataBlock rootBlock =
-                DataBlock.builder()
-                        .moduleCode("MOD-SCHOOL-STUDENT")
-                        .records(List.of(studentRow))
-                        .build();
+                DataBlock.builder().view("MOD-SCHOOL-STUDENT").records(List.of(studentRow)).build();
 
         DataSaveResp resp = dataPersistenceService.save(rootBlock);
 
         assertNotNull(resp);
         assertNotNull(resp.getRootId());
         assertNotNull(resp.getData());
-        assertEquals(101L, resp.getData().getModuleId());
-        assertEquals("MOD-SCHOOL-STUDENT", resp.getData().getModuleCode());
+        assertEquals("MOD-SCHOOL-STUDENT", resp.getData().getView());
     }
 }

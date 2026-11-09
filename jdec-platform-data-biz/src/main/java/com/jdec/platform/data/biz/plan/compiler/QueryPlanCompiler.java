@@ -6,12 +6,15 @@ import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.data.api.dto.request.DetailQueryReq;
-import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.OptionReq;
 import com.jdec.platform.data.api.dto.request.PageQueryReq;
 import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.request.SortItem;
-import com.jdec.platform.data.api.dto.request.TableSpec;
+import com.jdec.platform.data.api.model.predicate.ColumnRef;
+import com.jdec.platform.data.api.model.predicate.ComparisonPredicate;
+import com.jdec.platform.data.api.model.predicate.CompoundPredicate;
+import com.jdec.platform.data.api.model.predicate.Predicate;
+import com.jdec.platform.data.api.model.predicate.RawSqlPredicate;
 import com.jdec.platform.data.biz.plan.PlanMeta;
 import com.jdec.platform.data.biz.plan.model.AttachedTableSpec;
 import com.jdec.platform.data.biz.plan.model.PhysicalFieldSpec;
@@ -29,34 +32,26 @@ import org.springframework.stereotype.Component;
 /**
  * 结构化查询计划编译器 (QueryPlanCompiler)
  *
- * <p>职责：
+ * <p>基于自相似业务视图树 (View Tree) 驱动：
  *
  * <ul>
- *   <li>1. 递归校验并加载模块树各节点的元数据配置；
- *   <li>2. 严格以物理表名/物理列名为基准，解析投影规格与过滤/排序条件；
- *   <li>3. 构建强类型安全的 SQL 过滤 Condition 与 OrderField 序列；
- *   <li>4. 自动推导子模块外键连接关系（parentForeignKey），产出确定性的 QueryPlan。
+ *   <li>1. 接收自相似 QueryReq 树，与 ModuleTreeDTO 树进行 1:1 正向对齐装配；
+ *   <li>2. 各 View 节点作用域天然物理隔离，彻底消歧同名表被多个子模块引用的问题；
+ *   <li>3. 依据 MySQL 标准谓词 AST 编译 WHERE Condition，支持布尔复合、集合运算与自底向上 Semi-Join EXISTS 上卷；
+ *   <li>4. 支持单主表、1:1 伴生表、N:1 上游字典表的统一 table.column 投影推导。
  * </ul>
- *
- * <p>本类不依赖 fieldId，也**不自行读取元数据**：模块树与项目表关系由调用方以 {@link PlanMeta} 快照传入，保证一次操作内所有节点都由同一份快照编译出来。
- *
- * <p>白名单校验、过滤条件编译与表间关系解析分别下沉到 {@link TableQueryValidator}、 {@link FilterConditionCompiler}、{@link
- * ModuleRelationResolver}，本类只负责把三者装配成节点计划树。
  */
 @Slf4j
 @Component
 public class QueryPlanCompiler {
 
-    /** 编译候选项查询请求为单列投影与物理过滤上下文的 QueryPlan */
+    /** 编译候选项查询请求为单列去重投影的 QueryPlan */
     public QueryPlan compile(OptionReq req, PlanMeta meta) {
         if (req == null) {
             throw new IllegalArgumentException("候选项请求不能为空");
         }
-        normalizeReqModule(req, meta);
-        if (req.getModuleId() == null
-                || req.getColumnName() == null
-                || req.getColumnName().isBlank()) {
-            throw new IllegalArgumentException("候选项请求的模块 ID 与列名均不能为空");
+        if (req.getColumnName() == null || req.getColumnName().isBlank()) {
+            throw new IllegalArgumentException("候选项请求的列名不能为空");
         }
 
         ModuleTreeDTO tree = meta != null ? meta.moduleTree() : null;
@@ -67,29 +62,24 @@ public class QueryPlanCompiler {
             }
         }
 
-        List<TableSpec> tables = new ArrayList<>();
-        if (table != null && !table.isBlank()) {
-            Long targetModuleId = req.getModuleId();
-            if (tree != null && tree.getModuleMap() != null) {
-                for (ModuleInfo m : tree.getModuleMap().values()) {
-                    if (m != null
-                            && m.getPrimaryTable() != null
-                            && m.getPrimaryTable().equalsIgnoreCase(table.trim())) {
-                        targetModuleId = m.getModuleId();
-                        break;
-                    }
-                }
-            }
-            tables.add(TableSpec.of(targetModuleId, table, req.getColumnName().trim()));
+        String view = req.getView();
+        if ((view == null || view.isBlank()) && tree != null && tree.getRootModule() != null) {
+            view = tree.getRootModule().getModuleCode();
         }
+
+        String targetCol =
+                (table != null && !table.isBlank())
+                        ? table.trim() + "." + req.getColumnName().trim()
+                        : req.getColumnName().trim();
 
         QueryReq queryReq =
                 QueryReq.builder()
-                        .moduleId(req.getModuleId())
-                        .tables(tables)
-                        .filters(req.getFilters())
+                        .view(view)
+                        .columns(List.of(targetCol))
+                        .filter(req.getFilter())
                         .build();
-        return compile(queryReq, meta);
+
+        return compileInternal(queryReq, meta, true);
     }
 
     /** 编译单据详情精准查询请求为 QueryPlan */
@@ -97,56 +87,65 @@ public class QueryPlanCompiler {
         if (req == null) {
             throw new IllegalArgumentException("详情查询请求不能为空");
         }
-        normalizeReqModule(req, meta);
-        if (req.getModuleId() == null || req.getId() == null) {
-            throw new IllegalArgumentException("模块 ID 和单据 ID 不能为空");
+        if (req.getId() == null) {
+            throw new IllegalArgumentException("单据 ID 不能为空");
         }
 
         ModuleTreeDTO tree = meta != null ? meta.moduleTree() : null;
         if (tree == null || tree.getRootModule() == null) {
-            throw new IllegalArgumentException("模块 ID [" + req.getModuleId() + "] 不存在或未配置元数据");
+            throw new IllegalArgumentException("未找到对应的视图或元数据配置");
         }
 
-        // id 过滤条件与后续投影/校验必须取自同一份元数据快照，故直接复用入参 meta
         String primaryTable = ModuleRelationResolver.resolvePrimaryTable(tree.getRootModule());
-        List<FilterItem> mergedFilters = new ArrayList<>();
-        mergedFilters.add(FilterItem.eq(primaryTable, "id", req.getId()));
-        if (req.getFilters() != null && !req.getFilters().isEmpty()) {
-            mergedFilters.addAll(req.getFilters());
+        Predicate idPred = ComparisonPredicate.eq(primaryTable + ".id", req.getId());
+        Predicate mergedPred =
+                (req.getFilter() != null) ? CompoundPredicate.and(idPred, req.getFilter()) : idPred;
+
+        String view = req.getView();
+        if (view == null || view.isBlank()) {
+            view = tree.getRootModule().getModuleCode();
         }
 
-        QueryReq queryReq =
-                DetailQueryReq.builder()
-                        .moduleId(req.getModuleId())
-                        .id(req.getId())
-                        .tables(req.getTables())
-                        .filters(mergedFilters)
-                        .sorts(req.getSorts())
-                        .build();
+        DetailQueryReq queryReq =
+                req.toBuilder().view(view).id(req.getId()).filter(mergedPred).build();
 
-        return compile(queryReq, meta);
+        return compileInternal(queryReq, meta, true);
     }
 
-    /** 编译基于业务聚合树与物理表的查询请求为 QueryPlan */
+    /** 核心编译入口：基于自相似 View 树装配 QueryPlan */
     public QueryPlan compile(QueryReq req, PlanMeta meta) {
+        return compileInternal(req, meta, req instanceof DetailQueryReq);
+    }
+
+    private QueryPlan compileInternal(QueryReq req, PlanMeta meta, boolean expandAllChildren) {
         if (req == null) {
             throw new IllegalArgumentException("查询请求不能为空");
         }
-        normalizeReqModule(req, meta);
-        Long rootModuleId = req.getModuleId();
-        if (rootModuleId == null) {
-            throw new IllegalArgumentException("查询主模块 ID 不能为空");
-        }
-
         ModuleTreeDTO tree = meta != null ? meta.moduleTree() : null;
         if (tree == null || tree.getRootModule() == null) {
-            throw new IllegalArgumentException("模块 ID [" + rootModuleId + "] 不存在或未配置元数据");
+            throw new IllegalArgumentException("未找到对应的视图或元数据配置");
         }
+
+        String reqView = req.getView();
+        if (reqView == null || reqView.isBlank()) {
+            req.setView(tree.getRootModule().getModuleCode());
+        }
+
         TableQueryValidator.validate(req, tree);
 
-        ProjectTableRelationsDTO projectRelations = meta.projectRelations();
+        Long rootModuleId = tree.getRootModuleId();
+        ModuleInfo rootMeta = tree.getRootModule();
+
         QueryNodePlan rootPlan =
-                compileTableNode(rootModuleId, null, null, req, projectRelations, tree);
+                compileViewNode(
+                        req,
+                        rootMeta,
+                        rootModuleId,
+                        null,
+                        meta.projectRelations(),
+                        tree,
+                        expandAllChildren);
+
         return QueryPlan.builder().rootNodePlan(rootPlan).build();
     }
 
@@ -156,12 +155,393 @@ public class QueryPlanCompiler {
             String parentPrimaryTable,
             String relationType) {}
 
-    /**
-     * 从单向定义的 tableRelations 中严格推导外键关联字段名与父表主键关联名
-     *
-     * <p>第一性原理：TableRelations 仅单向定义 (main_table 为父表，join_table 为从表，join_field 为从表外键物理列)。
-     * 若直接父模块为虚拟模块 (无主表)，则自动递归向上查找最近的有物理主表的祖先模块进行关联。
-     */
+    /** 递归编译单节点计划 (View 树正向同构装配) */
+    private QueryNodePlan compileViewNode(
+            QueryReq nodeReq,
+            ModuleInfo meta,
+            Long currentModuleId,
+            ModuleInfo parentMeta,
+            ProjectTableRelationsDTO projectRelations,
+            ModuleTreeDTO tree,
+            boolean expandAllChildren) {
+
+        if (meta == null) {
+            throw new IllegalArgumentException("模块 ID [" + currentModuleId + "] 不存在或未配置元数据");
+        }
+
+        String primaryTable = ModuleRelationResolver.resolvePrimaryTable(meta);
+        ParentRelationInfo parentRel =
+                resolveParentRelation(primaryTable, meta, parentMeta, projectRelations, tree);
+        String parentFk = parentRel.childForeignKey();
+        String parentKey = parentRel.parentKey();
+        boolean isVirtual = primaryTable == null || primaryTable.isBlank();
+
+        // 1. 收集当前模块声明过的物理表集合 (主表、1:1 伴生表、N:1 上游表)
+        Set<String> declaredTables = new HashSet<>();
+        if (meta.getFields() != null) {
+            for (ModuleFieldDTO f : meta.getFields()) {
+                if (f.getTableName() != null && !f.getTableName().isBlank()) {
+                    declaredTables.add(f.getTableName().trim().toLowerCase());
+                }
+            }
+        }
+        if (!isVirtual) {
+            declaredTables.add(primaryTable.trim().toLowerCase());
+            // 校验同模块 1:N 违规配置 (R1 违规拦截)
+            if (projectRelations != null && projectRelations.getForwardRelations() != null) {
+                List<TableRelationDTO> fwdRels =
+                        projectRelations.getForwardRelations().get(primaryTable.toLowerCase());
+                if (fwdRels != null) {
+                    for (TableRelationDTO rel : fwdRels) {
+                        if (rel.getJoinTable() != null
+                                && declaredTables.contains(
+                                        rel.getJoinTable().trim().toLowerCase())) {
+                            String rType =
+                                    rel.getRelationType() != null
+                                            ? rel.getRelationType().toUpperCase()
+                                            : "";
+                            if ("1:N".equals(rType) || "ONE_TO_MANY".equals(rType)) {
+                                throw new IllegalArgumentException(
+                                        "同模块配置错误：主表 ["
+                                                + primaryTable
+                                                + "] 上不允许直接投影 1:N 从表 ["
+                                                + rel.getJoinTable()
+                                                + "] 的字段，请配置为子模块");
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. 编译投影字段 (PhysicalFieldSpec)
+        List<PhysicalFieldSpec> primaryProjectedFields = new ArrayList<>();
+        List<String> requestedColumns = nodeReq != null ? nodeReq.getColumns() : null;
+        boolean isAllCols = isAllColumns(requestedColumns);
+
+        if (!isVirtual) {
+            if (isAllCols) {
+                // 全字段投影模式：若存在附加表则显式投影主表与附加表，否则返回空列表触发 SELECT * 全字段扫描
+                List<String> attachedTables =
+                        attachedTablesOf(primaryTable, projectRelations, tree, declaredTables);
+                if (!attachedTables.isEmpty()) {
+                    primaryProjectedFields.addAll(
+                            compilePhysicalTableProjection(
+                                    meta, primaryTable, declaredColumnsOf(meta, primaryTable)));
+                    for (String attached : attachedTables) {
+                        primaryProjectedFields.addAll(
+                                compilePhysicalTableProjection(
+                                        meta, attached, declaredColumnsOf(meta, attached)));
+                    }
+                }
+            } else {
+                // 显式指定 columns (table.column 格式) 模式：按表名分别归并投影列
+                Map<String, List<String>> colsByTable = new LinkedHashMap<>();
+                for (String c : requestedColumns) {
+                    if (c == null || c.isBlank() || "*".equals(c.trim())) {
+                        continue;
+                    }
+                    String trimmed = c.trim();
+                    if (trimmed.contains(".")) {
+                        int dot = trimmed.indexOf('.');
+                        String tbl = trimmed.substring(0, dot).trim().toLowerCase();
+                        String clm = trimmed.substring(dot + 1).trim();
+                        colsByTable.computeIfAbsent(tbl, k -> new ArrayList<>()).add(clm);
+                    } else {
+                        colsByTable
+                                .computeIfAbsent(primaryTable.toLowerCase(), k -> new ArrayList<>())
+                                .add(trimmed);
+                    }
+                }
+
+                // 2.1 主表投影
+                List<String> mainCols = colsByTable.get(primaryTable.toLowerCase());
+                if (mainCols != null && !mainCols.isEmpty()) {
+                    primaryProjectedFields.addAll(
+                            compilePhysicalTableProjection(meta, primaryTable, mainCols));
+                } else if (colsByTable.isEmpty()) {
+                    primaryProjectedFields.addAll(
+                            compilePhysicalTableProjection(
+                                    meta, primaryTable, declaredColumnsOf(meta, primaryTable)));
+                }
+
+                // 2.2 伴生表与上游表投影
+                for (Map.Entry<String, List<String>> entry : colsByTable.entrySet()) {
+                    String tblName = entry.getKey();
+                    if (!tblName.equalsIgnoreCase(primaryTable)
+                            && declaredTables.contains(tblName)) {
+                        // 校验同模块 1:N 违规配置 (R1 违规拦截)
+                        if (projectRelations != null
+                                && projectRelations.getForwardRelations() != null) {
+                            List<TableRelationDTO> fwdRels =
+                                    projectRelations
+                                            .getForwardRelations()
+                                            .get(primaryTable.toLowerCase());
+                            if (fwdRels != null) {
+                                for (TableRelationDTO rel : fwdRels) {
+                                    if (rel.getJoinTable() != null
+                                            && rel.getJoinTable().equalsIgnoreCase(tblName)) {
+                                        String rType =
+                                                rel.getRelationType() != null
+                                                        ? rel.getRelationType().toUpperCase()
+                                                        : "";
+                                        if ("1:N".equals(rType) || "ONE_TO_MANY".equals(rType)) {
+                                            throw new IllegalArgumentException(
+                                                    "同模块配置错误：主表 ["
+                                                            + primaryTable
+                                                            + "] 上不允许直接投影 1:N 从表 ["
+                                                            + tblName
+                                                            + "] 的字段，请配置为子模块");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        primaryProjectedFields.addAll(
+                                compilePhysicalTableProjection(meta, tblName, entry.getValue()));
+                    }
+                }
+            }
+        }
+
+        // 3. 附加 LEFT JOIN 规格 (伴生表 + 上游表)
+        List<AttachedTableSpec> attachedJoins = new ArrayList<>();
+        Set<String> applicableTables = new HashSet<>();
+        if (!isVirtual) {
+            applicableTables.add(primaryTable.toLowerCase());
+            attachedJoins.addAll(
+                    resolveCompanionJoinsForTable(
+                            primaryTable,
+                            primaryProjectedFields,
+                            projectRelations,
+                            tree,
+                            declaredTables));
+            attachedJoins.addAll(
+                    resolveUpstreamJoinsForTable(
+                            primaryTable,
+                            primaryProjectedFields,
+                            projectRelations,
+                            tree,
+                            declaredTables));
+            for (AttachedTableSpec aj : attachedJoins) {
+                if (aj.getTargetTable() != null) {
+                    applicableTables.add(aj.getTargetTable().toLowerCase());
+                }
+            }
+        }
+
+        // 4. 排序规则编译
+        List<OrderField<?>> orderFields =
+                isVirtual
+                        ? Collections.emptyList()
+                        : compileTableSorts(
+                                primaryTable,
+                                nodeReq != null ? nodeReq.getSort() : null,
+                                applicableTables);
+
+        // 5. 递归编译子节点 (View 树同构装配)
+        List<QueryNodePlan> childPlans = new ArrayList<>();
+        List<Long> childModuleIds = tree.getChildModuleIds(currentModuleId);
+        Predicate currentFilter = (nodeReq != null) ? nodeReq.getFilter() : null;
+        Set<String> filterReferencedTables = extractReferencedTables(currentFilter);
+
+        if (nodeReq != null && nodeReq.getChildren() != null && !nodeReq.getChildren().isEmpty()) {
+            // 场景 A：请求显式声明了子视图需求 (按 view 严格匹配子模块，彻底消歧同名物理表)
+            for (QueryReq childReq : nodeReq.getChildren()) {
+                if (childReq == null
+                        || childReq.getView() == null
+                        || childReq.getView().isBlank()) {
+                    continue;
+                }
+                String targetView = childReq.getView().trim();
+                Long matchedChildId = null;
+                for (Long cmid : childModuleIds) {
+                    ModuleInfo cm = tree.getModule(cmid);
+                    if (cm != null) {
+                        if (targetView.equalsIgnoreCase(cm.getModuleCode())
+                                || (cm.getPrimaryTable() != null
+                                        && targetView.equalsIgnoreCase(cm.getPrimaryTable()))
+                                || String.valueOf(cmid).equals(targetView)) {
+                            matchedChildId = cmid;
+                            break;
+                        }
+                    }
+                }
+                if (matchedChildId != null) {
+                    childPlans.add(
+                            compileViewNode(
+                                    childReq,
+                                    tree.getModule(matchedChildId),
+                                    matchedChildId,
+                                    meta,
+                                    projectRelations,
+                                    tree,
+                                    expandAllChildren));
+                } else {
+                    log.warn(
+                            "子视图 [{}] 未在当前视图 [{}] 的直接子模块中找到匹配配置", targetView, meta.getModuleCode());
+                }
+            }
+        } else if (expandAllChildren || isAllCols) {
+            // 场景 B：单据详情、候选项或全量展开模式，默认遍历编译所有配置的子模块
+            for (Long childMid : childModuleIds) {
+                ModuleInfo childMeta = tree.getModule(childMid);
+                if (childMeta != null) {
+                    childPlans.add(
+                            compileViewNode(
+                                    null, childMeta, childMid, meta, projectRelations, tree, true));
+                }
+            }
+        } else if (!filterReferencedTables.isEmpty()) {
+            // 场景 C：虽然没有显式声明 children 投影，但 filter 显式引用了子模块/孙模块表 (按全树匹配触发 Semi-Join / EXISTS
+            // 级联过滤)
+            for (Long childMid : childModuleIds) {
+                if (subtreeContainsAnyTable(childMid, tree, filterReferencedTables)) {
+                    ModuleInfo childMeta = tree.getModule(childMid);
+                    if (childMeta != null) {
+                        childPlans.add(
+                                compileViewNode(
+                                        null,
+                                        childMeta,
+                                        childMid,
+                                        meta,
+                                        projectRelations,
+                                        tree,
+                                        false));
+                    }
+                }
+            }
+        }
+
+        // 6. 过滤条件编译 (依据 MySQL 标准 AST 递归推导本地条件与 EXISTS 子查询，天然支持跨表 AND / OR / NOT)
+        Condition effectiveFilterCondition = null;
+        if (!isVirtual) {
+            Predicate filterToCompile = (nodeReq != null) ? nodeReq.getFilter() : null;
+            if (filterToCompile != null) {
+                effectiveFilterCondition =
+                        compilePredicateForPlan(
+                                primaryTable, applicableTables, childPlans, filterToCompile, tree);
+            }
+
+            // 7. 子节点显式过滤条件自底向上上卷 (Semi-Join / EXISTS)
+            // 机制说明：
+            // - 场景 B（全展开）与场景 C（跨表辅助展开）中，子节点 nodeReq 均为 null，其 effectiveFilterCondition 恒为
+            // null，绝不触发上卷；
+            // - 仅当调用方在 nodeReq.getChildren() 中显式声明了子视图且携带私有 filter 时，对应物理子计划的
+            // effectiveFilterCondition 才非空；
+            // - 此处遍历收集非空的子计划条件，封装为与当前物理父表的 EXISTS 半连接并向上合并。
+            List<Condition> childRollups = new ArrayList<>();
+            for (QueryNodePlan cp : collectPhysicalPlans(childPlans)) {
+                if (cp.getEffectiveFilterCondition() != null) {
+                    Condition exists =
+                            buildExistsConditionForChildPlan(
+                                    cp, primaryTable, cp.getEffectiveFilterCondition());
+                    if (exists != null) {
+                        childRollups.add(exists);
+                    }
+                }
+            }
+            if (!childRollups.isEmpty()) {
+                Condition rollupAnd = DSL.and(childRollups);
+                effectiveFilterCondition =
+                        (effectiveFilterCondition != null)
+                                ? effectiveFilterCondition.and(rollupAnd)
+                                : rollupAnd;
+            }
+        }
+
+        Condition baseCondition = isVirtual ? null : compileBaseConditions(meta, primaryTable);
+        Condition finalCombinedCondition;
+        if (baseCondition != null && effectiveFilterCondition != null) {
+            finalCombinedCondition = baseCondition.and(effectiveFilterCondition);
+        } else if (baseCondition != null) {
+            finalCombinedCondition = baseCondition;
+        } else {
+            finalCombinedCondition = effectiveFilterCondition;
+        }
+
+        Integer pNo = (nodeReq instanceof PageQueryReq p) ? p.getPageNo() : 1;
+        Integer pSize =
+                (nodeReq instanceof PageQueryReq p)
+                        ? p.getPageSize()
+                        : (expandAllChildren ? 1 : 20);
+
+        boolean shouldFetchData = !isVirtual && (nodeReq != null || expandAllChildren);
+
+        String nodeView =
+                (nodeReq != null && nodeReq.getView() != null && !nodeReq.getView().isBlank())
+                        ? nodeReq.getView().trim()
+                        : (meta != null
+                                        && meta.getModuleCode() != null
+                                        && !meta.getModuleCode().isBlank()
+                                ? meta.getModuleCode()
+                                : (primaryTable != null && !primaryTable.isBlank()
+                                        ? primaryTable
+                                        : String.valueOf(currentModuleId)));
+
+        return QueryNodePlan.builder()
+                .moduleId(currentModuleId)
+                .view(nodeView)
+                .moduleMeta(meta)
+                .primaryTable(primaryTable)
+                .parentForeignKey(parentFk)
+                .parentKey(parentKey)
+                .parentPrimaryTable(parentRel.parentPrimaryTable())
+                .parentRelationType(parentRel.relationType())
+                .effectiveFilterCondition(effectiveFilterCondition)
+                .pageNo(pNo)
+                .pageSize(pSize)
+                .projectedFields(primaryProjectedFields)
+                .condition(finalCombinedCondition)
+                .orderFields(orderFields)
+                .attachedJoins(attachedJoins)
+                .fetchData(shouldFetchData)
+                .children(childPlans)
+                .build();
+    }
+
+    private static boolean isAllColumns(List<String> requestedColumns) {
+        if (requestedColumns == null || requestedColumns.isEmpty()) {
+            return true;
+        }
+        return requestedColumns.stream()
+                .anyMatch(c -> c != null && (c.trim().equals("*") || c.trim().endsWith(".*")));
+    }
+
+    private List<OrderField<?>> compileTableSorts(
+            String primaryTable, List<SortItem> sorts, Set<String> applicableTables) {
+        if (sorts == null || sorts.isEmpty()) {
+            return List.of(DSL.field(DSL.name(primaryTable, "id")).desc());
+        }
+        List<OrderField<?>> orderFields = new ArrayList<>();
+        for (SortItem s : sorts) {
+            if (s == null) {
+                continue;
+            }
+            String tbl = s.getTableName();
+            if (tbl == null || tbl.isBlank()) {
+                tbl = primaryTable;
+            }
+            if (applicableTables != null && !applicableTables.contains(tbl.trim().toLowerCase())) {
+                continue;
+            }
+            String col = s.getColumnName();
+            if (col == null || col.isBlank()) {
+                continue;
+            }
+            Field<Object> field = DSL.field(DSL.name(tbl.trim(), col.trim()));
+            if ("ASC".equalsIgnoreCase(s.getDirection())) {
+                orderFields.add(field.asc());
+            } else {
+                orderFields.add(field.desc());
+            }
+        }
+        if (orderFields.isEmpty()) {
+            orderFields.add(DSL.field(DSL.name(primaryTable, "id")).desc());
+        }
+        return orderFields;
+    }
+
     private ParentRelationInfo resolveParentRelation(
             String childPrimaryTable,
             ModuleInfo childMeta,
@@ -172,7 +552,6 @@ public class QueryPlanCompiler {
             return new ParentRelationInfo("id", null, null, "1:N");
         }
 
-        // 1. 定位有效的物理父模块 (若直接父模块为无主表的虚拟模块，则向上递归查找最近的物理祖先模块)
         ModuleInfo physicalParentMeta = parentMeta;
         String parentPrimary = ModuleRelationResolver.resolvePrimaryTable(physicalParentMeta);
         if (parentPrimary.isBlank()) {
@@ -184,12 +563,10 @@ public class QueryPlanCompiler {
             }
         }
 
-        // 向上回溯到顶层仍未找到任何配置物理主表的父模块 (如根模块即为纯虚拟模块)
         if (physicalParentMeta == null || parentPrimary.isBlank()) {
             return new ParentRelationInfo("id", null, null, "1:N");
         }
 
-        // 2. 匹配单向关联 (含父子同表的 1:1 垂直拆分特例)
         TableRelationDTO matchedRel =
                 ModuleRelationResolver.resolveDirectRelation(
                         parentPrimary, childPrimaryTable, projectRelations);
@@ -208,7 +585,6 @@ public class QueryPlanCompiler {
                     ModuleRelationResolver.relationType(matchedRel, "1:N"));
         }
 
-        // 3. 严格自洽校验：杜绝任何未配置关系的隐式推测
         Long parentModId = physicalParentMeta.getModuleId();
         Long childModId = childMeta != null ? childMeta.getModuleId() : null;
         throw new IllegalStateException(
@@ -217,7 +593,6 @@ public class QueryPlanCompiler {
                         parentPrimary, parentModId, childPrimaryTable, childModId));
     }
 
-    /** 递归穿透虚拟模块，收集所有挂载在其下的物理子计划 */
     private List<QueryNodePlan> collectPhysicalDescendantPlans(QueryNodePlan plan) {
         List<QueryNodePlan> result = new ArrayList<>();
         if (plan == null) {
@@ -246,7 +621,6 @@ public class QueryPlanCompiler {
                 .build();
     }
 
-    /** 编译软删除与租户隔离等基础底座条件 */
     private Condition compileBaseConditions(ModuleInfo meta, String primaryTable) {
         List<Condition> conditions = new ArrayList<>();
         conditions.add(DSL.field(DSL.name(primaryTable, "deleted")).eq((byte) 0));
@@ -267,299 +641,9 @@ public class QueryPlanCompiler {
         return DSL.and(conditions);
     }
 
-    // ==================== 物理表/字段直接编译内核 (TableSpec 驱动) ====================
-
-    private QueryNodePlan compileTableNode(
-            Long currentModuleId,
-            Long parentModuleId,
-            ModuleInfo parentMeta,
-            QueryReq req,
-            ProjectTableRelationsDTO projectRelations,
-            ModuleTreeDTO tree) {
-        ModuleInfo meta = tree.getModule(currentModuleId);
-        if (meta == null) {
-            throw new IllegalArgumentException("模块 ID [" + currentModuleId + "] 不存在或未在当前模块树中配置元数据");
-        }
-
-        String primaryTable = ModuleRelationResolver.resolvePrimaryTable(meta);
-        ParentRelationInfo parentRel =
-                resolveParentRelation(primaryTable, meta, parentMeta, projectRelations, tree);
-        String parentFk = parentRel.childForeignKey();
-        String parentKey = parentRel.parentKey();
-        boolean isVirtual = primaryTable == null || primaryTable.isBlank();
-
-        // 1. 查找当前模块及伴生表的 TableSpec 投影规格
-        List<TableSpec> tableSpecs = req.getTables();
-        boolean isFullTreeMode = tableSpecs == null || tableSpecs.isEmpty();
-
-        // 2. 编译投影字段 (PhysicalFieldSpec)
-        // 本模块字段字典声明过的物理表集合：JOIN 只对「本模块确实要展示的表」生效，避免拉进无用表。
-        Set<String> declaredTables = new HashSet<>();
-        if (meta.getFields() != null) {
-            for (ModuleFieldDTO f : meta.getFields()) {
-                if (f.getTableName() != null && !f.getTableName().isBlank()) {
-                    declaredTables.add(f.getTableName().trim().toLowerCase());
-                }
-            }
-        }
-        List<PhysicalFieldSpec> primaryProjectedFields = new ArrayList<>();
-        if (!isVirtual) {
-            if (isFullTreeMode) {
-                // 全字段模式 + 存在附加表 ⇒ 必须显式列出「主表 + 附加表」的声明字段，不能走 SELECT *。
-                // 原因：SELECT * 下记录里附加表列名不带表前缀，执行器无投影规格时的回退分支会把它们
-                // 全部塞进【主表】空间（如 course.prerequisite），破坏「行键 = 物理表名」的契约。
-                List<String> attachedTables =
-                        attachedTablesOf(primaryTable, projectRelations, tree, declaredTables);
-                if (!attachedTables.isEmpty()) {
-                    primaryProjectedFields.addAll(
-                            compilePhysicalTableProjection(
-                                    meta, primaryTable, declaredColumnsOf(meta, primaryTable)));
-                    for (String attached : attachedTables) {
-                        primaryProjectedFields.addAll(
-                                compilePhysicalTableProjection(
-                                        meta, attached, declaredColumnsOf(meta, attached)));
-                    }
-                }
-            } else {
-                List<PhysicalFieldSpec> attachedProjectedFields = new ArrayList<>();
-
-                // 伴生表投影（垂直拆分：relation_type='1:1' 且 join_table 未被模块树认领）
-                if (projectRelations != null && projectRelations.getForwardRelations() != null) {
-                    List<TableRelationDTO> fwdRels =
-                            projectRelations.getForwardRelations().get(primaryTable.toLowerCase());
-                    if (fwdRels != null) {
-                        for (TableRelationDTO rel : fwdRels) {
-                            if (ModuleRelationResolver.isCompanionRelation(rel, tree)) {
-                                String compTable = rel.getJoinTable();
-                                if (compTable != null && !compTable.isBlank()) {
-                                    String trimmedComp = compTable.trim();
-                                    TableSpec compSpec =
-                                            findTableSpec(currentModuleId, trimmedComp, tableSpecs);
-                                    if (compSpec != null
-                                            && declaredTables.contains(trimmedComp.toLowerCase())) {
-                                        List<String> compCols =
-                                                isAllColumns(compSpec.getColumns())
-                                                        ? declaredColumnsOf(meta, trimmedComp)
-                                                        : compSpec.getColumns();
-                                        attachedProjectedFields.addAll(
-                                                compilePhysicalTableProjection(
-                                                        meta, trimmedComp, compCols));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // 上游表投影（多对一：本表是 join_table，main_table 未被模块树认领）
-                if (projectRelations != null && projectRelations.getReverseRelations() != null) {
-                    List<TableRelationDTO> revRels =
-                            projectRelations.getReverseRelations().get(primaryTable.toLowerCase());
-                    if (revRels != null) {
-                        for (TableRelationDTO rel : revRels) {
-                            if (ModuleRelationResolver.isUpstreamRelation(
-                                    rel, primaryTable, tree)) {
-                                String upTable = rel.getMainTable().trim();
-                                TableSpec upSpec =
-                                        findTableSpec(currentModuleId, upTable, tableSpecs);
-                                if (upSpec != null
-                                        && declaredTables.contains(upTable.toLowerCase())) {
-                                    List<String> upCols =
-                                            isAllColumns(upSpec.getColumns())
-                                                    ? declaredColumnsOf(meta, upTable)
-                                                    : upSpec.getColumns();
-                                    attachedProjectedFields.addAll(
-                                            compilePhysicalTableProjection(meta, upTable, upCols));
-                                }
-                            }
-                        }
-                    }
-                }
-
-                // 主表投影：若同时投影了附加表且主表指定了 *，自动展开为主表声明列，避免主表列被置空丢弃
-                TableSpec mainSpec = findTableSpec(currentModuleId, primaryTable, tableSpecs);
-                if (mainSpec != null) {
-                    List<String> requestedCols =
-                            (!attachedProjectedFields.isEmpty()
-                                            && isAllColumns(mainSpec.getColumns()))
-                                    ? declaredColumnsOf(meta, primaryTable)
-                                    : mainSpec.getColumns();
-                    primaryProjectedFields.addAll(
-                            compilePhysicalTableProjection(meta, primaryTable, requestedCols));
-                }
-                primaryProjectedFields.addAll(attachedProjectedFields);
-            }
-        }
-
-        // 3. 过滤条件编译 (将归属于当前模块/主表/伴生表的 FilterItem 编译为 Condition)
-        Condition userFilterCondition =
-                isVirtual
-                        ? null
-                        : FilterConditionCompiler.compileTableFilters(
-                                currentModuleId, primaryTable, req.getFilters(), projectRelations);
-
-        // 4. 排序编译
-        List<OrderField<?>> orderFields =
-                isVirtual
-                        ? Collections.emptyList()
-                        : compileTableSorts(currentModuleId, primaryTable, req.getSorts());
-
-        // 5. 递归编译子节点
-        List<QueryNodePlan> childPlans = new ArrayList<>();
-        List<Long> childModuleIds = tree.getChildModuleIds(currentModuleId);
-        if (childModuleIds != null && !childModuleIds.isEmpty()) {
-            for (Long childMid : childModuleIds) {
-                ModuleInfo childMeta = tree.getModule(childMid);
-                if (childMeta != null) {
-                    boolean shouldIncludeChild = isFullTreeMode;
-                    if (!isFullTreeMode) {
-                        shouldIncludeChild =
-                                isTableOrDescendantInSpecs(childMid, tableSpecs, tree)
-                                        || isModuleOrDescendantInFilters(
-                                                childMid, req.getFilters(), tree);
-                    }
-                    if (shouldIncludeChild) {
-                        QueryNodePlan cp =
-                                compileTableNode(
-                                        childMid,
-                                        currentModuleId,
-                                        meta,
-                                        req,
-                                        projectRelations,
-                                        tree);
-                        childPlans.add(cp);
-                    }
-                }
-            }
-        }
-
-        // 6. 附加 LEFT JOIN 规格：伴生表（垂直拆分 1:1，沿关系向下）+ 上游表（多对一 N:1，沿关系向上）
-        List<AttachedTableSpec> attachedJoins = new ArrayList<>();
-        if (!isVirtual) {
-            attachedJoins.addAll(
-                    resolveCompanionJoinsForTable(
-                            primaryTable,
-                            primaryProjectedFields,
-                            projectRelations,
-                            tree,
-                            declaredTables));
-            attachedJoins.addAll(
-                    resolveUpstreamJoinsForTable(
-                            primaryTable,
-                            primaryProjectedFields,
-                            projectRelations,
-                            tree,
-                            declaredTables));
-        }
-
-        // 7. 自底向上子孙节点过滤条件上卷 (Semi-Join / EXISTS)
-        List<Condition> rollupConditions = new ArrayList<>();
-        if (!isVirtual) {
-            List<QueryNodePlan> physicalChildren = new ArrayList<>();
-            for (QueryNodePlan cp : childPlans) {
-                physicalChildren.addAll(collectPhysicalDescendantPlans(cp));
-            }
-
-            for (QueryNodePlan childPlan : physicalChildren) {
-                if (childPlan.getEffectiveFilterCondition() != null) {
-                    String childTable = childPlan.getPrimaryTable();
-                    if (childTable != null && childTable.equalsIgnoreCase(primaryTable)) {
-                        rollupConditions.add(childPlan.getEffectiveFilterCondition());
-                    } else if (childTable != null && childPlan.getParentForeignKey() != null) {
-                        String pK =
-                                childPlan.getParentKey() != null ? childPlan.getParentKey() : "id";
-                        String cFk = childPlan.getParentForeignKey();
-                        Condition existsCondition =
-                                DSL.exists(
-                                        DSL.selectOne()
-                                                .from(DSL.table(DSL.name(childTable)))
-                                                .where(
-                                                        DSL.field(DSL.name(childTable, cFk))
-                                                                .eq(
-                                                                        DSL.field(
-                                                                                DSL.name(
-                                                                                        primaryTable,
-                                                                                        pK)))
-                                                                .and(
-                                                                        DSL.field(
-                                                                                        DSL.name(
-                                                                                                childTable,
-                                                                                                "deleted"))
-                                                                                .eq((byte) 0))
-                                                                .and(
-                                                                        childPlan
-                                                                                .getEffectiveFilterCondition())));
-                        rollupConditions.add(existsCondition);
-                    }
-                }
-            }
-        }
-
-        Condition effectiveFilterCondition = null;
-        if (userFilterCondition != null && !rollupConditions.isEmpty()) {
-            effectiveFilterCondition = userFilterCondition.and(DSL.and(rollupConditions));
-        } else if (userFilterCondition != null) {
-            effectiveFilterCondition = userFilterCondition;
-        } else if (!rollupConditions.isEmpty()) {
-            effectiveFilterCondition = DSL.and(rollupConditions);
-        }
-
-        Condition baseCondition = isVirtual ? null : compileBaseConditions(meta, primaryTable);
-        Condition finalCombinedCondition;
-        if (baseCondition != null && effectiveFilterCondition != null) {
-            finalCombinedCondition = baseCondition.and(effectiveFilterCondition);
-        } else if (baseCondition != null) {
-            finalCombinedCondition = baseCondition;
-        } else {
-            finalCombinedCondition = effectiveFilterCondition;
-        }
-
-        Integer pNo =
-                (currentModuleId.equals(req.getModuleId()) && req instanceof PageQueryReq p)
-                        ? p.getPageNo()
-                        : 1;
-        Integer pSize =
-                (currentModuleId.equals(req.getModuleId()) && req instanceof PageQueryReq p)
-                        ? p.getPageSize()
-                        : (req instanceof DetailQueryReq ? 1 : 20);
-
-        // 8. 判定当前节点是否需要拉取实体数据 (fetchData)
-        // 规则：全树模式下恒拉取；指定 tableSpecs 模式下，仅当本节点显式在 tableSpecs 中声明时才拉取实体数据。
-        // 若未声明，则仅用于上卷过滤 (EXISTS) 或下拉选项跨表路径推导，跳过 Stage 1 的 Batch Fetch 二次回查。
-        boolean shouldFetchData =
-                isFullTreeMode || isTableOrDescendantInSpecs(currentModuleId, tableSpecs, tree);
-
-        return QueryNodePlan.builder()
-                .moduleId(currentModuleId)
-                .moduleMeta(meta)
-                .primaryTable(primaryTable)
-                .parentForeignKey(parentFk)
-                .parentKey(parentKey)
-                .parentPrimaryTable(parentRel.parentPrimaryTable())
-                .parentRelationType(parentRel.relationType())
-                .effectiveFilterCondition(effectiveFilterCondition)
-                .pageNo(pNo)
-                .pageSize(pSize)
-                .projectedFields(primaryProjectedFields)
-                .condition(finalCombinedCondition)
-                .orderFields(orderFields)
-                .attachedJoins(attachedJoins)
-                .fetchData(shouldFetchData)
-                .children(childPlans)
-                .build();
-    }
-
-    private static boolean isAllColumns(List<String> requestedColumns) {
-        return requestedColumns == null
-                || requestedColumns.isEmpty()
-                || requestedColumns.contains("*");
-    }
-
     private List<PhysicalFieldSpec> compilePhysicalTableProjection(
             ModuleInfo meta, String table, List<String> requestedColumns) {
         List<PhysicalFieldSpec> specs = new ArrayList<>();
-        boolean isAllCols = isAllColumns(requestedColumns);
-
         Map<String, ModuleFieldDTO> colMap = new LinkedHashMap<>();
         if (meta != null && meta.getFields() != null) {
             for (ModuleFieldDTO f : meta.getFields()) {
@@ -571,11 +655,6 @@ public class QueryPlanCompiler {
                     colMap.put(f.getColumnName().toLowerCase(), f);
                 }
             }
-        }
-
-        if (isAllCols) {
-            // 全列查询模式 (未指定列或指定了 *)：返回空列表，由底层执行器直接生成并下发 SELECT * FROM table
-            return Collections.emptyList();
         }
 
         for (String col : requestedColumns) {
@@ -618,8 +697,6 @@ public class QueryPlanCompiler {
             return Collections.emptyList();
         }
 
-        // 投影规格为空 = 全字段模式（未指定表或指定了 *）：需要 JOIN 全部伴生表；
-        // 显式投影时只 JOIN 真正被投影到列的伴生表，避免「只查主表列却 JOIN 全部伴生表」的无谓开销。
         boolean includeAllCompanions = projectedFields == null || projectedFields.isEmpty();
         Set<String> neededCompanionTables = new HashSet<>();
         if (!includeAllCompanions) {
@@ -645,14 +722,10 @@ public class QueryPlanCompiler {
                                 (rel.getJoinField() != null && !rel.getJoinField().isBlank())
                                         ? rel.getJoinField().trim()
                                         : "id";
-                        String pk =
-                                (rel.getMainField() != null && !rel.getMainField().isBlank())
-                                        ? rel.getMainField().trim()
-                                        : "id";
                         joins.add(
                                 AttachedTableSpec.builder()
                                         .sourceTable(primaryTable)
-                                        .sourceField(pk)
+                                        .sourceField("id")
                                         .targetTable(compTable.trim())
                                         .targetField(fk)
                                         .joinKind("1:1")
@@ -664,13 +737,6 @@ public class QueryPlanCompiler {
         return joins;
     }
 
-    /**
-     * 编译「上游表」（多对一）的 LEFT JOIN 规格。
-     *
-     * <p>与伴生表方向相反：伴生表是沿关系向下的垂直拆分，上游表是沿关系向上取父行。school 的 {@code teacher -> course} 表示 {@code
-     * course.teacher_id = teacher.id}，因此 ON 条件里 本表出外键、目标表出主键（伴生表恰好相反）。两者都复用 {@link
-     * AttachedTableSpec} 的通用形式 {@code source.sourceField = target.targetField}，执行侧无需区分。
-     */
     private List<AttachedTableSpec> resolveUpstreamJoinsForTable(
             String primaryTable,
             List<PhysicalFieldSpec> projectedFields,
@@ -703,35 +769,37 @@ public class QueryPlanCompiler {
 
         List<AttachedTableSpec> joins = new ArrayList<>();
         for (TableRelationDTO rel : relations) {
-            if (!ModuleRelationResolver.isUpstreamRelation(rel, primaryTable, tree)) {
-                continue;
+            if (ModuleRelationResolver.isUpstreamRelation(rel, primaryTable, tree)) {
+                String upTable = rel.getMainTable();
+                if (upTable != null && !upTable.isBlank()) {
+                    String upKey = upTable.trim().toLowerCase();
+                    if (!declaredTables.contains(upKey)) {
+                        continue;
+                    }
+                    if (includeAllUpstream || neededUpstreamTables.contains(upKey)) {
+                        String fk =
+                                (rel.getJoinField() != null && !rel.getJoinField().isBlank())
+                                        ? rel.getJoinField().trim()
+                                        : "id";
+                        String pk =
+                                (rel.getMainField() != null && !rel.getMainField().isBlank())
+                                        ? rel.getMainField().trim()
+                                        : "id";
+                        joins.add(
+                                AttachedTableSpec.builder()
+                                        .sourceTable(primaryTable)
+                                        .sourceField(fk)
+                                        .targetTable(upTable.trim())
+                                        .targetField(pk)
+                                        .joinKind("N:1")
+                                        .build());
+                    }
+                }
             }
-            String upTable = rel.getMainTable().trim().toLowerCase();
-            // 上游表必须出现在本模块的字段字典里，否则 JOIN 进来纯属浪费
-            if (!declaredTables.contains(upTable)) {
-                continue;
-            }
-            if (!includeAllUpstream && !neededUpstreamTables.contains(upTable)) {
-                continue;
-            }
-            joins.add(
-                    AttachedTableSpec.builder()
-                            .sourceTable(primaryTable)
-                            .sourceField(rel.getJoinField().trim())
-                            .targetTable(rel.getMainTable().trim())
-                            .targetField(rel.getMainField().trim())
-                            .joinKind("N:1")
-                            .build());
         }
         return joins;
     }
 
-    /**
-     * 列出会被 LEFT JOIN 进来的附加表（伴生表 + 上游表）。
-     *
-     * <p>仅用于全字段模式下判断「是否必须放弃 {@code SELECT *}」。刻意不依赖投影规格：全字段模式本来还没有投影规格， 此处按「关系 + 字段字典声明」判定，与两个
-     * resolve 方法的全字段分支保持同一口径。
-     */
     private static List<String> attachedTablesOf(
             String primaryTable,
             ProjectTableRelationsDTO projectRelations,
@@ -771,7 +839,6 @@ public class QueryPlanCompiler {
         return result;
     }
 
-    /** 取模块字段字典中某张物理表声明的列名（保持字段顺序）。 */
     private static List<String> declaredColumnsOf(ModuleInfo meta, String table) {
         List<String> columns = new ArrayList<>();
         if (meta == null || meta.getFields() == null || table == null || table.isBlank()) {
@@ -792,63 +859,60 @@ public class QueryPlanCompiler {
         return columns;
     }
 
-    private TableSpec findTableSpec(
-            Long currentModuleId, String tableName, List<TableSpec> tableSpecs) {
-        if (tableName == null
-                || tableName.isBlank()
-                || tableSpecs == null
-                || tableSpecs.isEmpty()) {
-            return null;
+    /** 从谓词 AST 中提取引用的所有物理表名称 (转为小写) */
+    private static Set<String> extractReferencedTables(Predicate predicate) {
+        Set<String> tables = new HashSet<>();
+        collectReferencedTables(predicate, tables);
+        return tables;
+    }
+
+    private static void collectReferencedTables(Predicate predicate, Set<String> tables) {
+        if (predicate == null) {
+            return;
         }
-        String cleanTable = tableName.trim();
-        TableSpec fallback = null;
-        for (TableSpec ts : tableSpecs) {
-            if (ts == null || ts.getTableName() == null || ts.getTableName().isBlank()) {
-                continue;
+        if (predicate instanceof ComparisonPredicate comp) {
+            String tbl = comp.getTableName();
+            if (tbl == null && comp.getExpression() instanceof ColumnRef col) {
+                tbl = col.getTableName();
             }
-            if (cleanTable.equalsIgnoreCase(ts.getTableName().trim())) {
-                if (ts.getModuleId() != null && currentModuleId != null) {
-                    if (ts.getModuleId().equals(currentModuleId)) {
-                        return ts;
-                    }
-                } else if (fallback == null) {
-                    fallback = ts;
+            if (tbl != null && !tbl.isBlank()) {
+                tables.add(tbl.trim().toLowerCase());
+            }
+        } else if (predicate instanceof CompoundPredicate comp) {
+            if (comp.getPredicates() != null) {
+                for (Predicate sub : comp.getPredicates()) {
+                    collectReferencedTables(sub, tables);
                 }
             }
         }
-        return fallback;
     }
 
-    private boolean isTableOrDescendantInSpecs(
-            Long moduleId, List<TableSpec> tableSpecs, ModuleTreeDTO tree) {
-        if (moduleId == null || tree == null || tableSpecs == null || tableSpecs.isEmpty()) {
+    /** 检查以 mid 为根的子模块树中是否包含任意目标物理表 (支持直属子模块及深层孙模块) */
+    private static boolean subtreeContainsAnyTable(
+            Long mid, ModuleTreeDTO tree, Set<String> targetTables) {
+        if (mid == null || tree == null || targetTables == null || targetTables.isEmpty()) {
             return false;
         }
-        ModuleInfo meta = tree.getModule(moduleId);
-        if (meta != null) {
-            String pt = ModuleRelationResolver.resolvePrimaryTable(meta);
-            if (pt != null && !pt.isBlank()) {
-                for (TableSpec ts : tableSpecs) {
-                    if (ts == null) {
-                        continue;
-                    }
-                    if (ts.getModuleId() != null) {
-                        if (ts.getModuleId().equals(moduleId)
-                                && ts.getTableName() != null
-                                && pt.equalsIgnoreCase(ts.getTableName().trim())) {
-                            return true;
-                        }
-                    } else if (ts.getTableName() != null
-                            && pt.equalsIgnoreCase(ts.getTableName().trim())) {
+        ModuleInfo m = tree.getModule(mid);
+        if (m != null) {
+            if (m.getPrimaryTable() != null && !m.getPrimaryTable().isBlank()) {
+                if (targetTables.contains(m.getPrimaryTable().trim().toLowerCase())) {
+                    return true;
+                }
+            }
+            if (m.getFields() != null) {
+                for (ModuleFieldDTO f : m.getFields()) {
+                    if (f.getTableName() != null
+                            && targetTables.contains(f.getTableName().trim().toLowerCase())) {
                         return true;
                     }
                 }
             }
         }
-        List<Long> children = tree.getChildModuleIds(moduleId);
-        if (children != null) {
-            for (Long cid : children) {
-                if (isTableOrDescendantInSpecs(cid, tableSpecs, tree)) {
+        List<Long> kids = tree.getChildModuleIds(mid);
+        if (kids != null) {
+            for (Long kid : kids) {
+                if (subtreeContainsAnyTable(kid, tree, targetTables)) {
                     return true;
                 }
             }
@@ -856,121 +920,194 @@ public class QueryPlanCompiler {
         return false;
     }
 
-    private boolean isModuleOrDescendantInFilters(
-            Long moduleId, List<FilterItem> filters, ModuleTreeDTO tree) {
-        if (moduleId == null || tree == null || filters == null || filters.isEmpty()) {
+    private static boolean subtreeContainsTable(Long mid, ModuleTreeDTO tree, String targetTable) {
+        if (mid == null || tree == null || targetTable == null || targetTable.isBlank()) {
             return false;
         }
-        ModuleInfo meta = tree.getModule(moduleId);
-        if (meta != null) {
-            String pt = ModuleRelationResolver.resolvePrimaryTable(meta);
-            for (FilterItem f : filters) {
-                if (f == null) {
-                    continue;
+        return subtreeContainsAnyTable(mid, tree, Set.of(targetTable.trim().toLowerCase()));
+    }
+
+    private Condition compilePredicateForPlan(
+            String primaryTable,
+            Set<String> applicableTables,
+            List<QueryNodePlan> childPlans,
+            Predicate predicate,
+            ModuleTreeDTO tree) {
+        if (predicate == null) {
+            return null;
+        }
+
+        List<QueryNodePlan> physicalChildren = collectPhysicalPlans(childPlans);
+
+        if (predicate instanceof ComparisonPredicate comp) {
+            String tbl = comp.getTableName();
+            if (tbl == null && comp.getExpression() instanceof ColumnRef col) {
+                tbl = col.getTableName();
+            }
+            if (tbl == null || tbl.isBlank()) {
+                tbl = primaryTable;
+            }
+            String targetTable = tbl != null ? tbl.trim().toLowerCase() : "";
+
+            // 1. 本地表匹配 (主表、伴生表、上游表)
+            if (applicableTables != null && applicableTables.contains(targetTable)) {
+                return PredicateCompiler.compile(comp, primaryTable, applicableTables);
+            }
+
+            // 2. 子孙节点匹配 (递归下推并在本层封装为 EXISTS)
+            for (QueryNodePlan cp : physicalChildren) {
+                if (planContainsTable(cp, tree, targetTable)) {
+                    Condition childCond = compilePredicateForChildPlan(cp, comp, tree);
+                    if (childCond != null) {
+                        return buildExistsConditionForChildPlan(cp, primaryTable, childCond);
+                    }
                 }
-                if (f.getModuleId() != null && f.getModuleId().equals(moduleId)) {
-                    return true;
+            }
+            return null;
+        } else if (predicate instanceof CompoundPredicate comp) {
+            if (comp.getPredicates() == null || comp.getPredicates().isEmpty()) {
+                return null;
+            }
+
+            // 优化：若复合条件引用的全部物理表均完整包含于某一个物理子节点树中，且不包含本地表，
+            // 则整条复合条件作为一个整体下推到该子节点，以生成合并且语义紧凑的单个 EXISTS。
+            Set<String> refTables = extractReferencedTables(comp);
+            boolean hasLocal =
+                    applicableTables != null
+                            && refTables.stream().anyMatch(applicableTables::contains);
+            if (!hasLocal && !physicalChildren.isEmpty()) {
+                for (QueryNodePlan cp : physicalChildren) {
+                    if (planContainsAllTables(cp, tree, refTables)) {
+                        Condition childCond = compilePredicateForChildPlan(cp, comp, tree);
+                        if (childCond != null) {
+                            return buildExistsConditionForChildPlan(cp, primaryTable, childCond);
+                        }
+                    }
                 }
-                if (pt != null
-                        && !pt.isBlank()
-                        && f.getTableName() != null
-                        && pt.equalsIgnoreCase(f.getTableName().trim())) {
+            }
+
+            // 否则（跨本地表与子表，或跨多个不同子树），分别递归编译每个分支并按操作符组合
+            List<Condition> subConds = new ArrayList<>();
+            for (Predicate sub : comp.getPredicates()) {
+                Condition sc =
+                        compilePredicateForPlan(
+                                primaryTable, applicableTables, childPlans, sub, tree);
+                if (sc != null && !DSL.noCondition().equals(sc)) {
+                    subConds.add(sc);
+                }
+            }
+            if (subConds.isEmpty()) {
+                return null;
+            }
+            String op =
+                    comp.getOperator() != null ? comp.getOperator().toUpperCase().trim() : "AND";
+            if (subConds.size() == 1 && !"NOT".equals(op)) {
+                return subConds.get(0);
+            }
+            return switch (op) {
+                case "OR" -> DSL.or(subConds);
+                case "NOT" -> DSL.not(subConds.get(0));
+                case "AND" -> DSL.and(subConds);
+                default -> DSL.and(subConds);
+            };
+        } else if (predicate instanceof RawSqlPredicate raw) {
+            return PredicateCompiler.compile(raw, primaryTable, applicableTables);
+        }
+        return null;
+    }
+
+    private Condition compilePredicateForChildPlan(
+            QueryNodePlan cp, Predicate predicate, ModuleTreeDTO tree) {
+        String childPrimary = cp.getPrimaryTable();
+        Set<String> childApplicable = new HashSet<>();
+        if (childPrimary != null && !childPrimary.isBlank()) {
+            childApplicable.add(childPrimary.toLowerCase());
+        }
+        if (cp.getAttachedJoins() != null) {
+            for (AttachedTableSpec aj : cp.getAttachedJoins()) {
+                if (aj.getTargetTable() != null) {
+                    childApplicable.add(aj.getTargetTable().toLowerCase());
+                }
+            }
+        }
+        return compilePredicateForPlan(
+                childPrimary, childApplicable, cp.getChildren(), predicate, tree);
+    }
+
+    private Condition buildExistsConditionForChildPlan(
+            QueryNodePlan childPlan, String parentPrimaryTable, Condition childCondition) {
+        if (childPlan == null || childCondition == null) {
+            return null;
+        }
+        String childTable = childPlan.getPrimaryTable();
+        if (childTable == null || childTable.isBlank()) {
+            return null;
+        }
+        if (childTable.equalsIgnoreCase(parentPrimaryTable)) {
+            return childCondition;
+        }
+        String cFk = childPlan.getParentForeignKey();
+        if (cFk != null && !cFk.isBlank()) {
+            String pK = childPlan.getParentKey() != null ? childPlan.getParentKey() : "id";
+            return DSL.exists(
+                    DSL.selectOne()
+                            .from(DSL.table(DSL.name(childTable)))
+                            .where(
+                                    DSL.field(DSL.name(childTable, cFk))
+                                            .eq(DSL.field(DSL.name(parentPrimaryTable, pK)))
+                                            .and(
+                                                    DSL.field(DSL.name(childTable, "deleted"))
+                                                            .eq((byte) 0))
+                                            .and(childCondition)));
+        }
+        return null;
+    }
+
+    private List<QueryNodePlan> collectPhysicalPlans(List<QueryNodePlan> plans) {
+        List<QueryNodePlan> result = new ArrayList<>();
+        if (plans != null) {
+            for (QueryNodePlan p : plans) {
+                if (p.getPrimaryTable() != null && !p.getPrimaryTable().isBlank()) {
+                    result.add(p);
+                } else if (p.getChildren() != null) {
+                    result.addAll(collectPhysicalPlans(p.getChildren()));
+                }
+            }
+        }
+        return result;
+    }
+
+    private boolean planContainsTable(QueryNodePlan plan, ModuleTreeDTO tree, String table) {
+        if (plan == null || table == null || table.isBlank()) {
+            return false;
+        }
+        String target = table.trim().toLowerCase();
+        if (plan.getPrimaryTable() != null && plan.getPrimaryTable().equalsIgnoreCase(target)) {
+            return true;
+        }
+        if (plan.getAttachedJoins() != null) {
+            for (AttachedTableSpec aj : plan.getAttachedJoins()) {
+                if (aj.getTargetTable() != null && aj.getTargetTable().equalsIgnoreCase(target)) {
                     return true;
                 }
             }
         }
-        List<Long> children = tree.getChildModuleIds(moduleId);
-        if (children != null) {
-            for (Long cid : children) {
-                if (isModuleOrDescendantInFilters(cid, filters, tree)) {
-                    return true;
-                }
-            }
+        if (plan.getModuleId() != null) {
+            return subtreeContainsTable(plan.getModuleId(), tree, target);
         }
         return false;
     }
 
-    private List<OrderField<?>> compileTableSorts(
-            Long targetModuleId, String primaryTable, List<SortItem> sorts) {
-        if (sorts == null || sorts.isEmpty()) {
-            return List.of(DSL.field(DSL.name(primaryTable, "id")).desc());
+    private boolean planContainsAllTables(
+            QueryNodePlan plan, ModuleTreeDTO tree, Set<String> tables) {
+        if (plan == null || tables == null || tables.isEmpty()) {
+            return false;
         }
-        List<OrderField<?>> orderFields = new ArrayList<>();
-        for (SortItem s : sorts) {
-            if (s != null && s.getColumnName() != null && !s.getColumnName().isBlank()) {
-                if (s.getModuleId() != null) {
-                    if (targetModuleId != null && !s.getModuleId().equals(targetModuleId)) {
-                        continue;
-                    }
-                } else if (targetModuleId != null) {
-                    // 若未传 moduleId，则仅在主表匹配时生效
-                    String tbl =
-                            (s.getTableName() != null && !s.getTableName().isBlank())
-                                    ? s.getTableName().trim()
-                                    : primaryTable;
-                    if (!primaryTable.equalsIgnoreCase(tbl)) {
-                        continue;
-                    }
-                }
-                String tbl =
-                        (s.getTableName() != null && !s.getTableName().isBlank())
-                                ? s.getTableName().trim()
-                                : primaryTable;
-                Field<Object> field = DSL.field(DSL.name(tbl, s.getColumnName().trim()));
-                if ("ASC".equalsIgnoreCase(s.getDirection())) {
-                    orderFields.add(field.asc());
-                } else {
-                    orderFields.add(field.desc());
-                }
+        for (String tbl : tables) {
+            if (!planContainsTable(plan, tree, tbl)) {
+                return false;
             }
         }
-        if (orderFields.isEmpty()) {
-            orderFields.add(DSL.field(DSL.name(primaryTable, "id")).desc());
-        }
-        return orderFields;
-    }
-
-    /** 若请求中未传入 moduleId 但传入了 moduleCode，自动从元数据快照中解析出对应的 moduleId */
-    public static void normalizeReqModule(QueryReq req, PlanMeta meta) {
-        if (req == null) {
-            return;
-        }
-        if (req.getModuleId() == null
-                && req.getModuleCode() != null
-                && meta != null
-                && meta.hasModuleTree()) {
-            if (meta.moduleTree().getModuleMap() != null) {
-                for (com.jdec.platform.config.api.dto.common.ModuleInfo info :
-                        meta.moduleTree().getModuleMap().values()) {
-                    if (info != null
-                            && req.getModuleCode().equalsIgnoreCase(info.getModuleCode())) {
-                        req.setModuleId(info.getModuleId());
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    /** 若候选项请求中未传入 moduleId 但传入了 moduleCode，自动从元数据快照中解析出对应的 moduleId */
-    public static void normalizeReqModule(OptionReq req, PlanMeta meta) {
-        if (req == null) {
-            return;
-        }
-        if (req.getModuleId() == null
-                && req.getModuleCode() != null
-                && meta != null
-                && meta.hasModuleTree()) {
-            if (meta.moduleTree().getModuleMap() != null) {
-                for (com.jdec.platform.config.api.dto.common.ModuleInfo info :
-                        meta.moduleTree().getModuleMap().values()) {
-                    if (info != null
-                            && req.getModuleCode().equalsIgnoreCase(info.getModuleCode())) {
-                        req.setModuleId(info.getModuleId());
-                        break;
-                    }
-                }
-            }
-        }
+        return true;
     }
 }

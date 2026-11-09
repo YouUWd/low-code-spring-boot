@@ -10,7 +10,9 @@ import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.QueryReq;
-import com.jdec.platform.data.api.dto.request.TableSpec;
+import com.jdec.platform.data.api.model.predicate.ComparisonPredicate;
+import com.jdec.platform.data.api.model.predicate.CompoundPredicate;
+import com.jdec.platform.data.api.model.predicate.Predicate;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.utils.JsonValueUtils;
 import java.util.*;
@@ -105,7 +107,7 @@ public class DataPermissionConditionResolver {
         // 检查是否有任何模块节点命中了数据权限配置
         boolean hasAnyTableInTree = false;
         boolean hasRestrictedTable = false;
-        List<FilterItem> dataPermFilters = new ArrayList<>();
+        List<Predicate> tablePredicates = new ArrayList<>();
 
         for (ModuleInfo module : allModules) {
             if (module == null
@@ -126,59 +128,123 @@ public class DataPermissionConditionResolver {
                 continue;
             }
 
-            // 若配置了节点级全选，则该表无限制放行
-            boolean isPermissionCheckAll =
+            // 过滤掉节点级全选（permissionCheckAll=1）的配置项，仅保留受限配置
+            List<DataRightConfigResp.DataConfig> validConfigs =
                     config.getDataList().stream()
-                            .anyMatch(
+                            .filter(
                                     d ->
                                             d != null
-                                                    && Integer.valueOf(1)
-                                                            .equals(d.getPermissionCheckAll()));
-            if (isPermissionCheckAll) {
+                                                    && !Integer.valueOf(1)
+                                                            .equals(d.getPermissionCheckAll()))
+                            .collect(Collectors.toList());
+            if (validConfigs.isEmpty()) {
+                // 该表所有配置均为节点级全选放行，该表无限制
                 continue;
             }
 
             // 存在针对具体主体/业务字段的限制
             hasRestrictedTable = true;
-            for (DataRightConfigResp.DataConfig dc : config.getDataList()) {
-                if (dc == null) {
-                    continue;
-                }
-                Long subjectId = dc.getSubjectId();
-                Integer subjectCheckAll = dc.getSubjectCheckAll();
-                String columnName = dc.getColumnName();
-                List<Object> bizNames = dc.getBizNames();
 
-                if (subjectId != null) {
-                    dataPermFilters.add(
-                            FilterItem.builder()
-                                    .moduleId(modId)
-                                    .tableName(module.getPrimaryTable().trim())
-                                    .columnName(SUBJECT_ID_COLUMN)
-                                    .operator("EQ")
-                                    .value(subjectId)
-                                    .build());
+            // 按 subjectId 分组：同表下不同主体之间使用 OR 连接；同主体内部条件使用 AND 连接
+            Map<Long, List<DataRightConfigResp.DataConfig>> subjectGroups = new LinkedHashMap<>();
+            List<DataRightConfigResp.DataConfig> nonSubjectConfigs = new ArrayList<>();
+
+            for (DataRightConfigResp.DataConfig dc : validConfigs) {
+                if (dc.getSubjectId() != null) {
+                    subjectGroups
+                            .computeIfAbsent(dc.getSubjectId(), k -> new ArrayList<>())
+                            .add(dc);
+                } else {
+                    nonSubjectConfigs.add(dc);
+                }
+            }
+
+            List<Predicate> subjectPredicates = new ArrayList<>();
+            for (Map.Entry<Long, List<DataRightConfigResp.DataConfig>> entry :
+                    subjectGroups.entrySet()) {
+                Long subjectId = entry.getKey();
+                List<Predicate> singleSubjectPreds = new ArrayList<>();
+
+                // 主体限制: subject_id EQ subjectId
+                singleSubjectPreds.add(
+                        ComparisonPredicate.of(
+                                module.getPrimaryTable().trim(),
+                                SUBJECT_ID_COLUMN,
+                                "EQ",
+                                subjectId));
+
+                for (DataRightConfigResp.DataConfig dc : entry.getValue()) {
+                    if (!Integer.valueOf(1).equals(dc.getSubjectCheckAll())
+                            && dc.getColumnName() != null
+                            && !dc.getColumnName().isBlank()) {
+                        List<Object> effectiveBizNames =
+                                dc.getBizNames() == null
+                                        ? Collections.emptyList()
+                                        : dc.getBizNames().stream()
+                                                .map(JsonValueUtils::toSqlValue)
+                                                .collect(Collectors.toList());
+                        singleSubjectPreds.add(
+                                ComparisonPredicate.of(
+                                        module.getPrimaryTable().trim(),
+                                        dc.getColumnName().trim(),
+                                        "IN",
+                                        effectiveBizNames));
+                    }
                 }
 
-                if (!Integer.valueOf(1).equals(subjectCheckAll)
-                        && columnName != null
-                        && !columnName.isBlank()) {
-                    // 业务值为 JSON 对象/数组时转为 JSON 文本，避免集合被直接绑定给 JDBC
+                if (singleSubjectPreds.size() == 1) {
+                    subjectPredicates.add(singleSubjectPreds.get(0));
+                } else {
+                    subjectPredicates.add(CompoundPredicate.and(singleSubjectPreds));
+                }
+            }
+
+            // 处理无主体绑定的限制字段（若有）
+            List<Predicate> nonSubjectPreds = new ArrayList<>();
+            for (DataRightConfigResp.DataConfig dc : nonSubjectConfigs) {
+                if (!Integer.valueOf(1).equals(dc.getSubjectCheckAll())
+                        && dc.getColumnName() != null
+                        && !dc.getColumnName().isBlank()) {
                     List<Object> effectiveBizNames =
-                            bizNames == null
+                            dc.getBizNames() == null
                                     ? Collections.emptyList()
-                                    : bizNames.stream()
+                                    : dc.getBizNames().stream()
                                             .map(JsonValueUtils::toSqlValue)
                                             .collect(Collectors.toList());
-                    dataPermFilters.add(
-                            FilterItem.builder()
-                                    .moduleId(modId)
-                                    .tableName(module.getPrimaryTable().trim())
-                                    .columnName(columnName.trim())
-                                    .operator("IN")
-                                    .value(effectiveBizNames)
-                                    .build());
+                    nonSubjectPreds.add(
+                            ComparisonPredicate.of(
+                                    module.getPrimaryTable().trim(),
+                                    dc.getColumnName().trim(),
+                                    "IN",
+                                    effectiveBizNames));
                 }
+            }
+
+            Predicate tableSubjectsPred = null;
+            if (!subjectPredicates.isEmpty()) {
+                tableSubjectsPred =
+                        subjectPredicates.size() == 1
+                                ? subjectPredicates.get(0)
+                                : CompoundPredicate.or(subjectPredicates);
+            }
+
+            Predicate tablePred = null;
+            if (tableSubjectsPred != null && !nonSubjectPreds.isEmpty()) {
+                List<Predicate> combined = new ArrayList<>();
+                combined.add(tableSubjectsPred);
+                combined.addAll(nonSubjectPreds);
+                tablePred = CompoundPredicate.and(combined);
+            } else if (tableSubjectsPred != null) {
+                tablePred = tableSubjectsPred;
+            } else if (!nonSubjectPreds.isEmpty()) {
+                tablePred =
+                        nonSubjectPreds.size() == 1
+                                ? nonSubjectPreds.get(0)
+                                : CompoundPredicate.and(nonSubjectPreds);
+            }
+
+            if (tablePred != null) {
+                tablePredicates.add(tablePred);
             }
         }
 
@@ -194,11 +260,23 @@ public class DataPermissionConditionResolver {
 
         // 3. 复用底层数据引擎 dataApi.queryList(QueryReq) 求解主表 ID 集合
         // 投影规格仅声明主表 id，底层引擎自动将子表 FilterItem 上卷为 EXISTS 关联子查询并跳过子表数据抓取
+        String rootCode =
+                moduleTree.getRootModule() != null
+                        ? moduleTree.getRootModule().getModuleCode()
+                        : null;
+        String view =
+                (rootCode != null && !rootCode.isBlank()) ? rootCode : String.valueOf(rootModuleId);
+
+        Predicate finalFilter =
+                tablePredicates.size() == 1
+                        ? tablePredicates.get(0)
+                        : CompoundPredicate.and(tablePredicates);
+
         QueryReq queryReq =
                 QueryReq.builder()
-                        .moduleId(rootModuleId)
-                        .tables(List.of(TableSpec.of(rootModuleId, primaryTable, List.of("id"))))
-                        .filters(dataPermFilters)
+                        .view(view)
+                        .columns(List.of(primaryTable.trim() + ".id"))
+                        .filter(finalFilter)
                         .build();
 
         DataBlock block;
@@ -214,11 +292,12 @@ public class DataPermissionConditionResolver {
         }
 
         List<Long> matchedIds = extractIds(block, primaryTable);
+        List<FilterItem> flattenedFilters = FilterItem.fromPredicateToList(finalFilter);
         log.info(
                 "[DataPermission-QueryList] 复用 queryList 求解数据权限主表ID完成: rootModuleId={}, primaryTable={}, 过滤项数={}, 匹配ID数={}, 样例={}",
                 rootModuleId,
                 primaryTable,
-                dataPermFilters.size(),
+                flattenedFilters.size(),
                 matchedIds.size(),
                 CommonFilterResolver.formatSample(matchedIds, 5));
 

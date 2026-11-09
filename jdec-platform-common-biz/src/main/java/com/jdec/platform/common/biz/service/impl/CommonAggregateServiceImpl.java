@@ -54,7 +54,6 @@ import com.jdec.platform.data.api.dto.request.PageQueryReq;
 import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.request.SingleTableQueryReq;
 import com.jdec.platform.data.api.dto.request.SortItem;
-import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.shared.context.AppContext;
@@ -141,7 +140,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         List<Long> checkedFieldIds =
                 PhysicalQueryMapper.collectAndMaskHeaderFields(
                         headerRoot, req, moduleTree, projectRelations);
-        List<TableSpec> tableSpecs = PhysicalQueryMapper.toTableSpecs(moduleTree, checkedFieldIds);
+        List<String> flatColumns = PhysicalQueryMapper.toColumns(moduleTree, checkedFieldIds);
         List<FilterItem> finalFilters =
                 req != null
                         ? PhysicalQueryMapper.toTableFilters(moduleTree, req.getFilters())
@@ -216,7 +215,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         finalFilters.addAll(filterResult.filters());
 
         PhysicalQueryMapper.supplementSystemColumns(
-                tableSpecs,
+                flatColumns,
                 moduleTree,
                 rootModuleId,
                 table -> configApi.getTableColumnNames(AppContext.getProjectNo(), table));
@@ -228,15 +227,20 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         }
         Set<String> shadowKeys =
                 PhysicalQueryMapper.supplementShadowColumns(
-                        tableSpecs, moduleTree, rootModuleId, candidateShadowCols);
+                        flatColumns, moduleTree, rootModuleId, candidateShadowCols);
+
+        String rootView =
+                (rootModuleCode != null && !rootModuleCode.isBlank())
+                        ? rootModuleCode
+                        : String.valueOf(rootModuleId);
 
         DataPage<DataBlock> rawDataPage =
                 dataApi.queryPage(
                         PageQueryReq.builder()
-                                .moduleId(rootModuleId)
-                                .tables(tableSpecs)
-                                .filters(finalFilters)
-                                .sorts(finalSorts)
+                                .view(rootView)
+                                .columns(flatColumns)
+                                .filter(PhysicalQueryMapper.toPredicate(finalFilters))
+                                .sort(finalSorts)
                                 .pageNo(pageNo)
                                 .pageSize(pageSize)
                                 .build());
@@ -423,14 +427,14 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         req, rootModuleId, rootMenuId, moduleTree, moduleToMenuMap);
 
         List<MenuTableSpec> reqTables = req.getTables();
-        List<TableSpec> tableSpecs =
-                PhysicalQueryMapper.toTableSpecs(
+        List<String> flatColumns =
+                PhysicalQueryMapper.toColumns(
                         reqTables, moduleTree, openMenuApi::getModuleIdByMenuId);
         Map<String, Set<String>> requestedTableColumnsMap =
                 PhysicalQueryMapper.buildRequestedTableColumnsMap(
                         reqTables, moduleTree, openMenuApi::getModuleIdByMenuId);
         PhysicalQueryMapper.supplementSystemColumns(
-                tableSpecs,
+                flatColumns,
                 moduleTree,
                 rootModuleId,
                 table -> configApi.getTableColumnNames(AppContext.getProjectNo(), table),
@@ -462,15 +466,22 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         }
 
         FilterItem idInFilter = FilterItem.in(primaryTable, "id", latestEnabledIds);
-        idInFilter.setModuleId(rootModuleId);
+
+        ModuleInfo rootModuleInfo = moduleTree != null ? moduleTree.getRootModule() : null;
+        String rootView =
+                (rootModuleInfo != null
+                                && rootModuleInfo.getModuleCode() != null
+                                && !rootModuleInfo.getModuleCode().isBlank())
+                        ? rootModuleInfo.getModuleCode()
+                        : String.valueOf(rootModuleId);
 
         DataBlock enabledBlock =
                 dataApi.queryList(
                         QueryReq.builder()
-                                .moduleId(rootModuleId)
-                                .tables(tableSpecs)
-                                .filters(List.of(idInFilter))
-                                .sorts(finalSorts)
+                                .view(rootView)
+                                .columns(flatColumns)
+                                .filter(idInFilter.toPredicate())
+                                .sort(finalSorts)
                                 .build());
 
         List<DataRow> finalRows =
@@ -528,25 +539,31 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
 
         List<Long> checkedFieldIds = PhysicalQueryMapper.collectCheckedFieldIds(headerRoot);
-        List<TableSpec> tableSpecs = PhysicalQueryMapper.toTableSpecs(moduleTree, checkedFieldIds);
+        List<String> flatColumns = PhysicalQueryMapper.toColumns(moduleTree, checkedFieldIds);
         PhysicalQueryMapper.supplementSystemColumns(
-                tableSpecs,
+                flatColumns,
                 moduleTree,
                 rootModuleId,
                 table -> configApi.getTableColumnNames(AppContext.getProjectNo(), table));
+        ModuleInfo rootModuleInfo = moduleTree != null ? moduleTree.getModule(rootModuleId) : null;
+        String rootView =
+                (rootModuleInfo != null
+                                && rootModuleInfo.getModuleCode() != null
+                                && !rootModuleInfo.getModuleCode().isBlank())
+                        ? rootModuleInfo.getModuleCode()
+                        : String.valueOf(rootModuleId);
 
         DataBlock dataBlock =
                 dataApi.getDetail(
                         DetailQueryReq.builder()
-                                .moduleId(rootModuleId)
+                                .view(rootView)
                                 .id(id)
-                                .tables(tableSpecs)
+                                .columns(flatColumns)
                                 .build());
 
-        ModuleInfo rootModuleInfo = moduleTree != null ? moduleTree.getModule(rootModuleId) : null;
         String rootModuleCode =
-                dataBlock != null && dataBlock.getModuleCode() != null
-                        ? dataBlock.getModuleCode()
+                dataBlock != null && dataBlock.getView() != null
+                        ? dataBlock.getView()
                         : (rootModuleInfo != null ? rootModuleInfo.getModuleCode() : null);
 
         ModuleDataNode dataTree =
@@ -599,13 +616,21 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         }
         finalFilters.addAll(filterResult.filters());
 
+        ModuleInfo rootModuleInfo = moduleTree != null ? moduleTree.getRootModule() : null;
+        String rootView =
+                (rootModuleInfo != null
+                                && rootModuleInfo.getModuleCode() != null
+                                && !rootModuleInfo.getModuleCode().isBlank())
+                        ? rootModuleInfo.getModuleCode()
+                        : String.valueOf(rootModuleId);
+
         List<DataOptionResp> rawOptions =
                 dataApi.getOptions(
                         OptionReq.builder()
-                                .moduleId(rootModuleId)
+                                .view(rootView)
                                 .tableName(targetField.tableName())
                                 .columnName(targetField.columnName())
-                                .filters(finalFilters)
+                                .filter(PhysicalQueryMapper.toPredicate(finalFilters))
                                 .direction(req.getDirection())
                                 .build());
 
@@ -1009,11 +1034,18 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         if (result == null || result.isEmpty()) {
             return 0L;
         }
+        ModuleInfo rootModuleInfo = moduleTree != null ? moduleTree.getRootModule() : null;
+        String rootView =
+                (rootModuleInfo != null
+                                && rootModuleInfo.getModuleCode() != null
+                                && !rootModuleInfo.getModuleCode().isBlank())
+                        ? rootModuleInfo.getModuleCode()
+                        : String.valueOf(rootModuleId);
         Long count =
                 dataApi.count(
                         QueryReq.builder()
-                                .moduleId(rootModuleId)
-                                .filters(result.filters())
+                                .view(rootView)
+                                .filter(PhysicalQueryMapper.toPredicate(result.filters()))
                                 .build());
         return count != null ? count : 0L;
     }
@@ -1159,19 +1191,29 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             String primaryTable,
             List<FilterItem> finalFilters,
             List<SortItem> finalSorts) {
+        ModuleTreeDTO moduleTree = null;
+        try {
+            moduleTree = configApi.getModuleTree(AppContext.getProjectNo(), null, rootModuleId);
+        } catch (Exception ignored) {
+        }
+        ModuleInfo rootModuleInfo = moduleTree != null ? moduleTree.getRootModule() : null;
+        String rootView =
+                (rootModuleInfo != null
+                                && rootModuleInfo.getModuleCode() != null
+                                && !rootModuleInfo.getModuleCode().isBlank())
+                        ? rootModuleInfo.getModuleCode()
+                        : String.valueOf(rootModuleId);
+
         DataBlock lightBlock =
                 dataApi.queryList(
                         QueryReq.builder()
-                                .moduleId(rootModuleId)
-                                .tables(
+                                .view(rootView)
+                                .columns(
                                         List.of(
-                                                TableSpec.of(
-                                                        rootModuleId,
-                                                        primaryTable,
-                                                        "id",
-                                                        "business_no")))
-                                .filters(finalFilters)
-                                .sorts(finalSorts)
+                                                primaryTable + ".id",
+                                                primaryTable + ".business_no"))
+                                .filter(PhysicalQueryMapper.toPredicate(finalFilters))
+                                .sort(finalSorts)
                                 .build());
 
         if (lightBlock == null || CollectionUtils.isEmpty(lightBlock.getRecords())) {

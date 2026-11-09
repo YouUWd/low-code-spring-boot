@@ -3,6 +3,7 @@ package com.jdec.platform.data.biz;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
@@ -11,13 +12,14 @@ import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.DetailQueryReq;
-import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.OptionReq;
 import com.jdec.platform.data.api.dto.request.PageQueryReq;
 import com.jdec.platform.data.api.dto.request.QueryReq;
-import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
+import com.jdec.platform.data.api.model.predicate.ComparisonPredicate;
+import com.jdec.platform.data.api.model.predicate.CompoundPredicate;
+import com.jdec.platform.data.api.model.predicate.Predicate;
 import com.jdec.platform.data.biz.plan.PlanMetaLoader;
 import com.jdec.platform.data.biz.plan.assembler.TreeResultAssembler;
 import com.jdec.platform.data.biz.plan.compiler.QueryPlanCompiler;
@@ -45,6 +47,25 @@ public class TableQueryEngineTest {
 
     @BeforeEach
     void setUp() {
+        ModuleFieldDTO f1 =
+                ModuleFieldDTO.builder()
+                        .id(1L)
+                        .tableName("company_info")
+                        .columnName("company_name")
+                        .build();
+        ModuleFieldDTO f2 =
+                ModuleFieldDTO.builder()
+                        .id(2L)
+                        .tableName("company_info")
+                        .columnName("company_code")
+                        .build();
+        ModuleFieldDTO f3 =
+                ModuleFieldDTO.builder()
+                        .id(3L)
+                        .tableName("company_info")
+                        .columnName("status")
+                        .build();
+
         ModuleInfo rootInfo =
                 ModuleInfo.builder()
                         .moduleId(10L)
@@ -52,7 +73,20 @@ public class TableQueryEngineTest {
                         .moduleName("企业信息")
                         .primaryTable("company_info")
                         .parentId(0L)
-                        .fields(Collections.emptyList())
+                        .fields(List.of(f1, f2, f3))
+                        .build();
+
+        ModuleFieldDTO f4 =
+                ModuleFieldDTO.builder()
+                        .id(4L)
+                        .tableName("company_member")
+                        .columnName("member_name")
+                        .build();
+        ModuleFieldDTO f5 =
+                ModuleFieldDTO.builder()
+                        .id(5L)
+                        .tableName("company_member")
+                        .columnName("position")
                         .build();
 
         ModuleInfo childInfo =
@@ -62,7 +96,7 @@ public class TableQueryEngineTest {
                         .moduleName("成员信息")
                         .primaryTable("company_member")
                         .parentId(10L)
-                        .fields(Collections.emptyList())
+                        .fields(List.of(f4, f5))
                         .build();
 
         Map<Long, ModuleInfo> moduleMap = new LinkedHashMap<>();
@@ -188,12 +222,11 @@ public class TableQueryEngineTest {
     @Test
     @DisplayName("全量物理树详情查询：自动递归抓取主表与子表全部字段")
     void testGetFullDetail() {
-        DetailQueryReq req = DetailQueryReq.builder().moduleId(10L).id(100L).build();
+        DetailQueryReq req = DetailQueryReq.builder().view("COMPANY-INFO").id(100L).build();
 
         DataBlock block = dataQueryService.getDetail(req);
         assertNotNull(block);
-        assertEquals(10L, block.getModuleId());
-        assertEquals("COMPANY-INFO", block.getModuleCode());
+        assertEquals("COMPANY-INFO", block.getView());
         assertEquals(1, block.getRecords().size());
 
         DataRow row = block.getRecords().get(0);
@@ -205,8 +238,7 @@ public class TableQueryEngineTest {
         assertNotNull(row.getChildren());
         assertEquals(1, row.getChildren().size());
         DataBlock childBlock = row.getChildren().get(0);
-        assertEquals(20L, childBlock.getModuleId());
-        assertEquals("COMPANY-MEMBER", childBlock.getModuleCode());
+        assertEquals("COMPANY-MEMBER", childBlock.getView());
         assertEquals(1, childBlock.getRecords().size());
         DataRow childRow = childBlock.getRecords().get(0);
         assertNotNull(childRow.getTable("company_member"));
@@ -216,51 +248,46 @@ public class TableQueryEngineTest {
         // 测试 DataRow 逻辑编码提取
         DataBlock childByCode = row.getChild("COMPANY-MEMBER");
         assertNotNull(childByCode);
-        assertEquals(20L, childByCode.getModuleId());
-        assertEquals("COMPANY-MEMBER", childByCode.getModuleCode());
+        assertEquals("COMPANY-MEMBER", childByCode.getView());
     }
 
     @Test
     @DisplayName("纯逻辑 moduleCode 详情查询：无需 moduleId，全链路自动转译与装配")
     void testGetDetailByModuleCode() {
-        DetailQueryReq req = DetailQueryReq.builder().moduleCode("COMPANY-INFO").id(100L).build();
+        DetailQueryReq req = DetailQueryReq.builder().view("COMPANY-INFO").id(100L).build();
 
         DataBlock block = dataQueryService.getDetail(req);
         assertNotNull(block);
-        assertEquals(10L, block.getModuleId());
-        assertEquals("COMPANY-INFO", block.getModuleCode());
+        assertEquals("COMPANY-INFO", block.getView());
         assertEquals(1, block.getRecords().size());
 
         DataRow row = block.getFirstRecord();
         assertNotNull(row);
         DataBlock child = row.getChild("COMPANY-MEMBER");
         assertNotNull(child);
-        assertEquals("COMPANY-MEMBER", child.getModuleCode());
+        assertEquals("COMPANY-MEMBER", child.getView());
     }
 
     @Test
-    @DisplayName("结构化 TableSpec 物理投影分页查询")
+    @DisplayName("结构化统一列物理投影分页查询")
     void testTablePageQuery() {
         PageQueryReq req =
                 PageQueryReq.builder()
-                        .moduleId(10L)
+                        .view("COMPANY-INFO")
                         .pageNo(1)
                         .pageSize(10)
-                        .tables(
+                        .columns(List.of("company_info.id", "company_info.company_name"))
+                        .filter(
+                                ComparisonPredicate.of(
+                                        "company_info.company_code", "eq", "CORP-100"))
+                        .children(
                                 List.of(
-                                        TableSpec.of(
-                                                10L, "company_info", List.of("id", "company_name")),
-                                        TableSpec.of(
-                                                20L,
-                                                "company_member",
-                                                List.of("id", "member_name"))))
-                        .filters(
-                                List.of(
-                                        FilterItem.builder()
-                                                .tableName("company_info")
-                                                .columnName("company_code")
-                                                .operator("eq")
-                                                .value("CORP-100")
+                                        QueryReq.builder()
+                                                .view("COMPANY-MEMBER")
+                                                .columns(
+                                                        List.of(
+                                                                "company_member.id",
+                                                                "company_member.member_name"))
                                                 .build()))
                         .build();
 
@@ -276,35 +303,20 @@ public class TableQueryEngineTest {
     @DisplayName("Filter 自身条件与其 children 的自然逻辑组合 (OR 组合测试)")
     void testFilterSelfAndChildrenOrCombination() {
         executedSqls.clear();
-        FilterItem hybridOrFilter =
-                FilterItem.builder()
-                        .tableName("company_info")
-                        .columnName("company_name")
-                        .operator("LIKE")
-                        .value("科技")
-                        .logic("OR")
-                        .children(
-                                List.of(
-                                        FilterItem.builder()
-                                                .tableName("company_info")
-                                                .columnName("id")
-                                                .operator("EQ")
-                                                .value(100L)
-                                                .build(),
-                                        FilterItem.builder()
-                                                .tableName("company_info")
-                                                .columnName("company_code")
-                                                .operator("EQ")
-                                                .value("CORP-100")
-                                                .build()))
-                        .build();
+        Predicate hybridOrFilter =
+                CompoundPredicate.or(
+                        ComparisonPredicate.of("company_info.company_name", "LIKE", "%科技%"),
+                        CompoundPredicate.and(
+                                ComparisonPredicate.of("company_info.id", "EQ", 100L),
+                                ComparisonPredicate.of(
+                                        "company_info.company_code", "EQ", "CORP-100")));
 
         PageQueryReq req =
                 PageQueryReq.builder()
-                        .moduleId(10L)
+                        .view("COMPANY-INFO")
                         .pageNo(1)
                         .pageSize(10)
-                        .filters(List.of(hybridOrFilter))
+                        .filter(hybridOrFilter)
                         .build();
 
         DataPage<DataBlock> page = dataQueryService.queryPage(req);
@@ -328,16 +340,10 @@ public class TableQueryEngineTest {
         executedSqls.clear();
         PageQueryReq req =
                 PageQueryReq.builder()
-                        .moduleId(10L)
+                        .view("COMPANY-INFO")
                         .pageNo(1)
                         .pageSize(10)
-                        .tables(
-                                List.of(
-                                        TableSpec.builder()
-                                                .moduleId(10L)
-                                                .tableName("company_info")
-                                                .columns(List.of("*"))
-                                                .build()))
+                        .columns(List.of("company_info.*"))
                         .build();
 
         DataPage<DataBlock> page = dataQueryService.queryPage(req);
@@ -360,16 +366,10 @@ public class TableQueryEngineTest {
         executedSqls.clear();
         PageQueryReq req =
                 PageQueryReq.builder()
-                        .moduleId(10L)
+                        .view("COMPANY-INFO")
                         .pageNo(1)
                         .pageSize(10)
-                        .tables(
-                                List.of(
-                                        TableSpec.builder()
-                                                .moduleId(10L)
-                                                .tableName("company_info")
-                                                .columns(List.of("company_name"))
-                                                .build()))
+                        .columns(List.of("company_info.company_name"))
                         .build();
 
         DataPage<DataBlock> page = dataQueryService.queryPage(req);
@@ -396,15 +396,8 @@ public class TableQueryEngineTest {
         executedSqls.clear();
         QueryReq req =
                 QueryReq.builder()
-                        .moduleId(10L)
-                        .filters(
-                                List.of(
-                                        FilterItem.builder()
-                                                .tableName("company_info")
-                                                .columnName("id")
-                                                .operator("EQ")
-                                                .value(100L)
-                                                .build()))
+                        .view("COMPANY-INFO")
+                        .filter(ComparisonPredicate.of("company_info.id", "EQ", 100L))
                         .build();
 
         Long count = dataQueryService.count(req);
@@ -425,7 +418,7 @@ public class TableQueryEngineTest {
         executedSqls.clear();
         OptionReq req =
                 OptionReq.builder()
-                        .moduleId(10L)
+                        .view("COMPANY-INFO")
                         .tableName("company_info")
                         .columnName("company_name")
                         .direction("ASC")

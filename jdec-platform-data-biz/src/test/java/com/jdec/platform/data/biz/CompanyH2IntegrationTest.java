@@ -12,14 +12,15 @@ import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.DetailQueryReq;
-import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.ForkVersionReq;
 import com.jdec.platform.data.api.dto.request.OptionReq;
 import com.jdec.platform.data.api.dto.request.PageQueryReq;
-import com.jdec.platform.data.api.dto.request.TableSpec;
+import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.data.api.dto.response.DataSaveResp;
+import com.jdec.platform.data.api.model.predicate.ComparisonPredicate;
+import com.jdec.platform.data.api.model.predicate.CompoundPredicate;
 import com.jdec.platform.data.biz.plan.PlanMetaLoader;
 import com.jdec.platform.data.biz.plan.assembler.TreeResultAssembler;
 import com.jdec.platform.data.biz.plan.compiler.QueryPlanCompiler;
@@ -113,6 +114,29 @@ class CompanyH2IntegrationTest {
 
     /** 1020 联系方式（虚拟模块，primary_table IS NULL） */
     public static final long M_VIRTUAL_CONTACT = 1020L;
+
+    static String viewOf(long mid) {
+        if (mid == M_INFO) return "info";
+        if (mid == M_BASIC) return "basic_info";
+        if (mid == M_MEMBER) return "member";
+        if (mid == M_CONTACT) return "member_contact";
+        if (mid == M_ADDRESS) return "address";
+        if (mid == M_COMPANY_CONTACT) return "company_contact";
+        if (mid == M_FINANCE) return "1007";
+        if (mid == M_FIN_ACCOUNT) return "financial_account";
+        if (mid == M_DIGITAL_ACCOUNT) return "digital_account";
+        if (mid == M_CREDIT) return "credit_rating";
+        if (mid == M_VIRTUAL_CONTACT) return "1020";
+        return String.valueOf(mid);
+    }
+
+    static DataBlock blockOf(long mid, DataRow row) {
+        return DataBlock.of(viewOf(mid), row);
+    }
+
+    static DataBlock blockOf(long mid, List<DataRow> rows) {
+        return DataBlock.of(viewOf(mid), rows);
+    }
 
     // ==================================================================
     // SQL 资源路径
@@ -389,7 +413,7 @@ class CompanyH2IntegrationTest {
     void queryWholeTreeAssemblesRealAggregate() {
         DataPage<DataBlock> page =
                 dataQueryService.queryPage(
-                        PageQueryReq.builder().moduleId(M_INFO).pageNo(1).pageSize(10).build());
+                        PageQueryReq.builder().view(viewOf(M_INFO)).pageNo(1).pageSize(10).build());
 
         long dbInfoTotal = countOf("select count(*) from info");
         assertEquals(dbInfoTotal, page.getTotal(), "查询总数必须与数据库 info 表行数一致");
@@ -509,7 +533,7 @@ class CompanyH2IntegrationTest {
     void querySparseAndMinimalAggregateRootsSafely() {
         DataBlock detail101 =
                 dataQueryService.getDetail(
-                        DetailQueryReq.builder().moduleId(M_INFO).id(101L).build());
+                        DetailQueryReq.builder().view(viewOf(M_INFO)).id(101L).build());
         DataRow root101 = detail101.getFirstRecord();
         assertEquals(101L, asLong(root101.getValue("info", "id")));
         long db101BasicCnt =
@@ -529,7 +553,7 @@ class CompanyH2IntegrationTest {
 
         DataBlock detail102 =
                 dataQueryService.getDetail(
-                        DetailQueryReq.builder().moduleId(M_INFO).id(102L).build());
+                        DetailQueryReq.builder().view(viewOf(M_INFO)).id(102L).build());
         DataRow root102 = detail102.getFirstRecord();
         assertEquals(102L, asLong(root102.getValue("info", "id")));
         long db102BasicCnt =
@@ -553,7 +577,7 @@ class CompanyH2IntegrationTest {
     @DisplayName("H3 SQL 形态：每张表恰好一条 SELECT、零 JOIN、批量 IN 抓取，且只触达 9 张表")
     void sqlShapeIsBatchFetchWithoutJoins() {
         dataQueryService.queryPage(
-                PageQueryReq.builder().moduleId(M_INFO).pageNo(1).pageSize(10).build());
+                PageQueryReq.builder().view(viewOf(M_INFO)).pageNo(1).pageSize(10).build());
 
         List<String> selects =
                 recording.sqls.stream()
@@ -619,13 +643,13 @@ class CompanyH2IntegrationTest {
     void paginationAndExplicitProjection() {
         DataPage<DataBlock> page1 =
                 dataQueryService.queryPage(
-                        PageQueryReq.builder().moduleId(M_INFO).pageNo(1).pageSize(2).build());
+                        PageQueryReq.builder().view(viewOf(M_INFO)).pageNo(1).pageSize(2).build());
         assertEquals(3L, page1.getTotal());
         assertEquals(2, page1.getRecords().size(), "pageSize=2 应只返回 2 行");
 
         DataPage<DataBlock> page2 =
                 dataQueryService.queryPage(
-                        PageQueryReq.builder().moduleId(M_INFO).pageNo(2).pageSize(2).build());
+                        PageQueryReq.builder().view(viewOf(M_INFO)).pageNo(2).pageSize(2).build());
         assertEquals(1, page2.getRecords().size());
         assertTrue(
                 asLong(page1.getRecords().get(0).getValue("info", "id"))
@@ -635,13 +659,10 @@ class CompanyH2IntegrationTest {
         DataPage<DataBlock> projected =
                 dataQueryService.queryPage(
                         PageQueryReq.builder()
-                                .moduleId(M_INFO)
+                                .view(viewOf(M_INFO))
                                 .pageNo(1)
                                 .pageSize(10)
-                                .tables(
-                                        List.of(
-                                                TableSpec.of(
-                                                        M_INFO, "info", List.of("company_name"))))
+                                .columns(List.of("info.company_name"))
                                 .build());
         assertNotNull(projected);
         String sql =
@@ -666,17 +687,24 @@ class CompanyH2IntegrationTest {
     void descendantFilterRollsUpAsNestedExists() {
         PageQueryReq req =
                 PageQueryReq.builder()
-                        .moduleId(M_INFO)
+                        .view(viewOf(M_INFO))
                         .pageNo(1)
                         .pageSize(10)
-                        .filters(
+                        .children(
                                 List.of(
-                                        FilterItem.builder()
-                                                .moduleId(M_CONTACT)
-                                                .tableName("member_contact")
-                                                .columnName("contact_value")
-                                                .operator("EQ")
-                                                .value("13585855898")
+                                        QueryReq.builder()
+                                                .view(viewOf(M_MEMBER))
+                                                .children(
+                                                        List.of(
+                                                                QueryReq.builder()
+                                                                        .view(viewOf(M_CONTACT))
+                                                                        .filter(
+                                                                                ComparisonPredicate
+                                                                                        .of(
+                                                                                                "member_contact.contact_value",
+                                                                                                "EQ",
+                                                                                                "13585855898"))
+                                                                        .build()))
                                                 .build()))
                         .build();
 
@@ -716,17 +744,26 @@ class CompanyH2IntegrationTest {
     void filterOnVirtualModuleChildRollsUpThroughVirtualLayer() {
         PageQueryReq req =
                 PageQueryReq.builder()
-                        .moduleId(M_INFO)
+                        .view(viewOf(M_INFO))
                         .pageNo(1)
                         .pageSize(10)
-                        .filters(
+                        .children(
                                 List.of(
-                                        FilterItem.builder()
-                                                .moduleId(M_DIGITAL_ACCOUNT)
-                                                .tableName("digital_account")
-                                                .columnName("account_no")
-                                                .operator("EQ")
-                                                .value("ZFB001")
+                                        QueryReq.builder()
+                                                .view(viewOf(M_FINANCE))
+                                                .children(
+                                                        List.of(
+                                                                QueryReq.builder()
+                                                                        .view(
+                                                                                viewOf(
+                                                                                        M_DIGITAL_ACCOUNT))
+                                                                        .filter(
+                                                                                ComparisonPredicate
+                                                                                        .of(
+                                                                                                "digital_account.account_no",
+                                                                                                "EQ",
+                                                                                                "ZFB001"))
+                                                                        .build()))
                                                 .build()))
                         .build();
 
@@ -747,23 +784,52 @@ class CompanyH2IntegrationTest {
     }
 
     @Test
+    @DisplayName("H5c 跨层级 OR 过滤：info.id = 100 OR contact_value = '不存在'，不得因重复 EXISTS 吞掉根表 OR 语义")
+    void crossLevelOrPredicateWithNonExistentChildReturnsRootRowDueToOrSemantics() {
+        recording.sqls.clear();
+        PageQueryReq req =
+                PageQueryReq.builder()
+                        .view(viewOf(M_INFO))
+                        .pageNo(1)
+                        .pageSize(10)
+                        .filter(
+                                CompoundPredicate.or(
+                                        ComparisonPredicate.of("info.id", "EQ", 100L),
+                                        ComparisonPredicate.of(
+                                                "member_contact.contact_value",
+                                                "EQ",
+                                                "NON_EXISTENT_CONTACT_99999999")))
+                        .build();
+
+        DataPage<DataBlock> page = dataQueryService.queryPage(req);
+        assertEquals(1L, page.getTotal(), "虽然不存在匹配的联系人，但 info.id = 100 命中，OR 语义必须保证返回 1 条数据");
+        DataRow root = page.getRecords().get(0);
+        assertEquals(100L, asLong(root.getValue("info", "id")));
+
+        String rootSql =
+                recording.sqls.stream()
+                        .map(s -> s.replace('\n', ' ').replaceAll("\\s+", " ").toLowerCase())
+                        .filter(s -> s.contains("from `info`") && !s.contains("count("))
+                        .findFirst()
+                        .orElseThrow();
+        assertEquals(
+                2,
+                countOfOccurrences(rootSql, "exists"),
+                "应恰好两层级联 EXISTS（member -> member_contact），绝无外层重复追加，实际=" + rootSql);
+        assertFalse(
+                rootSql.contains(") and exists"), "绝不能在外层追加重复的 AND EXISTS 破坏 OR 语义，实际=" + rootSql);
+    }
+
+    @Test
     @DisplayName("H10 跨层级下拉选项：根模块下查孙表 member_contact.contact_type，自动沿层级 INNER JOIN 回根表且应用祖先条件")
     void optionsAcrossModuleLevelsGeneratesInnerJoins() {
         recording.sqls.clear();
         OptionReq req =
                 OptionReq.builder()
-                        .moduleId(M_INFO)
+                        .view(viewOf(M_INFO))
                         .tableName("member_contact")
                         .columnName("contact_value")
-                        .filters(
-                                List.of(
-                                        FilterItem.builder()
-                                                .moduleId(M_INFO)
-                                                .tableName("info")
-                                                .columnName("id")
-                                                .operator("EQ")
-                                                .value(100L)
-                                                .build()))
+                        .filter(ComparisonPredicate.of("info.id", "EQ", 100L))
                         .build();
 
         List<DataOptionResp> options = dataQueryService.getOptions(req);
@@ -789,18 +855,10 @@ class CompanyH2IntegrationTest {
         recording.sqls.clear();
         OptionReq req =
                 OptionReq.builder()
-                        .moduleId(M_INFO)
+                        .view(viewOf(M_INFO))
                         .tableName("company_contact")
                         .columnName("contact_type")
-                        .filters(
-                                List.of(
-                                        FilterItem.builder()
-                                                .moduleId(M_INFO)
-                                                .tableName("info")
-                                                .columnName("id")
-                                                .operator("IN")
-                                                .value(List.of(100L))
-                                                .build()))
+                        .filter(ComparisonPredicate.of("info.id", "IN", List.of(100L)))
                         .build();
 
         List<DataOptionResp> options = dataQueryService.getOptions(req);
@@ -830,18 +888,10 @@ class CompanyH2IntegrationTest {
         recording.sqls.clear();
         OptionReq req =
                 OptionReq.builder()
-                        .moduleId(M_INFO)
+                        .view(viewOf(M_INFO))
                         .tableName("company_contact")
                         .columnName("contact_type")
-                        .filters(
-                                List.of(
-                                        FilterItem.builder()
-                                                .moduleId(1005L)
-                                                .tableName("address")
-                                                .columnName("comm_country")
-                                                .operator("IN")
-                                                .value(List.of("中国"))
-                                                .build()))
+                        .filter(ComparisonPredicate.of("address.comm_country", "IN", List.of("中国")))
                         .build();
 
         List<DataOptionResp> options = dataQueryService.getOptions(req);
@@ -940,9 +990,7 @@ class CompanyH2IntegrationTest {
         DataRow savedRoot = resp.getData().getFirstRecord();
         assertEquals(rootId, asLong(savedRoot.getValue("info", "id")));
         assertNotNull(
-                child(savedRoot, M_FINANCE)
-                        .getFirstRecord()
-                        .getChild(M_FIN_ACCOUNT)
+                child(child(savedRoot, M_FINANCE).getFirstRecord(), M_FIN_ACCOUNT)
                         .getFirstRecord()
                         .getValue("financial_account", "id"),
                 "虚拟模块下的物理子表也必须回填主键");
@@ -953,7 +1001,7 @@ class CompanyH2IntegrationTest {
     void detailIsReadWriteIsomorphic() {
         DataBlock detail =
                 dataQueryService.getDetail(
-                        DetailQueryReq.builder().moduleId(M_INFO).id(100L).build());
+                        DetailQueryReq.builder().view(viewOf(M_INFO)).id(100L).build());
         assertEquals(1, detail.size());
         assertEquals(100L, asLong(detail.getFirstRecord().getValue("info", "id")));
 
@@ -985,7 +1033,7 @@ class CompanyH2IntegrationTest {
     void partialUpdateRetainsOtherModules() {
         DataBlock detail =
                 dataQueryService.getDetail(
-                        DetailQueryReq.builder().moduleId(M_INFO).id(100L).build());
+                        DetailQueryReq.builder().view(viewOf(M_INFO)).id(100L).build());
         DataRow root = detail.getFirstRecord();
 
         // 保存前先快照各子表实际行数，用于后续验证“未变”
@@ -1065,9 +1113,9 @@ class CompanyH2IntegrationTest {
         basic.putValue("basic_info", "reg_capital", new BigDecimal("0.00")); // 零值
         basic.putValue("basic_info", "taxpayer_qualification", List.of());
 
-        root.setChildren(List.of(DataBlock.of(M_BASIC, basic)));
+        root.setChildren(List.of(blockOf(M_BASIC, basic)));
 
-        DataSaveResp resp = inTx(() -> dataPersistenceService.save(DataBlock.of(M_INFO, root)));
+        DataSaveResp resp = inTx(() -> dataPersistenceService.save(blockOf(M_INFO, root)));
         Long savedId = resp.getRootId();
         assertNotNull(savedId);
 
@@ -1079,7 +1127,7 @@ class CompanyH2IntegrationTest {
         // 验证读出值装配
         DataBlock reloaded =
                 dataQueryService.getDetail(
-                        DetailQueryReq.builder().moduleId(M_INFO).id(savedId).build());
+                        DetailQueryReq.builder().view(viewOf(M_INFO)).id(savedId).build());
         DataRow reloadedRow = reloaded.getFirstRecord();
         Object reloadedNature = reloadedRow.getValue("info", "nature");
         assertInstanceOf(List.class, reloadedNature);
@@ -1103,7 +1151,7 @@ class CompanyH2IntegrationTest {
 
         DataBlock detail =
                 dataQueryService.getDetail(
-                        DetailQueryReq.builder().moduleId(M_INFO).id(100L).build());
+                        DetailQueryReq.builder().view(viewOf(M_INFO)).id(100L).build());
 
         DataBlock members = child(detail.getFirstRecord(), M_MEMBER);
         List<DataRow> kept =
@@ -1142,7 +1190,7 @@ class CompanyH2IntegrationTest {
     void mixedSaveInOneToManyRelationship() {
         DataBlock detail =
                 dataQueryService.getDetail(
-                        DetailQueryReq.builder().moduleId(M_INFO).id(100L).build());
+                        DetailQueryReq.builder().view(viewOf(M_INFO)).id(100L).build());
         DataBlock members = child(detail.getFirstRecord(), M_MEMBER);
 
         // 保存前快照 member 活跃行数
@@ -1190,9 +1238,9 @@ class CompanyH2IntegrationTest {
                         () ->
                                 forkVersionService.forkNewVersion(
                                         ForkVersionReq.builder()
-                                                .moduleId(M_INFO)
+                                                .view(viewOf(M_INFO))
                                                 .id(100L)
-                                                .patchData(DataBlock.of(M_INFO, patchInfo))
+                                                .patchData(blockOf(M_INFO, patchInfo))
                                                 .build()));
 
         assertNotNull(newId);
@@ -1311,7 +1359,7 @@ class CompanyH2IntegrationTest {
         patchBasic.putValue("basic_info", "reg_capital", new BigDecimal("9999.00"));
         patchBasic.putValue("basic_info", "legal_person", "王五");
         patchRoot.setChildren(new ArrayList<>());
-        patchRoot.getChildren().add(DataBlock.of(M_BASIC, patchBasic));
+        patchRoot.getChildren().add(blockOf(M_BASIC, patchBasic));
 
         // (3) 1:N 明细表 member (模块 1003) & 1:N:N 孙表 member_contact (模块 1004)：
         //     - 原基准单据 member 有 3 行：1001(DEPT-经理办)、1002(DEPT-财务部)、2001(EMPLOYEE-李玉林)
@@ -1336,7 +1384,7 @@ class CompanyH2IntegrationTest {
         newContactForDept.putValue("member_contact", "is_primary", 0);
 
         modifiedDept.setChildren(
-                List.of(DataBlock.of(M_CONTACT, List.of(modContact1, newContactForDept))));
+                List.of(blockOf(M_CONTACT, List.of(modContact1, newContactForDept))));
 
         DataRow newEmployee = new DataRow();
         newEmployee.putValue("member", "type", "EMPLOYEE");
@@ -1348,9 +1396,9 @@ class CompanyH2IntegrationTest {
         DataRow newContactForEmp = new DataRow();
         newContactForEmp.putValue("member_contact", "contact_value", "13888888888");
         newContactForEmp.putValue("member_contact", "is_primary", 1);
-        newEmployee.setChildren(List.of(DataBlock.of(M_CONTACT, List.of(newContactForEmp))));
+        newEmployee.setChildren(List.of(blockOf(M_CONTACT, List.of(newContactForEmp))));
 
-        patchRoot.getChildren().add(DataBlock.of(M_MEMBER, List.of(modifiedDept, newEmployee)));
+        patchRoot.getChildren().add(blockOf(M_MEMBER, List.of(modifiedDept, newEmployee)));
 
         // ------------------------------------------------------------------
         // 2. Fork 前先快照基准单据关键数据，用于尾部冻结验证（避免封常硬编码）
@@ -1377,9 +1425,9 @@ class CompanyH2IntegrationTest {
                         () ->
                                 forkVersionService.forkNewVersion(
                                         ForkVersionReq.builder()
-                                                .moduleId(M_INFO)
+                                                .view(viewOf(M_INFO))
                                                 .id(100L)
-                                                .patchData(DataBlock.of(M_INFO, patchRoot))
+                                                .patchData(blockOf(M_INFO, patchRoot))
                                                 .build()));
 
         assertNotNull(newId);
@@ -1391,10 +1439,10 @@ class CompanyH2IntegrationTest {
         // ------------------------------------------------------------------
         DataBlock baseDetail =
                 dataQueryService.getDetail(
-                        DetailQueryReq.builder().moduleId(M_INFO).id(100L).build());
+                        DetailQueryReq.builder().view(viewOf(M_INFO)).id(100L).build());
         DataBlock derivedDetail =
                 dataQueryService.getDetail(
-                        DetailQueryReq.builder().moduleId(M_INFO).id(newId).build());
+                        DetailQueryReq.builder().view(viewOf(M_INFO)).id(newId).build());
 
         DataRow baseRoot = baseDetail.getFirstRecord();
         DataRow derivedRoot = derivedDetail.getFirstRecord();
@@ -1809,7 +1857,7 @@ class CompanyH2IntegrationTest {
 
         DataPage<DataBlock> page =
                 dataQueryService.queryPage(
-                        PageQueryReq.builder().moduleId(M_INFO).pageNo(1).pageSize(10).build());
+                        PageQueryReq.builder().view(viewOf(M_INFO)).pageNo(1).pageSize(10).build());
 
         assertEquals(0L, page.getTotal(), "主体 99 下不应看到任何 company 数据");
         assertTrue(page.getRecords().isEmpty());
@@ -1858,7 +1906,7 @@ class CompanyH2IntegrationTest {
         DataRow c2 = new DataRow();
         c2.putValue("member_contact", "contact_value", "010-88889999");
         c2.putValue("member_contact", "is_primary", 0);
-        employee.setChildren(List.of(DataBlock.of(M_CONTACT, List.of(c1, c2))));
+        employee.setChildren(List.of(blockOf(M_CONTACT, List.of(c1, c2))));
 
         DataRow bank = new DataRow();
         bank.putValue("financial_account", "account_no", "62001646341059667358");
@@ -1877,9 +1925,7 @@ class CompanyH2IntegrationTest {
 
         DataRow financeContainer = new DataRow();
         financeContainer.setChildren(
-                List.of(
-                        DataBlock.of(M_FIN_ACCOUNT, bank),
-                        DataBlock.of(M_DIGITAL_ACCOUNT, digital)));
+                List.of(blockOf(M_FIN_ACCOUNT, bank), blockOf(M_DIGITAL_ACCOUNT, digital)));
 
         DataRow credit = new DataRow();
         credit.putValue("credit_rating", "internal_level", List.of(Map.of("word_describe", "一般")));
@@ -1908,8 +1954,8 @@ class CompanyH2IntegrationTest {
         DataRow contactContainer = new DataRow();
         contactContainer.setChildren(
                 List.of(
-                        DataBlock.of(M_ADDRESS, address),
-                        DataBlock.of(M_COMPANY_CONTACT, List.of(phone, landline))));
+                        blockOf(M_ADDRESS, address),
+                        blockOf(M_COMPANY_CONTACT, List.of(phone, landline))));
 
         DataRow root = new DataRow();
         root.putValue("info", "company_name", "未来科技有限公司");
@@ -1922,12 +1968,12 @@ class CompanyH2IntegrationTest {
         root.putValue("info", "business_status", 10);
         root.setChildren(
                 List.of(
-                        DataBlock.of(M_BASIC, basic),
-                        DataBlock.of(M_MEMBER, List.of(dept, employee)),
-                        DataBlock.of(M_FINANCE, financeContainer),
-                        DataBlock.of(M_CREDIT, credit),
-                        DataBlock.of(M_VIRTUAL_CONTACT, contactContainer)));
-        return DataBlock.of(M_INFO, root);
+                        blockOf(M_BASIC, basic),
+                        blockOf(M_MEMBER, List.of(dept, employee)),
+                        blockOf(M_FINANCE, financeContainer),
+                        blockOf(M_CREDIT, credit),
+                        blockOf(M_VIRTUAL_CONTACT, contactContainer)));
+        return blockOf(M_INFO, root);
     }
 
     private Object scalar(String sql) {
@@ -1946,8 +1992,20 @@ class CompanyH2IntegrationTest {
     }
 
     private static DataBlock child(DataRow row, long moduleId) {
-        DataBlock block = row.getChild(moduleId);
-        assertNotNull(block, "行上缺少 moduleId=" + moduleId + " 的子区块，实际=" + row.getTables().keySet());
+        DataBlock block = row.getChild(viewOf(moduleId));
+        if (block == null) {
+            block = row.getChild(moduleId);
+        }
+        assertNotNull(
+                block,
+                "行上缺少 moduleId="
+                        + moduleId
+                        + " ("
+                        + viewOf(moduleId)
+                        + ") 的子区块，实际="
+                        + (row.getChildren() != null
+                                ? row.getChildren().stream().map(DataBlock::getView).toList()
+                                : row.getTables().keySet()));
         return block;
     }
 
@@ -2202,6 +2260,7 @@ class CompanyH2IntegrationTest {
         ModuleInfo mi =
                 ModuleInfo.builder()
                         .moduleId(mid)
+                        .moduleCode(viewOf(mid))
                         .moduleName(name)
                         .primaryTable(primaryTable)
                         .parentId(parent)
@@ -2288,6 +2347,9 @@ class CompanyH2IntegrationTest {
                     String name = invocation.getMethod().getName();
                     if ("getModuleTree".equals(name)) {
                         return treeFor(invocation.getArgument(2));
+                    }
+                    if ("getProjectModuleTree".equals(name)) {
+                        return List.of(treeFor(1001L));
                     }
                     if ("getProjectTableRelations".equals(name)) {
                         return PROJ;

@@ -43,22 +43,18 @@ public class ForkVersionService {
      * @return 派生后生成的新单据根记录主键 ID
      */
     public Long forkNewVersion(ForkVersionReq req) {
-        if (req == null || req.getModuleId() == null || req.getId() == null) {
-            throw new IllegalArgumentException("moduleId and id cannot be null for forkNewVersion");
+        if (req == null || req.getView() == null || req.getId() == null) {
+            throw new IllegalArgumentException("view and id cannot be null for forkNewVersion");
         }
 
         // 0. 在事务外一次性取好元数据快照 (无业务事务包裹 ConfigApi 远程/本地调用)，
         //    整条链路（详情读取 → 保存）复用同一份快照，避免元数据在事务内重复读取而漂移
-        PlanMeta meta = planMetaLoader.load(req.getModuleId());
+        PlanMeta meta = planMetaLoader.loadByView(req.getView());
 
         // 1. 抓取基准单据完整物理快照 (含伴生表与所有子表全部列)
         DataBlock baseBlock =
                 dataQueryService.getDetail(
-                        DetailQueryReq.builder()
-                                .moduleId(req.getModuleId())
-                                .id(req.getId())
-                                .build(),
-                        meta);
+                        DetailQueryReq.builder().view(req.getView()).id(req.getId()).build(), meta);
         if (baseBlock == null || baseBlock.isEmpty()) {
             throw new IllegalArgumentException("Base record not found for id: " + req.getId());
         }
@@ -72,6 +68,14 @@ public class ForkVersionService {
         // 4. 从数据快照自解析主表名与 business_no，就地查询 MAX(version_no) + 1 并在整树下发
         String businessNo = DocumentVersionUtils.extractBusinessNo(baseBlock);
         String primaryTable = DocumentVersionUtils.extractPrimaryTable(baseBlock);
+        if (primaryTable == null || primaryTable.isBlank()) {
+            if (meta != null
+                    && meta.moduleTree() != null
+                    && meta.moduleTree().getRootModule() != null
+                    && meta.moduleTree().getRootModule().getPrimaryTable() != null) {
+                primaryTable = meta.moduleTree().getRootModule().getPrimaryTable();
+            }
+        }
         if (businessNo != null
                 && !businessNo.isBlank()
                 && primaryTable != null

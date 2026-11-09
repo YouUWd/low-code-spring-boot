@@ -111,9 +111,13 @@ public class QueryPlanExecutor {
         QueryNodePlan rootPlan = plan.getRootNodePlan();
         String primaryTable = rootPlan.getPrimaryTable();
         String rootModCode =
-                rootPlan.getModuleMeta() != null ? rootPlan.getModuleMeta().getModuleCode() : null;
+                rootPlan.getView() != null && !rootPlan.getView().isBlank()
+                        ? rootPlan.getView()
+                        : (rootPlan.getModuleMeta() != null
+                                ? rootPlan.getModuleMeta().getModuleCode()
+                                : null);
         if (primaryTable == null || primaryTable.isBlank()) {
-            return DataBlock.empty(rootPlan.getModuleId(), rootModCode);
+            return DataBlock.empty(rootModCode);
         }
 
         // 不分页执行：pageSize 与 offset 均为 null
@@ -185,9 +189,25 @@ public class QueryPlanExecutor {
                     rootRows, rootPlan.getModuleId(), rootPlan.getChildren(), rawDataByNode);
         }
 
-        String rootModCode =
-                rootPlan.getModuleMeta() != null ? rootPlan.getModuleMeta().getModuleCode() : null;
-        return DataBlock.of(rootPlan.getModuleId(), rootModCode, rootRows);
+        String rootModCode = null;
+        if (rootPlan.getView() != null && !rootPlan.getView().isBlank()) {
+            rootModCode = rootPlan.getView();
+        } else if (rootPlan.getModuleMeta() != null) {
+            String code = rootPlan.getModuleMeta().getModuleCode();
+            if (code != null && !code.isBlank()) {
+                rootModCode = code;
+            } else if (rootPlan.getPrimaryTable() != null
+                    && !rootPlan.getPrimaryTable().isBlank()) {
+                rootModCode = rootPlan.getPrimaryTable();
+            } else if (rootPlan.getModuleId() != null) {
+                rootModCode = String.valueOf(rootPlan.getModuleId());
+            }
+        } else if (rootPlan.getPrimaryTable() != null && !rootPlan.getPrimaryTable().isBlank()) {
+            rootModCode = rootPlan.getPrimaryTable();
+        } else if (rootPlan.getModuleId() != null) {
+            rootModCode = String.valueOf(rootPlan.getModuleId());
+        }
+        return DataBlock.of(rootModCode, rootRows);
     }
 
     /** 递归分批批量拉取各层子模块/子表数据 (利用 fk IN (:parentIds)) */
@@ -628,18 +648,17 @@ public class QueryPlanExecutor {
         } catch (Exception ignored) {
         }
 
-        Map<String, Object> tableSpace = new LinkedHashMap<>();
         if (pkVal != null) {
-            tableSpace.put("id", pkVal);
+            row.putValue(table, "id", pkVal);
         }
-        row.putTable(table, tableSpace);
 
-        // 临时注入内部技术外键（供装配器按外键分组，装配完成后自动剥离）
+        // 临时注入内部技术外键（供装配器按外键分组，装配完成后自动剥离），同时保留技术外键在表空间中
         if (fkField != null && !fkField.isBlank()) {
             try {
                 Object fkVal = r.get(fkField);
                 if (fkVal != null) {
                     row.getTables().put("_fk_" + fkField, fkVal);
+                    row.putValue(table, fkField, fkVal);
                 }
             } catch (Exception ignored) {
             }
@@ -659,12 +678,7 @@ public class QueryPlanExecutor {
                     } catch (Exception ignored) {
                     }
                     if (compPk != null) {
-                        Map<String, Object> compTableMap = row.getTable(compTable);
-                        if (compTableMap == null) {
-                            compTableMap = new LinkedHashMap<>();
-                            row.putTable(compTable, compTableMap);
-                        }
-                        compTableMap.put("id", compPk);
+                        row.putValue(compTable, "id", compPk);
                     }
                 }
             }
@@ -690,12 +704,7 @@ public class QueryPlanExecutor {
                     }
                 }
                 val = parseIfJson(val);
-                Map<String, Object> targetTableMap = row.getTable(tbl);
-                if (targetTableMap == null) {
-                    targetTableMap = new LinkedHashMap<>();
-                    row.putTable(tbl, targetTableMap);
-                }
-                targetTableMap.put(spec.getColumnName(), val);
+                row.putValue(tbl, spec.getColumnName(), val);
             }
         } else {
             // 无字段元数据回退：读取记录中全部可用列并注入当前物理表空间
@@ -704,7 +713,7 @@ public class QueryPlanExecutor {
                 if ("id".equalsIgnoreCase(col) || col.startsWith("_fk_")) {
                     continue;
                 }
-                tableSpace.put(col, parseIfJson(r.get(f)));
+                row.putValue(table, col, parseIfJson(r.get(f)));
             }
         }
         return row;

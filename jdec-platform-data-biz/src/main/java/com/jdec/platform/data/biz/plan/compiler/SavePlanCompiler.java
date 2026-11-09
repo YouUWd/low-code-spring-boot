@@ -35,59 +35,37 @@ public class SavePlanCompiler {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    /**
-     * 从 DataBlock 解析根模块 ID：优先取 {@code block.moduleId}；缺失时回退扫描首行记录里的数字键 （兼容旧前端形态）。
-     *
-     * @return 解析结果；无法解析时返回 {@code null}
-     */
-    public static Long resolveRootModuleId(DataBlock block) {
-        if (block == null) {
-            return null;
-        }
-        if (block.getModuleId() != null) {
-            return block.getModuleId();
-        }
-        if (block.getRecords() != null && !block.getRecords().isEmpty()) {
-            DataRow firstRow = block.getRecords().get(0);
-            if (firstRow != null && firstRow.getTables() != null) {
-                for (Map.Entry<String, Object> entry : firstRow.getTables().entrySet()) {
-                    if (entry.getKey() != null && entry.getKey().matches("\\d+")) {
-                        return Long.parseLong(entry.getKey());
-                    }
-                }
-            }
-        }
-        return null;
-    }
-
     /** 核心编译入口：编译 DataBlock 业务数据区块为 SavePlan（元数据快照由调用方传入） */
     public SavePlan compile(DataBlock block, PlanMeta meta) {
         if (block == null) {
             throw new IllegalArgumentException("保存请求或数据区块不能为空");
         }
 
-        Long moduleId = resolveRootModuleId(block);
-        if (moduleId == null
-                && block.getModuleCode() != null
-                && meta != null
-                && meta.hasModuleTree()
-                && meta.moduleTree().getModuleMap() != null) {
-            for (ModuleInfo info : meta.moduleTree().getModuleMap().values()) {
-                if (info != null && block.getModuleCode().equalsIgnoreCase(info.getModuleCode())) {
-                    moduleId = info.getModuleId();
+        ModuleTreeDTO tree = meta != null ? meta.moduleTree() : null;
+        if (tree == null || tree.getRootModule() == null) {
+            throw new IllegalArgumentException("未找到对应的模块树元数据配置");
+        }
+
+        Long rootModuleId = tree.getRootModuleId();
+        ModuleInfo rootMeta = tree.getRootModule();
+        if (block.getView() != null && !block.getView().isBlank()) {
+            String view = block.getView();
+            for (ModuleInfo info : tree.getModuleMap().values()) {
+                if (info != null
+                        && (view.equalsIgnoreCase(info.getModuleCode())
+                                || view.equalsIgnoreCase(info.getPrimaryTable())
+                                || (view.matches("\\d+")
+                                        && Long.parseLong(view) == info.getModuleId()))) {
+                    rootModuleId = info.getModuleId();
+                    rootMeta = info;
                     break;
                 }
             }
         }
-        if (moduleId == null) {
-            throw new IllegalArgumentException("保存请求或模块 ID 不能为空");
-        }
 
-        DataBlock normalized = block.toBuilder().moduleId(moduleId).build();
-
-        ModuleTreeDTO tree = meta != null ? meta.moduleTree() : null;
         ProjectTableRelationsDTO projectRelations = meta != null ? meta.projectRelations() : null;
-        SaveNodePlan rootPlan = compileNode(normalized, null, null, projectRelations, tree);
+        SaveNodePlan rootPlan =
+                compileNode(block, null, null, projectRelations, tree, rootMeta, rootModuleId);
         return SavePlan.builder().rootNodePlan(rootPlan).build();
     }
 
@@ -97,10 +75,13 @@ public class SavePlanCompiler {
             Long parentModuleId,
             ModuleInfo parentMeta,
             ProjectTableRelationsDTO projectRelations,
-            ModuleTreeDTO tree) {
+            ModuleTreeDTO tree,
+            ModuleInfo meta,
+            Long moduleId) {
 
-        Long moduleId = node.getModuleId();
-        ModuleInfo meta = tree != null ? tree.getModule(moduleId) : null;
+        if (meta == null) {
+            meta = tree != null ? tree.getModule(moduleId) : null;
+        }
         if (meta == null) {
             throw new IllegalArgumentException("模块 ID [" + moduleId + "] 不存在或未在当前模块树中配置元数据");
         }
@@ -189,7 +170,7 @@ public class SavePlanCompiler {
             }
         }
 
-        // 1. 如果包含主表名子对象（支持大小写无关匹配），展平合并到当前行并移除主表嵌套对象
+        // 1. 如果包含主表名子对象或 table.column 扁平键，展平合并到当前行并移除主表前缀/嵌套对象
         if (primaryTable != null && !primaryTable.isBlank()) {
             String matchedPrimaryKey = findMatchingKeyIgnoreCase(cleanRow, primaryTable);
             if (matchedPrimaryKey != null
@@ -201,6 +182,19 @@ public class SavePlanCompiler {
                 }
                 cleanRow.remove(matchedPrimaryKey);
             }
+            String primaryPrefix = primaryTable.toLowerCase() + ".";
+            Map<String, Object> toAdd = new HashMap<>();
+            List<String> toRemove = new ArrayList<>();
+            for (Map.Entry<String, Object> entry : cleanRow.entrySet()) {
+                if (entry.getKey() != null
+                        && entry.getKey().toLowerCase().startsWith(primaryPrefix)) {
+                    String col = entry.getKey().substring(primaryPrefix.length());
+                    toAdd.put(col, entry.getValue());
+                    toRemove.add(entry.getKey());
+                }
+            }
+            toRemove.forEach(cleanRow::remove);
+            toAdd.forEach(cleanRow::putIfAbsent);
         }
 
         // 1.1 提取同一模块下的 1:1 伴生表 (垂直拆分表，未被模块树单独认领为模块主表)
@@ -220,14 +214,28 @@ public class SavePlanCompiler {
                                     findMatchingKeyIgnoreCase(cleanRow, trimmedCompTable);
                             Object compVal =
                                     matchedCompKey != null ? cleanRow.get(matchedCompKey) : null;
+                            Map<String, Object> compRecord = new LinkedHashMap<>();
                             if (compVal instanceof Map<?, ?> compMap) {
                                 cleanRow.remove(matchedCompKey);
-                                Map<String, Object> compRecord = new LinkedHashMap<>();
                                 for (Map.Entry<?, ?> e : compMap.entrySet()) {
                                     if (e.getKey() != null) {
                                         compRecord.put(String.valueOf(e.getKey()), e.getValue());
                                     }
                                 }
+                            }
+                            String compPrefix = trimmedCompTable.toLowerCase() + ".";
+                            List<String> toRemove = new ArrayList<>();
+                            for (Map.Entry<String, Object> e : cleanRow.entrySet()) {
+                                if (e.getKey() != null
+                                        && e.getKey().toLowerCase().startsWith(compPrefix)) {
+                                    String col = e.getKey().substring(compPrefix.length());
+                                    compRecord.putIfAbsent(col, e.getValue());
+                                    toRemove.add(e.getKey());
+                                }
+                            }
+                            toRemove.forEach(cleanRow::remove);
+
+                            if (!compRecord.isEmpty()) {
                                 String fk =
                                         (rel.getJoinField() != null
                                                         && !rel.getJoinField().isBlank())
@@ -276,36 +284,76 @@ public class SavePlanCompiler {
             }
         }
 
-        // 2. 检查数字键子模块 (例如 "103", "104", "106")
+        List<Long> childModuleIds =
+                tree != null ? tree.getChildModuleIds(moduleId) : Collections.emptyList();
+
+        // 2. 检查数字键子模块 (兼容旧前端例如 "103", "104", "106")
         for (Map.Entry<String, Object> entry : cleanRow.entrySet()) {
             String key = entry.getKey();
             Object val = entry.getValue();
-            if (key != null && key.matches("\\d+") && val != null) {
+            if (key != null && key.matches("\\d+") && val != null && tree != null) {
                 Long childModuleId = Long.parseLong(key);
+                ModuleInfo childMeta = tree.getModule(childModuleId);
+                if (childMeta == null) {
+                    throw new IllegalArgumentException(
+                            "未知的子模块 ID [" + childModuleId + "]，不属于当前模块配置范围");
+                }
                 boolean childIsMany = (val instanceof List<?>);
                 List<DataRow> childRecords = extractDataRowsFromObject(val);
                 if (!childRecords.isEmpty()) {
                     DataBlock childBlock =
                             DataBlock.builder()
-                                    .moduleId(childModuleId)
+                                    .view(childMeta.getModuleCode())
                                     .records(childRecords)
                                     .build();
                     SaveNodePlan childPlan =
-                            compileNode(childBlock, moduleId, meta, projectRelations, tree);
+                            compileNode(
+                                    childBlock,
+                                    moduleId,
+                                    meta,
+                                    projectRelations,
+                                    tree,
+                                    childMeta,
+                                    childModuleId);
                     childPlan.setMany(childIsMany);
                     childPlans.add(childPlan);
                 }
             }
         }
 
-        // 3. 检查 DataRow 自身的 children 列表 (List<DataBlock>)
-        if (rawRow.getChildren() != null && !rawRow.getChildren().isEmpty()) {
+        // 3. 检查 DataRow 自身的 children 列表 (List<DataBlock>) (读写同构核心自相似树)
+        if (rawRow.getChildren() != null && !rawRow.getChildren().isEmpty() && tree != null) {
             for (DataBlock childBlock : rawRow.getChildren()) {
-                if (childBlock != null) {
-                    childBlock = ensureModuleId(childBlock, tree);
-                    if (childBlock.getModuleId() != null) {
+                if (childBlock != null && childBlock.getView() != null) {
+                    String targetView = childBlock.getView();
+                    Long matchedChildId = null;
+                    ModuleInfo matchedChildMeta = null;
+                    if (childModuleIds != null) {
+                        for (Long cmid : childModuleIds) {
+                            ModuleInfo cm = tree.getModule(cmid);
+                            if (cm != null
+                                    && (targetView.equalsIgnoreCase(cm.getModuleCode())
+                                            || (cm.getPrimaryTable() != null
+                                                    && targetView.equalsIgnoreCase(
+                                                            cm.getPrimaryTable()))
+                                            || (targetView.matches("\\d+")
+                                                    && Long.parseLong(targetView) == cmid))) {
+                                matchedChildId = cmid;
+                                matchedChildMeta = cm;
+                                break;
+                            }
+                        }
+                    }
+                    if (matchedChildId != null) {
                         childPlans.add(
-                                compileNode(childBlock, moduleId, meta, projectRelations, tree));
+                                compileNode(
+                                        childBlock,
+                                        moduleId,
+                                        meta,
+                                        projectRelations,
+                                        tree,
+                                        matchedChildMeta,
+                                        matchedChildId));
                     }
                 }
             }
@@ -313,35 +361,45 @@ public class SavePlanCompiler {
 
         // 4. 检查兼容的 rawRow.tables 中的 children 字段 (如前端传入的原始 Map)
         Object rowChildrenObj = cleanRow.get("children");
-        if (rowChildrenObj != null) {
+        if (rowChildrenObj != null && tree != null) {
             List<DataBlock> rowChildren = parseRowChildren(rowChildrenObj);
             for (DataBlock rowChildNode : rowChildren) {
-                if (rowChildNode != null) {
-                    rowChildNode = ensureModuleId(rowChildNode, tree);
-                    if (rowChildNode.getModuleId() != null) {
+                if (rowChildNode != null && rowChildNode.getView() != null) {
+                    String targetView = rowChildNode.getView();
+                    Long matchedChildId = null;
+                    ModuleInfo matchedChildMeta = null;
+                    if (childModuleIds != null) {
+                        for (Long cmid : childModuleIds) {
+                            ModuleInfo cm = tree.getModule(cmid);
+                            if (cm != null
+                                    && (targetView.equalsIgnoreCase(cm.getModuleCode())
+                                            || (cm.getPrimaryTable() != null
+                                                    && targetView.equalsIgnoreCase(
+                                                            cm.getPrimaryTable()))
+                                            || (targetView.matches("\\d+")
+                                                    && Long.parseLong(targetView) == cmid))) {
+                                matchedChildId = cmid;
+                                matchedChildMeta = cm;
+                                break;
+                            }
+                        }
+                    }
+                    if (matchedChildId != null) {
                         childPlans.add(
-                                compileNode(rowChildNode, moduleId, meta, projectRelations, tree));
+                                compileNode(
+                                        rowChildNode,
+                                        moduleId,
+                                        meta,
+                                        projectRelations,
+                                        tree,
+                                        matchedChildMeta,
+                                        matchedChildId));
                     }
                 }
             }
         }
 
         return cleanRow;
-    }
-
-    private static DataBlock ensureModuleId(DataBlock block, ModuleTreeDTO tree) {
-        if (block == null || block.getModuleId() != null) {
-            return block;
-        }
-        if (block.getModuleCode() != null && tree != null && tree.getModuleMap() != null) {
-            for (com.jdec.platform.config.api.dto.common.ModuleInfo info :
-                    tree.getModuleMap().values()) {
-                if (info != null && block.getModuleCode().equalsIgnoreCase(info.getModuleCode())) {
-                    return block.toBuilder().moduleId(info.getModuleId()).build();
-                }
-            }
-        }
-        return block;
     }
 
     private static String findMatchingKeyIgnoreCase(Map<String, Object> map, String targetKey) {

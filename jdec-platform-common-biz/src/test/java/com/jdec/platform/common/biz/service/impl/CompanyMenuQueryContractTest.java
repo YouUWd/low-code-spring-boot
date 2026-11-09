@@ -35,9 +35,9 @@ import com.jdec.platform.config.open.api.OpenRolePermissionApi;
 import com.jdec.platform.data.api.DataApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
+import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.OptionReq;
 import com.jdec.platform.data.api.dto.request.PageQueryReq;
-import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import com.jdec.platform.shared.context.AppContext;
@@ -530,9 +530,11 @@ class CompanyMenuQueryContractTest {
                         "financial_account.account_no"),
                 actualFields,
                 "应收集根模块 + 1:1 模块 + 命中的 1010 财务账户，剔除 1003/1004 高管成员");
-        assertEquals(1, captor.getValue().getFilters().size());
-        assertEquals("financial_account", captor.getValue().getFilters().get(0).getTableName());
-        assertEquals("account_no", captor.getValue().getFilters().get(0).getColumnName());
+        List<FilterItem> capturedFilters =
+                FilterItem.fromPredicateToList(captor.getValue().getFilter());
+        assertEquals(1, capturedFilters.size());
+        assertEquals("financial_account", capturedFilters.get(0).getTableName());
+        assertEquals("account_no", capturedFilters.get(0).getColumnName());
     }
 
     @Test
@@ -649,7 +651,7 @@ class CompanyMenuQueryContractTest {
         tableData.put("company_name", "测试企业");
         DataRow dataRow = DataRow.builder().tables(Map.of("info", tableData)).build();
 
-        DataBlock block = DataBlock.builder().moduleId(1001L).records(List.of(dataRow)).build();
+        DataBlock block = DataBlock.builder().view("1001").records(List.of(dataRow)).build();
         DataPage<DataBlock> page = DataPage.of(block, 1, 20, 1L);
         when(dataApi.queryPage(any(PageQueryReq.class))).thenReturn(page);
 
@@ -692,7 +694,7 @@ class CompanyMenuQueryContractTest {
         tableData.put("company_name", "测试企业");
         DataRow dataRow = DataRow.builder().tables(Map.of("info", tableData)).build();
 
-        DataBlock block = DataBlock.builder().moduleId(1001L).records(List.of(dataRow)).build();
+        DataBlock block = DataBlock.builder().view("1001").records(List.of(dataRow)).build();
         DataPage<DataBlock> page = DataPage.of(block, 1, 20, 1L);
         when(dataApi.queryPage(any(PageQueryReq.class))).thenReturn(page);
 
@@ -743,7 +745,7 @@ class CompanyMenuQueryContractTest {
         tableData.put("company_name", "待办企业");
         DataRow dataRow = DataRow.builder().tables(Map.of("info", tableData)).build();
 
-        DataBlock block = DataBlock.builder().moduleId(1001L).records(List.of(dataRow)).build();
+        DataBlock block = DataBlock.builder().view("1001").records(List.of(dataRow)).build();
         DataPage<DataBlock> page = DataPage.of(block, 1, 20, 1L);
         when(dataApi.queryPage(any(PageQueryReq.class))).thenReturn(page);
 
@@ -809,7 +811,7 @@ class CompanyMenuQueryContractTest {
         DataRow dr999 = DataRow.builder().tables(Map.of("info", row999)).build();
 
         DataBlock block =
-                DataBlock.builder().moduleId(1001L).records(List.of(dr101, dr102, dr999)).build();
+                DataBlock.builder().view("1001").records(List.of(dr101, dr102, dr999)).build();
         DataPage<DataBlock> page = DataPage.of(block, 1, 20, 3L);
         when(dataApi.queryPage(any(PageQueryReq.class))).thenReturn(page);
 
@@ -917,18 +919,10 @@ class CompanyMenuQueryContractTest {
     }
 
     private static List<String> flattenPhysicalFields(PageQueryReq req) {
-        List<String> fields = new ArrayList<>();
-        if (req != null && req.getTables() != null) {
-            for (TableSpec spec : req.getTables()) {
-                if (spec == null || spec.getTableName() == null || spec.getColumns() == null) {
-                    continue;
-                }
-                for (String column : spec.getColumns()) {
-                    fields.add(spec.getTableName() + "." + column);
-                }
-            }
+        if (req != null && req.getColumns() != null) {
+            return new ArrayList<>(req.getColumns());
         }
-        return fields;
+        return Collections.emptyList();
     }
 
     @Test
@@ -1215,8 +1209,7 @@ class CompanyMenuQueryContractTest {
         DataRow row2 = new DataRow();
         row2.putTable("info", Map.of("id", 102L));
         when(dataApi.queryList(captor.capture()))
-                .thenReturn(
-                        DataBlock.builder().moduleId(1001L).records(List.of(row1, row2)).build());
+                .thenReturn(DataBlock.builder().view("1001").records(List.of(row1, row2)).build());
 
         DataPermissionConditionResolver resolver =
                 new DataPermissionConditionResolver(openRolePermissionApi, dataApi);
@@ -1228,12 +1221,14 @@ class CompanyMenuQueryContractTest {
         // 验证传递给 queryList 的过滤条件
         com.jdec.platform.data.api.dto.request.QueryReq capturedReq = captor.getValue();
         assertNotNull(capturedReq);
-        assertEquals(1001L, capturedReq.getModuleId());
-        assertNotNull(capturedReq.getFilters());
+        assertEquals("1001", capturedReq.getView());
+        assertNotNull(capturedReq.getFilter());
+
+        List<FilterItem> capturedFilters = FilterItem.fromPredicateToList(capturedReq.getFilter());
 
         // 验证主表过滤项被传递
         assertTrue(
-                capturedReq.getFilters().stream()
+                capturedFilters.stream()
                         .anyMatch(
                                 f ->
                                         "info".equalsIgnoreCase(f.getTableName())
@@ -1242,7 +1237,7 @@ class CompanyMenuQueryContractTest {
 
         // 验证子表过滤项被传递
         assertTrue(
-                capturedReq.getFilters().stream()
+                capturedFilters.stream()
                         .anyMatch(
                                 f ->
                                         "basic_info".equalsIgnoreCase(f.getTableName())
@@ -1252,7 +1247,7 @@ class CompanyMenuQueryContractTest {
 
         // 验证 unrelated_table 不会被混入
         assertFalse(
-                capturedReq.getFilters().stream()
+                capturedFilters.stream()
                         .anyMatch(f -> "unrelated_table".equalsIgnoreCase(f.getTableName())));
 
         // 验证由 queryList 匹配出的 ID 生成主表 in 条件
@@ -1303,10 +1298,7 @@ class CompanyMenuQueryContractTest {
                 ArgumentCaptor.forClass(com.jdec.platform.data.api.dto.request.QueryReq.class);
         when(dataApi.queryList(captor.capture()))
                 .thenReturn(
-                        DataBlock.builder()
-                                .moduleId(1001L)
-                                .records(Collections.emptyList())
-                                .build());
+                        DataBlock.builder().view("1001").records(Collections.emptyList()).build());
 
         DataPermissionConditionResolver resolver =
                 new DataPermissionConditionResolver(openRolePermissionApi, dataApi);
@@ -1315,24 +1307,16 @@ class CompanyMenuQueryContractTest {
 
         com.jdec.platform.data.api.dto.request.QueryReq req = captor.getValue();
         assertNotNull(req);
-        assertNotNull(req.getFilters());
+        assertNotNull(req.getFilter());
 
-        // 核心验证：同名物理表 basic_info 在两个模块中出现，必须分别为模块 1002 和 模块 1099 各自生成绑定其 moduleId 的 FilterItem
-        boolean has1002 =
-                req.getFilters().stream()
-                        .anyMatch(
-                                f ->
-                                        Long.valueOf(1002L).equals(f.getModuleId())
-                                                && "basic_info".equalsIgnoreCase(f.getTableName()));
-        boolean has1099 =
-                req.getFilters().stream()
-                        .anyMatch(
-                                f ->
-                                        Long.valueOf(1099L).equals(f.getModuleId())
-                                                && "basic_info".equalsIgnoreCase(f.getTableName()));
+        List<FilterItem> capturedFilters = FilterItem.fromPredicateToList(req.getFilter());
 
-        assertTrue(has1002, "模块 1002 必须生成针对 basic_info 的过滤项");
-        assertTrue(has1099, "模块 1099 必须生成针对 basic_info 的过滤项");
+        // 核心验证：同名物理表 basic_info 在两个模块中出现，生成针对 basic_info 的 FilterItem
+        boolean hasBasicInfo =
+                capturedFilters.stream()
+                        .anyMatch(f -> "basic_info".equalsIgnoreCase(f.getTableName()));
+
+        assertTrue(hasBasicInfo, "必须生成针对 basic_info 的过滤项");
     }
 
     @Test
@@ -1437,10 +1421,7 @@ class CompanyMenuQueryContractTest {
         light3.putTable("info", lInfo3);
 
         DataBlock stage1Block =
-                DataBlock.builder()
-                        .moduleId(1001L)
-                        .records(List.of(light1, light2, light3))
-                        .build();
+                DataBlock.builder().view("1001").records(List.of(light1, light2, light3)).build();
 
         // 阶段 2：模拟最新启用查询返回结果
         // CR001 有两个启用版本：version_no=3 和 version_no=2（按降序返回）
@@ -1478,7 +1459,7 @@ class CompanyMenuQueryContractTest {
 
         // 阶段 3：底层数据引擎根据 [1103L, 1201L] 查询返回全量数据
         DataBlock stage3Block =
-                DataBlock.builder().moduleId(1001L).records(List.of(enabledV3, enabledCR2)).build();
+                DataBlock.builder().view("1001").records(List.of(enabledV3, enabledCR2)).build();
 
         // 第一次 queryList 模拟阶段 1，第二次 queryList 模拟阶段 3
         when(dataApi.queryList(any())).thenReturn(stage1Block, stage3Block);
@@ -1558,13 +1539,11 @@ class CompanyMenuQueryContractTest {
         // 子模块数据
         DataRow subRow = new DataRow();
         subRow.putTable("basic_info", Map.of("id", 501L, "company_id", 101L));
-        DataBlock subBlock = DataBlock.builder().moduleId(1002L).records(List.of(subRow)).build();
+        DataBlock subBlock = DataBlock.builder().view("1002").records(List.of(subRow)).build();
         mainRow.setChildren(List.of(subBlock));
 
-        DataBlock stage1Block =
-                DataBlock.builder().moduleId(1001L).records(List.of(mainRow)).build();
-        DataBlock stage3Block =
-                DataBlock.builder().moduleId(1001L).records(List.of(mainRow)).build();
+        DataBlock stage1Block = DataBlock.builder().view("1001").records(List.of(mainRow)).build();
+        DataBlock stage3Block = DataBlock.builder().view("1001").records(List.of(mainRow)).build();
 
         when(dataApi.queryList(any())).thenReturn(stage1Block, stage3Block);
         when(dataApi.getLatestVersionIds(eq("info"), any(), eq(99))).thenReturn(List.of(101L));
@@ -1642,13 +1621,11 @@ class CompanyMenuQueryContractTest {
         // 子模块数据 (未在 tables 中请求)
         DataRow subRow = new DataRow();
         subRow.putTable("basic_info", Map.of("id", 501L, "company_id", 101L));
-        DataBlock subBlock = DataBlock.builder().moduleId(1002L).records(List.of(subRow)).build();
+        DataBlock subBlock = DataBlock.builder().view("1002").records(List.of(subRow)).build();
         mainRow.setChildren(List.of(subBlock));
 
-        DataBlock stage1Block =
-                DataBlock.builder().moduleId(1001L).records(List.of(mainRow)).build();
-        DataBlock stage3Block =
-                DataBlock.builder().moduleId(1001L).records(List.of(mainRow)).build();
+        DataBlock stage1Block = DataBlock.builder().view("1001").records(List.of(mainRow)).build();
+        DataBlock stage3Block = DataBlock.builder().view("1001").records(List.of(mainRow)).build();
 
         when(dataApi.queryList(any())).thenReturn(stage1Block, stage3Block);
         when(dataApi.getLatestVersionIds(eq("info"), any(), eq(99))).thenReturn(List.of(101L));
@@ -1704,13 +1681,11 @@ class CompanyMenuQueryContractTest {
         // 子模块数据 (basic_info / company_contact)
         DataRow subRow = new DataRow();
         subRow.putTable("basic_info", Map.of("id", 501L, "company_id", 101L, "contact_name", "张三"));
-        DataBlock subBlock = DataBlock.builder().moduleId(1002L).records(List.of(subRow)).build();
+        DataBlock subBlock = DataBlock.builder().view("1002").records(List.of(subRow)).build();
         mainRow.setChildren(List.of(subBlock));
 
-        DataBlock stage1Block =
-                DataBlock.builder().moduleId(1001L).records(List.of(mainRow)).build();
-        DataBlock stage3Block =
-                DataBlock.builder().moduleId(1001L).records(List.of(mainRow)).build();
+        DataBlock stage1Block = DataBlock.builder().view("1001").records(List.of(mainRow)).build();
+        DataBlock stage3Block = DataBlock.builder().view("1001").records(List.of(mainRow)).build();
 
         when(dataApi.queryList(any())).thenReturn(stage1Block, stage3Block);
         when(dataApi.getLatestVersionIds(eq("info"), any(), eq(99))).thenReturn(List.of(101L));
@@ -1785,7 +1760,7 @@ class CompanyMenuQueryContractTest {
         infoData.put("contract_file", fileObj);
         row.putTable("info", infoData);
 
-        DataBlock block = DataBlock.builder().moduleId(1001L).records(List.of(row)).build();
+        DataBlock block = DataBlock.builder().view("1001").records(List.of(row)).build();
         DataPage<DataBlock> page = DataPage.of(block, 1, 20, 1L);
         when(dataApi.queryPage(any(PageQueryReq.class))).thenReturn(page);
 

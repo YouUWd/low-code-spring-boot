@@ -1,5 +1,7 @@
 package com.jdec.platform.data.api.model.predicate;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.ArrayList;
 import java.util.List;
@@ -13,6 +15,7 @@ import lombok.NoArgsConstructor;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 @Schema(description = "函数调用表达式")
 public class FunctionExpr implements FieldExpression {
 
@@ -26,6 +29,7 @@ public class FunctionExpr implements FieldExpression {
     @Builder.Default
     private List<Object> arguments = new ArrayList<>();
 
+    @JsonIgnore
     @Override
     public String getExprType() {
         return "function";

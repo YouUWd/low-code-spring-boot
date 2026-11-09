@@ -15,10 +15,7 @@ import org.springframework.stereotype.Component;
 /**
  * Plan 元数据快照加载器 (PlanMetaLoader)
  *
- * <p>本类是构建 Plan 链路上**唯一**读取 {@code ConfigApi} 的地方。之所以把它独立出来，是为了让 「读元数据」与「编译
- * Plan」在时间上解耦：调用方可以在**进入业务事务之前**先取好快照，再把它作为参数 传给编译器，从而避免元数据读取落在业务事务里被事务干扰（读到漂移的配置、无谓拉长事务）。
- *
- * <p>注意：模块树按根模块取，一次操作对应一份快照；同一操作内的多次编译必须复用同一实例。
+ * <p>本类是构建 Plan 链路上**唯一**读取 {@code ConfigApi} 的地方。 在进入业务事务之前先取好快照，再把它作为参数传给编译器，避免元数据读取落在业务事务里。
  */
 @Slf4j
 @Component
@@ -28,10 +25,60 @@ public class PlanMetaLoader {
     private final ConfigApi configApi;
 
     /**
-     * 加载指定根模块的元数据快照（模块树 + 项目表关系）。
+     * 根据业务视图编码 (view) 加载元数据快照。
      *
-     * @param rootModuleId 本次操作的根模块 ID
-     * @return 元数据快照；若模块树缺失根模块，{@link PlanMeta#hasModuleTree()} 为 false， 由编译器给出统一的「模块不存在」错误信息
+     * @param view 业务视图编码 (如 COMPANY, DIRECTORS) 或主表名
+     * @return 元数据快照
+     */
+    public PlanMeta loadByView(String view) {
+        if (view == null || view.isBlank()) {
+            throw new IllegalArgumentException("加载元数据快照时视图编码不能为空");
+        }
+        if (view.matches("\\d+")) {
+            return load(Long.parseLong(view));
+        }
+        String projectNo = AppContext.getProjectNo();
+        Long subjectId = AppContext.getSubjectId();
+        List<ModuleTreeDTO> projectTrees = configApi.getProjectModuleTree(projectNo, subjectId);
+        if (projectTrees != null) {
+            for (ModuleTreeDTO tree : projectTrees) {
+                if (tree.getRootModule() != null
+                        && (view.equalsIgnoreCase(tree.getRootModule().getModuleCode())
+                                || (tree.getRootModule().getPrimaryTable() != null
+                                        && view.equalsIgnoreCase(
+                                                tree.getRootModule().getPrimaryTable())))) {
+                    ProjectTableRelationsDTO relations =
+                            configApi.getProjectTableRelations(projectNo);
+                    return new PlanMeta(tree, relations);
+                }
+                if (tree.getModuleMap() != null) {
+                    for (ModuleInfo info : tree.getModuleMap().values()) {
+                        if (info != null
+                                && (view.equalsIgnoreCase(info.getModuleCode())
+                                        || (info.getPrimaryTable() != null
+                                                && view.equalsIgnoreCase(
+                                                        info.getPrimaryTable())))) {
+                            ProjectTableRelationsDTO relations =
+                                    configApi.getProjectTableRelations(projectNo);
+                            return new PlanMeta(tree, relations);
+                        }
+                    }
+                }
+            }
+        }
+        return new PlanMeta(null, null);
+    }
+
+    /** 快捷方法：根据 view 加载 */
+    public PlanMeta load(String view) {
+        return loadByView(view);
+    }
+
+    /**
+     * 加载指定根模块 ID 的元数据快照（供底层或测试使用）。
+     *
+     * @param rootModuleId 根模块 ID
+     * @return 元数据快照
      */
     public PlanMeta load(Long rootModuleId) {
         if (rootModuleId == null) {
@@ -44,58 +91,40 @@ public class PlanMetaLoader {
         return new PlanMeta(tree, relations);
     }
 
-    /** 自动根据 QueryReq 中的 moduleId 或 moduleCode 加载元数据快照。 */
+    /** 自动根据 QueryReq 中的 view 或表名加载元数据快照。 */
     public PlanMeta load(QueryReq req) {
         if (req == null) {
             throw new IllegalArgumentException("加载元数据快照时查询请求不能为空");
         }
-        return load(req.getModuleId(), req.getModuleCode());
-    }
-
-    /** 自动根据 OptionReq 中的 moduleId 或 moduleCode 加载元数据快照。 */
-    public PlanMeta load(OptionReq req) {
-        if (req == null) {
-            throw new IllegalArgumentException("加载元数据快照时候选项请求不能为空");
+        String view = req.getView();
+        if (view != null && !view.isBlank()) {
+            return loadByView(view);
         }
-        return load(req.getModuleId(), req.getModuleCode());
-    }
-
-    /**
-     * 支持根据 moduleId（优先）或 moduleCode（兜底）加载指定模块的元数据快照。
-     *
-     * @param rootModuleId 根模块 ID
-     * @param moduleCode 根模块或子模块编码
-     * @return 元数据快照
-     */
-    public PlanMeta load(Long rootModuleId, String moduleCode) {
-        if (rootModuleId != null) {
-            return load(rootModuleId);
-        }
-        if (moduleCode == null || moduleCode.isBlank()) {
-            throw new IllegalArgumentException("加载元数据快照时模块 ID 与编码不能同时为空");
-        }
-        String projectNo = AppContext.getProjectNo();
-        Long subjectId = AppContext.getSubjectId();
-        List<ModuleTreeDTO> projectTrees = configApi.getProjectModuleTree(projectNo, subjectId);
-        if (projectTrees != null) {
-            for (ModuleTreeDTO tree : projectTrees) {
-                if (tree.getRootModule() != null
-                        && moduleCode.equalsIgnoreCase(tree.getRootModule().getModuleCode())) {
-                    ProjectTableRelationsDTO relations =
-                            configApi.getProjectTableRelations(projectNo);
-                    return new PlanMeta(tree, relations);
-                }
-                if (tree.getModuleMap() != null) {
-                    for (ModuleInfo info : tree.getModuleMap().values()) {
-                        if (info != null && moduleCode.equalsIgnoreCase(info.getModuleCode())) {
-                            ProjectTableRelationsDTO relations =
-                                    configApi.getProjectTableRelations(projectNo);
-                            return new PlanMeta(tree, relations);
-                        }
+        if (req.getColumns() != null) {
+            for (String col : req.getColumns()) {
+                if (col != null && col.contains(".")) {
+                    String tbl = col.substring(0, col.indexOf('.')).trim();
+                    PlanMeta pm = loadByView(tbl);
+                    if (pm.hasModuleTree()) {
+                        return pm;
                     }
                 }
             }
         }
-        return new PlanMeta(null, null);
+        throw new IllegalArgumentException("查询请求中未提供 view 且无法推导所属元数据");
+    }
+
+    /** 自动根据 OptionReq 中的 view 或 tableName 加载元数据快照。 */
+    public PlanMeta load(OptionReq req) {
+        if (req == null) {
+            throw new IllegalArgumentException("加载元数据快照时候选项请求不能为空");
+        }
+        if (req.getView() != null && !req.getView().isBlank()) {
+            return loadByView(req.getView());
+        }
+        if (req.getTableName() != null && !req.getTableName().isBlank()) {
+            return loadByView(req.getTableName());
+        }
+        throw new IllegalArgumentException("候选项请求中未提供 view 或 tableName");
     }
 }
