@@ -1255,16 +1255,16 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         approvalProcessDTO.setCurrentStep(approvalBusiness.getCurrentStep());
         approvalProcessDTO.setCreatedBy(approvalBusiness.getCreatedBy());
         approvalProcessDTO.setApprovalUids(approvalBusiness.getApprovalUids());
-        // 回调更新业务状态
-        ApprovalStatusCallBackReq backReq = new ApprovalStatusCallBackReq();
-        backReq.setBusinessStatus(approvalBusiness.getStatusValue());
-        backReq.setVersionNo(approvalBusiness.getVersionNo());
-        backReq.setDataId(approvalBusiness.getRecordId());
-        backReq.setModuleId(approvalBusiness.getModuleId());
-        backReq.setRegistrationTime(LocalDateTime.now());
-        backReq.setIsCurrentStepFinish(true);
-        backReq.setOp("create");
-        dataEngineApi.processApprovalStatus(backReq);
+        //        // 回调更新业务状态
+        //        ApprovalStatusCallBackReq backReq = new ApprovalStatusCallBackReq();
+        //        backReq.setBusinessStatus(approvalBusiness.getStatusValue());
+        //        backReq.setVersionNo(approvalBusiness.getVersionNo());
+        //        backReq.setDataId(approvalBusiness.getRecordId());
+        //        backReq.setModuleId(approvalBusiness.getModuleId());
+        //        backReq.setRegistrationTime(LocalDateTime.now());
+        //        backReq.setIsCurrentStepFinish(true);
+        //        backReq.setOp("create");
+        //        dataEngineApi.processApprovalStatus(backReq);
         approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
