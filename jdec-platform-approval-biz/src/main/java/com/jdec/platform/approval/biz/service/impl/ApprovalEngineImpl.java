@@ -1288,7 +1288,10 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             throw new BusinessException(601, "单据记录异常");
         }
 
-        approvalProcessDTO.setCurrentStatusTitle(approvalBusiness.getStatusTitle());
+        ModuleApprovalChainConfigResp.StatusNode statusNode =
+                sysStatusApi.getStatusByValue(1, approvalProcessDTO.getModuleId());
+
+        approvalProcessDTO.setCurrentStatusTitle(statusNode.getTitle());
 
         if (!approvalBusiness.getCreatedBy().equals(approvalProcessDTO.getApplicantId())) {
             throw new BusinessException(602, "申请人与操作人不一致");
