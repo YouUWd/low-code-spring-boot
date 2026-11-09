@@ -258,7 +258,16 @@ public class DataPermissionConditionResolver {
             return Optional.of(DSL.trueCondition());
         }
 
-        // 3. 复用底层数据引擎 dataApi.queryList(QueryReq) 求解主表 ID 集合
+        // 3. 安全防御加固：若标记了受限但未生成任何有效过滤谓词，遵循默认拒绝原则，防止空 Filter 查出全量数据越权
+        if (CollectionUtils.isEmpty(tablePredicates)) {
+            log.warn(
+                    "[DataPermission] 存在受限表但未生成有效谓词条件，安全拦截默认拒绝: rootModuleId={}, primaryTable={}",
+                    rootModuleId,
+                    primaryTable);
+            return Optional.of(DSL.falseCondition());
+        }
+
+        // 4. 复用底层数据引擎 dataApi.queryList(QueryReq) 求解主表 ID 集合
         // 投影规格仅声明主表 id，底层引擎自动将子表 FilterItem 上卷为 EXISTS 关联子查询并跳过子表数据抓取
         String rootCode =
                 moduleTree.getRootModule() != null
@@ -283,12 +292,13 @@ public class DataPermissionConditionResolver {
         try {
             block = dataApi.queryList(queryReq);
         } catch (Exception ex) {
-            log.warn(
-                    "通过 dataApi.queryList 求解数据权限符合单据失败: rootModuleId={}, primaryTable={}, err={}",
+            log.error(
+                    "通过 dataApi.queryList 求解数据权限符合单据失败，遵循默认拒绝原则拦截: rootModuleId={}, primaryTable={}, err={}",
                     rootModuleId,
                     primaryTable,
-                    ex.getMessage());
-            return Optional.empty();
+                    ex.getMessage(),
+                    ex);
+            return Optional.of(DSL.falseCondition());
         }
 
         List<Long> matchedIds = extractIds(block, primaryTable);

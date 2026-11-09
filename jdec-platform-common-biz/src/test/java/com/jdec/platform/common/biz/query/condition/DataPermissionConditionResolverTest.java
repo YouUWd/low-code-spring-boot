@@ -220,4 +220,56 @@ class DataPermissionConditionResolverTest {
         assertTrue(condOpt.isPresent());
         assertEquals(DSL.falseCondition(), condOpt.get());
     }
+
+    @Test
+    @DisplayName("受限配置但无有效谓词生成：必须返回 DSL.falseCondition() 默认拒绝，防止查出全量数据越权")
+    void testRestrictedConfigWithNoValidPredicateReturnsFalseCondition() {
+        DataRightConfigResp config =
+                DataRightConfigResp.builder()
+                        .tableName("t_order")
+                        .dataList(
+                                List.of(
+                                        // 未配置主体且主体全选放行，且未指定列
+                                        DataRightConfigResp.DataConfig.builder()
+                                                .permissionCheckAll(0)
+                                                .subjectId(null)
+                                                .subjectCheckAll(1)
+                                                .columnName(null)
+                                                .build()))
+                        .build();
+
+        when(openRolePermissionApi.getRoleDataPermissionDetail(1L)).thenReturn(List.of(config));
+
+        Optional<Condition> condOpt = resolver.resolve(moduleTree, null);
+        assertTrue(condOpt.isPresent());
+        assertEquals(DSL.falseCondition(), condOpt.get());
+
+        // 验证未调用底层引擎全量扫描
+        verify(dataApi, never()).queryList(any());
+    }
+
+    @Test
+    @DisplayName("底层引擎求解抛出异常：必须返回 DSL.falseCondition() 默认拒绝（Fail-Closed），不能放行")
+    void testQueryListExceptionReturnsFalseCondition() {
+        DataRightConfigResp config =
+                DataRightConfigResp.builder()
+                        .tableName("t_order")
+                        .dataList(
+                                List.of(
+                                        DataRightConfigResp.DataConfig.builder()
+                                                .permissionCheckAll(0)
+                                                .subjectId(101L)
+                                                .subjectCheckAll(0)
+                                                .columnName("dept_id")
+                                                .bizNames(List.of("D1"))
+                                                .build()))
+                        .build();
+
+        when(openRolePermissionApi.getRoleDataPermissionDetail(1L)).thenReturn(List.of(config));
+        when(dataApi.queryList(any())).thenThrow(new RuntimeException("DB Connection Timeout"));
+
+        Optional<Condition> condOpt = resolver.resolve(moduleTree, null);
+        assertTrue(condOpt.isPresent());
+        assertEquals(DSL.falseCondition(), condOpt.get());
+    }
 }
