@@ -18,14 +18,15 @@ import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
-import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.OptionReq;
 import com.jdec.platform.data.api.dto.request.PageQueryReq;
 import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.request.SortItem;
-import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import com.jdec.platform.data.api.dto.response.DataPage;
+import com.jdec.platform.data.api.model.predicate.ComparisonPredicate;
+import com.jdec.platform.data.api.model.predicate.CompoundPredicate;
+import com.jdec.platform.data.api.model.predicate.Predicate;
 import com.jdec.platform.data.biz.plan.PlanMetaLoader;
 import com.jdec.platform.data.biz.plan.assembler.TreeResultAssembler;
 import com.jdec.platform.data.biz.plan.compiler.QueryPlanCompiler;
@@ -289,41 +290,25 @@ class DataQueryTest {
         return m != null ? m.getPrimaryTable() : null;
     }
 
-    record ModTbl(Long moduleId, String tableName) {}
-
-    /** 将 fieldId 列表按物理表分组为 TableSpec，语义与旧版 fields 投影完全一致。 */
-    private List<TableSpec> specs(Long... fieldIds) {
-        Map<ModTbl, LinkedHashSet<String>> grouped = new LinkedHashMap<>();
+    /** 将 fieldId 列表转换为 table.column 投影列列表 */
+    private List<String> cols(Long... fieldIds) {
+        List<String> list = new ArrayList<>();
         for (Long fid : fieldIds) {
             ModuleFieldDTO f = fieldOf(fid);
-            grouped.computeIfAbsent(
-                            new ModTbl(f.getModuleId(), tableOf(f)), k -> new LinkedHashSet<>())
-                    .add(f.getColumnName());
+            list.add(tableOf(f) + "." + f.getColumnName());
         }
-        List<TableSpec> result = new ArrayList<>();
-        grouped.forEach(
-                (k, cols) ->
-                        result.add(
-                                TableSpec.of(k.moduleId(), k.tableName(), new ArrayList<>(cols))));
-        return result;
+        return list;
     }
 
-    private FilterItem tf(long fieldId, String operator, Object value) {
+    private Predicate tf(long fieldId, String operator, Object value) {
         ModuleFieldDTO f = fieldOf(fieldId);
-        return FilterItem.builder()
-                .tableName(tableOf(f))
-                .columnName(f.getColumnName())
-                .operator(operator)
-                .value(value)
-                .build();
+        return ComparisonPredicate.of(tableOf(f) + "." + f.getColumnName(), operator, value);
     }
 
     private SortItem ts(long fieldId, String direction) {
         ModuleFieldDTO f = fieldOf(fieldId);
         return SortItem.builder()
-                .moduleId(f.getModuleId())
-                .tableName(tableOf(f))
-                .columnName(f.getColumnName())
+                .field(tableOf(f) + "." + f.getColumnName())
                 .direction(direction)
                 .build();
     }
@@ -331,7 +316,7 @@ class DataQueryTest {
     private OptionReq option(long moduleId, long fieldId, String direction) {
         ModuleFieldDTO f = fieldOf(fieldId);
         return OptionReq.builder()
-                .moduleId(moduleId)
+                .view(String.valueOf(moduleId))
                 .tableName(tableOf(f))
                 .columnName(f.getColumnName())
                 .direction(direction)
@@ -844,20 +829,20 @@ class DataQueryTest {
     }
 
     @Test
-    @DisplayName("测试单模块查询 (School 101): 返回 DataPage 结构与顶层 moduleId 规范")
+    @DisplayName("测试单模块查询 (School 101): 返回 DataPage 结构与顶层 view 规范")
     void testQuerySingleModuleSchool() {
         PageQueryReq req =
                 PageQueryReq.builder()
-                        .moduleId(101L)
+                        .view("101")
                         .pageNo(1)
                         .pageSize(10)
-                        .tables(specs(1L, 2L, 3L))
+                        .columns(cols(1L, 2L, 3L))
                         .build();
 
         DataPage<DataBlock> page = dataQueryService.queryPage(req);
 
         assertNotNull(page);
-        assertEquals(101L, page.getModuleId());
+        assertEquals("101", page.getView());
         assertEquals(1, page.getPageNo());
         assertEquals(10, page.getPageSize());
         assertEquals(1L, page.getTotal());
@@ -875,19 +860,31 @@ class DataQueryTest {
     @Test
     @DisplayName("测试多级深层自相似树查询 (School 101 -> 105 -> 108): 学生 -> 选课 -> 成绩分项")
     void testQueryDeepCascadeTreeSchool() {
-        // 请求同时包含 101(学生), 105(选课), 108(成绩分项) 的字段
+        // 请求基于自相似 View 树装配 101(学生) -> 105(选课) -> 108(成绩分项)
         PageQueryReq req =
                 PageQueryReq.builder()
-                        .moduleId(101L)
+                        .view("101")
                         .pageNo(1)
                         .pageSize(10)
-                        .tables(specs(1L, 3L, 28L, 32L, 57L, 59L))
+                        .columns(cols(1L, 3L))
+                        .children(
+                                List.of(
+                                        QueryReq.builder()
+                                                .view("105")
+                                                .columns(cols(28L, 32L))
+                                                .children(
+                                                        List.of(
+                                                                QueryReq.builder()
+                                                                        .view("108")
+                                                                        .columns(cols(57L, 59L))
+                                                                        .build()))
+                                                .build()))
                         .build();
 
         DataPage<DataBlock> page = dataQueryService.queryPage(req);
 
         assertNotNull(page);
-        assertEquals(101L, page.getModuleId());
+        assertEquals("101", page.getView());
 
         DataRow rootRow = page.getRecords().get(0);
         assertNotNull(rootRow.getTable("student"));
@@ -899,7 +896,7 @@ class DataQueryTest {
 
         DataBlock courseNode =
                 rootChildren.stream()
-                        .filter(c -> Long.valueOf(105L).equals(c.getModuleId()))
+                        .filter(c -> "105".equals(c.getView()))
                         .findFirst()
                         .orElse(null);
         assertNotNull(courseNode);
@@ -918,7 +915,7 @@ class DataQueryTest {
 
         DataBlock scoreNode =
                 courseChildren.stream()
-                        .filter(c -> Long.valueOf(108L).equals(c.getModuleId()))
+                        .filter(c -> "108".equals(c.getView()))
                         .findFirst()
                         .orElse(null);
         assertNotNull(scoreNode);
@@ -936,10 +933,32 @@ class DataQueryTest {
     void testQueryMultipleBranchesSchool() {
         PageQueryReq req =
                 PageQueryReq.builder()
-                        .moduleId(101L)
+                        .view("101")
                         .pageNo(1)
                         .pageSize(10)
-                        .tables(specs(1L, 3L, 37L, 39L, 74L, 76L, 28L, 32L, 57L, 59L))
+                        .columns(cols(1L, 3L))
+                        .children(
+                                List.of(
+                                        QueryReq.builder()
+                                                .view("104")
+                                                .columns(cols(37L, 39L))
+                                                .children(
+                                                        List.of(
+                                                                QueryReq.builder()
+                                                                        .view("106")
+                                                                        .columns(cols(74L, 76L))
+                                                                        .build()))
+                                                .build(),
+                                        QueryReq.builder()
+                                                .view("105")
+                                                .columns(cols(28L, 32L))
+                                                .children(
+                                                        List.of(
+                                                                QueryReq.builder()
+                                                                        .view("108")
+                                                                        .columns(cols(57L, 59L))
+                                                                        .build()))
+                                                .build()))
                         .build();
 
         DataPage<DataBlock> page = dataQueryService.queryPage(req);
@@ -950,23 +969,17 @@ class DataQueryTest {
         assertNotNull(children);
 
         // 验证同级包含 104 (荣誉) 与 105 (选课)
-        boolean hasAward =
-                children.stream().anyMatch(c -> Long.valueOf(104L).equals(c.getModuleId()));
-        boolean hasCourse =
-                children.stream().anyMatch(c -> Long.valueOf(105L).equals(c.getModuleId()));
+        boolean hasAward = children.stream().anyMatch(c -> "104".equals(c.getView()));
+        boolean hasCourse = children.stream().anyMatch(c -> "105".equals(c.getView()));
         assertTrue(hasAward);
         assertTrue(hasCourse);
 
         // 验证 104 下挂载 106
         DataBlock awardNode =
-                children.stream()
-                        .filter(c -> Long.valueOf(104L).equals(c.getModuleId()))
-                        .findFirst()
-                        .orElseThrow();
+                children.stream().filter(c -> "104".equals(c.getView())).findFirst().orElseThrow();
         List<DataRow> awardRecords = awardNode.getRecords();
         List<DataBlock> awardChildren = awardRecords.get(0).getChildren();
-        assertTrue(
-                awardChildren.stream().anyMatch(c -> Long.valueOf(106L).equals(c.getModuleId())));
+        assertTrue(awardChildren.stream().anyMatch(c -> "106".equals(c.getView())));
     }
 
     @Test
@@ -974,18 +987,36 @@ class DataQueryTest {
     void testQueryVirtualModuleAndJsonParsingCompany() {
         PageQueryReq req =
                 PageQueryReq.builder()
-                        .moduleId(1001L)
+                        .view("1001")
                         .pageNo(1)
                         .pageSize(10)
-                        .tables(
-                                specs(
-                                        10001L, 10002L, 10006L, 10007L, 10048L, 10050L, 10053L,
-                                        10055L))
+                        .columns(cols(10001L, 10002L, 10006L, 10007L))
+                        .children(
+                                List.of(
+                                        QueryReq.builder()
+                                                .view("1020")
+                                                .children(
+                                                        List.of(
+                                                                QueryReq.builder()
+                                                                        .view("1005")
+                                                                        .columns(
+                                                                                cols(
+                                                                                        10048L,
+                                                                                        10050L))
+                                                                        .build(),
+                                                                QueryReq.builder()
+                                                                        .view("1006")
+                                                                        .columns(
+                                                                                cols(
+                                                                                        10053L,
+                                                                                        10055L))
+                                                                        .build()))
+                                                .build()))
                         .build();
 
         DataPage<DataBlock> page = dataQueryService.queryPage(req);
         assertNotNull(page);
-        assertEquals(1001L, page.getModuleId());
+        assertEquals("1001", page.getView());
 
         DataRow rootRow = page.getRecords().get(0);
         Map<String, Object> infoTable = rootRow.getTable("info");
@@ -1005,7 +1036,7 @@ class DataQueryTest {
 
         DataBlock virtualNode =
                 rootChildren.stream()
-                        .filter(c -> Long.valueOf(1020L).equals(c.getModuleId()))
+                        .filter(c -> "1020".equals(c.getView()))
                         .findFirst()
                         .orElse(null);
         assertNotNull(virtualNode);
@@ -1018,10 +1049,8 @@ class DataQueryTest {
         assertNotNull(subChildren);
 
         // 虚拟容器内部挂载 1005 (地址) 和 1006 (联系方式)
-        boolean hasAddr =
-                subChildren.stream().anyMatch(c -> Long.valueOf(1005L).equals(c.getModuleId()));
-        boolean hasContact =
-                subChildren.stream().anyMatch(c -> Long.valueOf(1006L).equals(c.getModuleId()));
+        boolean hasAddr = subChildren.stream().anyMatch(c -> "1005".equals(c.getView()));
+        boolean hasContact = subChildren.stream().anyMatch(c -> "1006".equals(c.getView()));
         assertTrue(hasAddr);
         assertTrue(hasContact);
     }
@@ -1030,16 +1059,16 @@ class DataQueryTest {
     @DisplayName("测试动态多维组合过滤条件 (Dynamic Filter Items)")
     void testQueryDynamicFilters() {
         // student.name LIKE / student.id IN
-        List<FilterItem> filters =
-                List.of(tf(3L, "LIKE", "张%"), tf(1L, "IN", List.of(1001L, 1002L)));
+        Predicate filters =
+                CompoundPredicate.and(tf(3L, "LIKE", "张%"), tf(1L, "IN", List.of(1001L, 1002L)));
 
         PageQueryReq req =
                 PageQueryReq.builder()
-                        .moduleId(101L)
+                        .view("101")
                         .pageNo(1)
                         .pageSize(10)
-                        .tables(specs(1L, 2L, 3L))
-                        .filters(filters)
+                        .columns(cols(1L, 2L, 3L))
+                        .filter(filters)
                         .build();
 
         DataPage<DataBlock> page = dataQueryService.queryPage(req);
@@ -1058,18 +1087,18 @@ class DataQueryTest {
     @DisplayName("测试 JSON 数组字段过滤 (JSON_CONTAINS / CONTAINS_ANY / CONTAINS_ALL)")
     void testQueryJsonContainsFilter() {
         // info.cooperation_types CONTAINS / info.industry_tags CONTAINS_ALL
-        List<FilterItem> filters =
-                List.of(
+        Predicate filters =
+                CompoundPredicate.and(
                         tf(10006L, "CONTAINS", "客户"),
                         tf(10007L, "CONTAINS_ALL", List.of("焦化", "煤炭")));
 
         PageQueryReq req =
                 PageQueryReq.builder()
-                        .moduleId(1001L)
+                        .view("1001")
                         .pageNo(1)
                         .pageSize(10)
-                        .tables(specs(10001L, 10002L, 10006L, 10007L))
-                        .filters(filters)
+                        .columns(cols(10001L, 10002L, 10006L, 10007L))
+                        .filter(filters)
                         .build();
 
         DataPage<DataBlock> page = dataQueryService.queryPage(req);
@@ -1091,11 +1120,11 @@ class DataQueryTest {
 
         PageQueryReq req =
                 PageQueryReq.builder()
-                        .moduleId(101L)
+                        .view("101")
                         .pageNo(1)
                         .pageSize(10)
-                        .tables(specs(1L, 2L))
-                        .sorts(sorts)
+                        .columns(cols(1L, 2L))
+                        .sort(sorts)
                         .build();
 
         DataPage<DataBlock> page = dataQueryService.queryPage(req);
@@ -1171,19 +1200,14 @@ class DataQueryTest {
 
         QueryReq req =
                 QueryReq.builder()
-                        .moduleId(101L)
-                        .tables(
-                                List.of(
-                                        TableSpec.of(
-                                                101L,
-                                                "student",
-                                                List.of("id", "student_no", "name"))))
+                        .view("101")
+                        .columns(List.of("student.id", "student.student_no", "student.name"))
                         .build();
 
         DataBlock resultBlock = dataQueryService.queryList(req);
 
         assertNotNull(resultBlock);
-        assertEquals(101L, resultBlock.getModuleId());
+        assertEquals("101", resultBlock.getView());
         assertNotNull(resultBlock.getRecords());
         assertEquals(1, resultBlock.getRecords().size());
 

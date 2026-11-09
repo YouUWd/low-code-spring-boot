@@ -13,7 +13,6 @@ import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.DetailQueryReq;
 import com.jdec.platform.data.api.dto.request.QueryReq;
-import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.data.api.dto.response.DataSaveResp;
 import com.jdec.platform.data.biz.plan.PlanMeta;
 import com.jdec.platform.data.biz.plan.PlanMetaLoader;
@@ -92,7 +91,8 @@ class VerticalSplitContractTest {
     void fullTreeModeJoinsVerticalSplitAndUpstreamTables() {
         QueryNodePlan root =
                 compiler.compile(
-                                QueryReq.builder().moduleId(COURSE_MODULE_ID).build(), courseMeta())
+                                QueryReq.builder().view(String.valueOf(COURSE_MODULE_ID)).build(),
+                                courseMeta())
                         .getRootNodePlan();
 
         List<AttachedTableSpec> joins = root.getAttachedJoins();
@@ -117,13 +117,8 @@ class VerticalSplitContractTest {
         QueryNodePlan root =
                 compileCourse(
                         QueryReq.builder()
-                                .moduleId(COURSE_MODULE_ID)
-                                .tables(
-                                        List.of(
-                                                TableSpec.of(
-                                                        COURSE_MODULE_ID,
-                                                        COURSE,
-                                                        List.of("course_name"))))
+                                .view(String.valueOf(COURSE_MODULE_ID))
+                                .columns(List.of(COURSE + ".course_name"))
                                 .build());
 
         assertTrue(
@@ -137,17 +132,11 @@ class VerticalSplitContractTest {
         QueryNodePlan root =
                 compileCourse(
                         QueryReq.builder()
-                                .moduleId(COURSE_MODULE_ID)
-                                .tables(
+                                .view(String.valueOf(COURSE_MODULE_ID))
+                                .columns(
                                         List.of(
-                                                TableSpec.of(
-                                                        COURSE_MODULE_ID,
-                                                        COURSE,
-                                                        List.of("course_name")),
-                                                TableSpec.of(
-                                                        COURSE_MODULE_ID,
-                                                        SYLLABUS,
-                                                        List.of("prerequisite"))))
+                                                COURSE + ".course_name",
+                                                SYLLABUS + ".prerequisite"))
                                 .build());
 
         List<AttachedTableSpec> joins = root.getAttachedJoins();
@@ -169,17 +158,9 @@ class VerticalSplitContractTest {
         QueryNodePlan root =
                 compileCourse(
                         QueryReq.builder()
-                                .moduleId(COURSE_MODULE_ID)
-                                .tables(
-                                        List.of(
-                                                TableSpec.of(
-                                                        COURSE_MODULE_ID,
-                                                        COURSE,
-                                                        List.of("course_name")),
-                                                TableSpec.of(
-                                                        COURSE_MODULE_ID,
-                                                        TEACHER,
-                                                        List.of("teacher_name"))))
+                                .view(String.valueOf(COURSE_MODULE_ID))
+                                .columns(
+                                        List.of(COURSE + ".course_name", TEACHER + ".teacher_name"))
                                 .build());
 
         List<AttachedTableSpec> joins = root.getAttachedJoins();
@@ -204,13 +185,8 @@ class VerticalSplitContractTest {
         QueryNodePlan root =
                 compiler.compile(
                                 QueryReq.builder()
-                                        .moduleId(STUDENT_LIST_MODULE_ID)
-                                        .tables(
-                                                List.of(
-                                                        TableSpec.of(
-                                                                STUDENT_LIST_MODULE_ID,
-                                                                STUDENT,
-                                                                List.of("name"))))
+                                        .view(String.valueOf(STUDENT_LIST_MODULE_ID))
+                                        .columns(List.of(STUDENT + ".name"))
                                         .build(),
                                 studentListMeta())
                         .getRootNodePlan();
@@ -228,7 +204,7 @@ class VerticalSplitContractTest {
         List<String> sqls = new ArrayList<>();
         DataQueryService service = serviceCapturing(sqls);
 
-        service.query(QueryReq.builder().moduleId(COURSE_MODULE_ID).build());
+        service.query(QueryReq.builder().view(String.valueOf(COURSE_MODULE_ID)).build());
 
         String sql = dataSql(sqls);
         assertTrue(
@@ -255,7 +231,8 @@ class VerticalSplitContractTest {
     void fullTreeModeWithAttachedTablesUsesExplicitProjection() {
         QueryNodePlan root =
                 compiler.compile(
-                                QueryReq.builder().moduleId(COURSE_MODULE_ID).build(), courseMeta())
+                                QueryReq.builder().view(String.valueOf(COURSE_MODULE_ID)).build(),
+                                courseMeta())
                         .getRootNodePlan();
 
         List<String> projected = projectedKeys(root);
@@ -270,7 +247,9 @@ class VerticalSplitContractTest {
     void fullTreeModeWithoutAttachedTablesKeepsSelectAll() {
         QueryNodePlan root =
                 compiler.compile(
-                                QueryReq.builder().moduleId(STUDENT_LIST_MODULE_ID).build(),
+                                QueryReq.builder()
+                                        .view(String.valueOf(STUDENT_LIST_MODULE_ID))
+                                        .build(),
                                 studentListMeta())
                         .getRootNodePlan();
 
@@ -287,11 +266,8 @@ class VerticalSplitContractTest {
 
         service.query(
                 QueryReq.builder()
-                        .moduleId(COURSE_MODULE_ID)
-                        .tables(
-                                List.of(
-                                        TableSpec.of(
-                                                COURSE_MODULE_ID, COURSE, List.of("course_name"))))
+                        .view(String.valueOf(COURSE_MODULE_ID))
+                        .columns(List.of(COURSE + ".course_name"))
                         .build());
 
         String sql = dataSql(sqls);
@@ -309,7 +285,10 @@ class VerticalSplitContractTest {
         row.putValue(TEACHER, "teacher_name", "王教授");
 
         DataBlock block =
-                DataBlock.builder().moduleId(COURSE_MODULE_ID).records(List.of(row)).build();
+                DataBlock.builder()
+                        .view(String.valueOf(COURSE_MODULE_ID))
+                        .records(List.of(row))
+                        .build();
 
         SaveNodePlan plan = saveCompiler.compile(block, courseMeta()).getRootNodePlan();
 
@@ -413,7 +392,8 @@ class VerticalSplitContractTest {
                     txTemplate.execute(
                             status ->
                                     persistenceService.save(
-                                            DataBlock.of(COURSE_MODULE_ID, newRow)));
+                                            DataBlock.of(
+                                                    String.valueOf(COURSE_MODULE_ID), newRow)));
             Long courseId = createdResp.getRootId();
             assertNotNull(courseId);
             Long syllabusId = createdResp.getFirstRecord().getLong(SYLLABUS, "id");
@@ -423,7 +403,7 @@ class VerticalSplitContractTest {
             DataBlock detail =
                     queryService.getDetail(
                             DetailQueryReq.builder()
-                                    .moduleId(COURSE_MODULE_ID)
+                                    .view(String.valueOf(COURSE_MODULE_ID))
                                     .id(courseId)
                                     .build());
             DataRow loadedRow = detail.getFirstRecord();
@@ -470,7 +450,9 @@ class VerticalSplitContractTest {
                     txTemplate.execute(
                             status ->
                                     persistenceService.save(
-                                            DataBlock.of(COURSE_MODULE_ID, partialPatchRow)));
+                                            DataBlock.of(
+                                                    String.valueOf(COURSE_MODULE_ID),
+                                                    partialPatchRow)));
             assertEquals(courseId, partialResp.getRootId());
             assertEquals(
                     syllabusId,
@@ -569,6 +551,9 @@ class VerticalSplitContractTest {
                     String name = invocation.getMethod().getName();
                     if ("getModuleTree".equals(name)) {
                         return tree;
+                    }
+                    if ("getProjectModuleTree".equals(name)) {
+                        return List.of(tree);
                     }
                     if ("getProjectTableRelations".equals(name)) {
                         return relations;
@@ -707,6 +692,7 @@ class VerticalSplitContractTest {
             long moduleId, String name, String primaryTable, List<ModuleFieldDTO> fields) {
         return ModuleInfo.builder()
                 .moduleId(moduleId)
+                .moduleCode(primaryTable != null ? primaryTable : String.valueOf(moduleId))
                 .moduleName(name)
                 .primaryTable(primaryTable)
                 .parentId(0L)

@@ -56,7 +56,11 @@ public final class DocumentVersionUtils {
             return cloneBlock(base);
         }
 
-        Long moduleId = base.getModuleId() != null ? base.getModuleId() : patch.getModuleId();
+        String view =
+                base != null && base.getView() != null
+                        ? base.getView()
+                        : (patch != null ? patch.getView() : null);
+
         List<DataRow> baseRecords =
                 base.getRecords() != null ? base.getRecords() : Collections.emptyList();
         List<DataRow> patchRecords =
@@ -72,16 +76,7 @@ public final class DocumentVersionUtils {
 
         DataRow mergedRow = mergeDataRow(baseFirst, patchFirst);
 
-        String moduleCode =
-                base != null && base.getModuleCode() != null
-                        ? base.getModuleCode()
-                        : (patch != null ? patch.getModuleCode() : null);
-
-        return DataBlock.builder()
-                .moduleId(moduleId)
-                .moduleCode(moduleCode)
-                .records(Collections.singletonList(mergedRow))
-                .build();
+        return DataBlock.builder().view(view).records(Collections.singletonList(mergedRow)).build();
     }
 
     /** 合并两个 DataRow (包含 tables 和 children) */
@@ -138,29 +133,29 @@ public final class DocumentVersionUtils {
         List<DataBlock> patchChildren =
                 patchRow.getChildren() != null ? patchRow.getChildren() : Collections.emptyList();
 
-        Map<Long, DataBlock> baseChildMap = new LinkedHashMap<>();
+        Map<String, DataBlock> baseChildMap = new LinkedHashMap<>();
         for (DataBlock bc : baseChildren) {
-            if (bc != null && bc.getModuleId() != null) {
-                baseChildMap.put(bc.getModuleId(), bc);
+            if (bc != null && bc.getView() != null) {
+                baseChildMap.put(bc.getView().toUpperCase(), bc);
             }
         }
 
-        Map<Long, DataBlock> patchChildMap = new LinkedHashMap<>();
+        Map<String, DataBlock> patchChildMap = new LinkedHashMap<>();
         for (DataBlock pc : patchChildren) {
-            if (pc != null && pc.getModuleId() != null) {
-                patchChildMap.put(pc.getModuleId(), pc);
+            if (pc != null && pc.getView() != null) {
+                patchChildMap.put(pc.getView().toUpperCase(), pc);
             }
         }
 
-        Set<Long> allChildModules = new HashSet<>();
-        allChildModules.addAll(baseChildMap.keySet());
-        allChildModules.addAll(patchChildMap.keySet());
+        java.util.Set<String> allChildViews = new java.util.LinkedHashSet<>();
+        allChildViews.addAll(baseChildMap.keySet());
+        allChildViews.addAll(patchChildMap.keySet());
 
         List<DataBlock> mergedChildren = new ArrayList<>();
 
-        for (Long childModId : allChildModules) {
-            DataBlock baseChildBlock = baseChildMap.get(childModId);
-            DataBlock patchChildBlock = patchChildMap.get(childModId);
+        for (String childView : allChildViews) {
+            DataBlock baseChildBlock = baseChildMap.get(childView);
+            DataBlock patchChildBlock = patchChildMap.get(childView);
 
             if (patchChildBlock == null) {
                 // patch 完全没动该子模块 -> 100% 继承
@@ -175,24 +170,18 @@ public final class DocumentVersionUtils {
                 }
                 mergedChildren.add(
                         DataBlock.builder()
-                                .moduleId(childModId)
-                                .moduleCode(patchChildBlock.getModuleCode())
+                                .view(patchChildBlock.getView())
                                 .records(newRows)
                                 .build());
             } else {
                 // 两边均有数据 -> 做行级比对与合并
                 List<DataRow> mergedChildRows =
                         mergeChildRows(baseChildBlock.getRecords(), patchChildBlock.getRecords());
-                String childCode =
-                        baseChildBlock.getModuleCode() != null
-                                ? baseChildBlock.getModuleCode()
-                                : patchChildBlock.getModuleCode();
-                mergedChildren.add(
-                        DataBlock.builder()
-                                .moduleId(childModId)
-                                .moduleCode(childCode)
-                                .records(mergedChildRows)
-                                .build());
+                String view =
+                        baseChildBlock.getView() != null
+                                ? baseChildBlock.getView()
+                                : patchChildBlock.getView();
+                mergedChildren.add(DataBlock.builder().view(view).records(mergedChildRows).build());
             }
         }
 
@@ -248,9 +237,18 @@ public final class DocumentVersionUtils {
         if (id != null) {
             return id;
         }
-        for (Object val : row.getTables().values()) {
-            if (val instanceof Map<?, ?> map) {
+        for (Map.Entry<String, Object> entry : row.getTables().entrySet()) {
+            String key = entry.getKey();
+            if (key != null && (key.equalsIgnoreCase("id") || key.toLowerCase().endsWith(".id"))) {
+                if (entry.getValue() != null) {
+                    return entry.getValue();
+                }
+            }
+            if (entry.getValue() instanceof Map<?, ?> map) {
                 Object subId = map.get("id");
+                if (subId == null) {
+                    subId = map.get("ID");
+                }
                 if (subId != null) {
                     return subId;
                 }
@@ -267,6 +265,14 @@ public final class DocumentVersionUtils {
         DataRow rootRow = block.getRecords().get(0);
         if (rootRow == null || rootRow.getTables() == null) {
             return null;
+        }
+        for (String key : rootRow.getTables().keySet()) {
+            if (key != null && key.toLowerCase().endsWith(".business_no")) {
+                int dot = key.indexOf('.');
+                if (dot > 0) {
+                    return key.substring(0, dot).trim();
+                }
+            }
         }
         for (Map.Entry<String, Object> entry : rootRow.getTables().entrySet()) {
             String tableKey = entry.getKey();
@@ -287,6 +293,9 @@ public final class DocumentVersionUtils {
                 }
             }
         }
+        if (block.getView() != null && !block.getView().isBlank()) {
+            return block.getView();
+        }
         return null;
     }
 
@@ -302,6 +311,16 @@ public final class DocumentVersionUtils {
         Object bNo = rootRow.getTables().get("business_no");
         if (bNo != null && !bNo.toString().isBlank()) {
             return bNo.toString();
+        }
+        for (Map.Entry<String, Object> entry : rootRow.getTables().entrySet()) {
+            String key = entry.getKey();
+            if (key != null
+                    && (key.equalsIgnoreCase("business_no")
+                            || key.toLowerCase().endsWith(".business_no"))) {
+                if (entry.getValue() != null && !entry.getValue().toString().isBlank()) {
+                    return entry.getValue().toString();
+                }
+            }
         }
         for (Object val : rootRow.getTables().values()) {
             if (val instanceof Map<?, ?> map) {
@@ -334,6 +353,11 @@ public final class DocumentVersionUtils {
 
         if (row.getTables() != null) {
             row.getTables().put("version_no", versionNo);
+            for (String k : new ArrayList<>(row.getTables().keySet())) {
+                if (k != null && k.toLowerCase().endsWith(".version_no")) {
+                    row.getTables().put(k, versionNo);
+                }
+            }
             for (Object val : row.getTables().values()) {
                 if (val instanceof Map<?, ?> subMap) {
                     @SuppressWarnings("unchecked")
@@ -383,20 +407,35 @@ public final class DocumentVersionUtils {
         }
     }
 
+    private static boolean isAuditOrIdKey(String key) {
+        if (key == null) {
+            return false;
+        }
+        String col = key.contains(".") ? key.substring(key.lastIndexOf('.') + 1) : key;
+        String lowerCol = col.toLowerCase();
+        if ("id".equals(lowerCol)) {
+            return true;
+        }
+        return AUDIT_FIELDS.contains(lowerCol);
+    }
+
     private static void cleanMapAudit(Map<String, Object> map) {
         if (map == null) {
             return;
         }
-        map.remove("id");
-        map.remove("ID");
-
-        for (String auditField : AUDIT_FIELDS) {
-            map.remove(auditField);
-            map.remove(auditField.toUpperCase());
+        List<String> toRemove = new ArrayList<>();
+        for (String k : map.keySet()) {
+            if (isAuditOrIdKey(k)) {
+                toRemove.add(k);
+            }
         }
+        toRemove.forEach(map::remove);
 
-        if (map.containsKey("deleted") || map.containsKey("DELETED")) {
-            map.put("deleted", 0);
+        for (String k : new ArrayList<>(map.keySet())) {
+            String col = k.contains(".") ? k.substring(k.lastIndexOf('.') + 1) : k;
+            if ("deleted".equalsIgnoreCase(col)) {
+                map.put(k, 0);
+            }
         }
     }
 
@@ -410,11 +449,7 @@ public final class DocumentVersionUtils {
                 copyRecords.add(cloneRow(r));
             }
         }
-        return DataBlock.builder()
-                .moduleId(source.getModuleId())
-                .moduleCode(source.getModuleCode())
-                .records(copyRecords)
-                .build();
+        return DataBlock.builder().view(source.getView()).records(copyRecords).build();
     }
 
     public static DataRow cloneRow(DataRow source) {

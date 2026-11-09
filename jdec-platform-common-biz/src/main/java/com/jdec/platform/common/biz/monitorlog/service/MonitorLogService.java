@@ -287,6 +287,25 @@ public class MonitorLogService implements MonitorLogApi {
         return PageResult.of((long) pageNo, (long) pageSize, (long) total, records);
     }
 
+    @Override
+    public boolean existsOperateLog(Long menuId, Long dataId) {
+        if (menuId == null || dataId == null) {
+            throw new BusinessException("菜单id与单据id不能为空");
+        }
+        Long moduleId = openMenuApi.getModuleIdByMenuId(menuId);
+        if (moduleId == null) {
+            log.warn("菜单未关联模块，操作日志存在性判断返回 false: menuId={}", menuId);
+            return false;
+        }
+        List<Long> logIds =
+                monitorOperateIndexService.listByData(moduleId, dataId).stream()
+                        .map(MonitorOperateIndexResp::getLogId)
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .collect(Collectors.toList());
+        return !logIds.isEmpty();
+    }
+
     /**
      * 按菜单 + 单据查询操作日志
      *

@@ -64,7 +64,7 @@ public class ForkVersionEngineTest {
         // patch 只改 name，不传 order_no，不传子表
         DataRow patchRow = new DataRow();
         patchRow.putValue("orders", "name", "李四 (已更新)");
-        DataBlock patch = DataBlock.of(100L, patchRow);
+        DataBlock patch = DataBlock.of("100", patchRow);
 
         DataBlock merged = DocumentVersionUtils.deepMerge(base156, patch);
         DocumentVersionUtils.stripIdsAndResetAudit(merged);
@@ -115,10 +115,10 @@ public class ForkVersionEngineTest {
         newRow.putValue("order_contact", "is_primary", false);
         patchContactRows.add(newRow);
 
-        DataBlock patchChildBlock = DataBlock.of(200L, patchContactRows);
+        DataBlock patchChildBlock = DataBlock.of("200", patchContactRows);
         patchMainRow.setChildren(Collections.singletonList(patchChildBlock));
 
-        DataBlock patch = DataBlock.of(100L, patchMainRow);
+        DataBlock patch = DataBlock.of("100", patchMainRow);
 
         // 执行深度合并与擦除
         DataBlock merged = DocumentVersionUtils.deepMerge(base156, patch);
@@ -178,9 +178,9 @@ public class ForkVersionEngineTest {
         c2.putValue("order_contact", "created_at", "2026-10-01 10:05:00");
         contactRows.add(c2);
 
-        DataBlock contactBlock = DataBlock.of(200L, contactRows);
+        DataBlock contactBlock = DataBlock.of("200", contactRows);
         mainRow.setChildren(Collections.singletonList(contactBlock));
 
-        return DataBlock.of(100L, mainRow);
+        return DataBlock.of("100", mainRow);
     }
 }

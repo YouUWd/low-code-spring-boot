@@ -18,8 +18,9 @@ import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.SortItem;
-import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.data.api.dto.response.DataPage;
+import com.jdec.platform.data.api.model.predicate.CompoundPredicate;
+import com.jdec.platform.data.api.model.predicate.Predicate;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -42,7 +43,7 @@ import org.springframework.util.CollectionUtils;
  * <p>核心职责：
  *
  * <ul>
- *   <li>将菜单表头与字段 ID 转换为 {@code data-api} 物理表投影规格 {@link TableSpec}、{@link FilterItem} 与 {@link
+ *   <li>将菜单表头与字段 ID 转换为 {@code data-api} 统一投影列 {@code table.column}、{@link FilterItem} 与 {@link
  *       SortItem}。
  *   <li>执行 1:N 模块分支冲突校验、未命中 1:N 分支表头禁用修饰及已勾选字段收集。
  *   <li>将平铺物理表查询请求（{@link MenuTableSpec}、{@link FlatFilterItem}、{@link FlatSortItem}）消歧映射为底层物理查询参数。
@@ -90,29 +91,19 @@ public final class PhysicalQueryMapper {
     public record PhysicalFieldRef(
             Long fieldId, Long moduleId, String tableName, String columnName) {}
 
-    public static List<TableSpec> toTableSpecs(ModuleTreeDTO tree, Collection<Long> fieldIds) {
-        Map<ModuleTableKey, LinkedHashSet<String>> grouped = new LinkedHashMap<>();
-        if (fieldIds != null) {
-            for (Long fieldId : fieldIds) {
-                if (fieldId == null) {
-                    continue;
-                }
-                PhysicalFieldRef ref = resolve(tree, fieldId);
-                grouped.computeIfAbsent(
-                                new ModuleTableKey(ref.moduleId(), ref.tableName()),
-                                key -> new LinkedHashSet<>())
-                        .add(ref.columnName());
+    public static List<String> toColumns(ModuleTreeDTO tree, Collection<Long> fieldIds) {
+        if (tree == null || fieldIds == null || fieldIds.isEmpty()) {
+            return new ArrayList<>();
+        }
+        Set<String> columns = new LinkedHashSet<>();
+        for (Long fieldId : fieldIds) {
+            if (fieldId == null) {
+                continue;
             }
+            PhysicalFieldRef ref = resolve(tree, fieldId);
+            columns.add(ref.tableName() + "." + ref.columnName());
         }
-        List<TableSpec> specs = new ArrayList<>();
-        for (Map.Entry<ModuleTableKey, LinkedHashSet<String>> entry : grouped.entrySet()) {
-            specs.add(
-                    TableSpec.of(
-                            entry.getKey().moduleId(),
-                            entry.getKey().tableName(),
-                            new ArrayList<>(entry.getValue())));
-        }
-        return specs;
+        return new ArrayList<>(columns);
     }
 
     public static List<FilterItem> toTableFilters(
@@ -126,7 +117,7 @@ public final class PhysicalQueryMapper {
                 PhysicalFieldRef ref = resolve(tree, filter.getFieldId());
                 result.add(
                         FilterItem.builder()
-                                .moduleId(ref.moduleId())
+                                .field(ref.tableName() + "." + ref.columnName())
                                 .tableName(ref.tableName())
                                 .columnName(ref.columnName())
                                 .operator(
@@ -136,6 +127,29 @@ public final class PhysicalQueryMapper {
             }
         }
         return result;
+    }
+
+    /** 批量将 FilterItem 集合组装为统一的 MySQL 标准 Predicate AST (以 AND 联结) */
+    public static Predicate toPredicate(Collection<FilterItem> items) {
+        if (items == null || items.isEmpty()) {
+            return null;
+        }
+        List<Predicate> list = new ArrayList<>();
+        for (FilterItem item : items) {
+            if (item != null) {
+                Predicate p = item.toPredicate();
+                if (p != null) {
+                    list.add(p);
+                }
+            }
+        }
+        if (list.isEmpty()) {
+            return null;
+        }
+        if (list.size() == 1) {
+            return list.get(0);
+        }
+        return CompoundPredicate.and(list);
     }
 
     public static List<SortItem> toTableSorts(ModuleTreeDTO tree, Collection<FieldSortItem> sorts) {
@@ -148,9 +162,7 @@ public final class PhysicalQueryMapper {
                 PhysicalFieldRef ref = resolve(tree, sort.getFieldId());
                 result.add(
                         SortItem.builder()
-                                .moduleId(ref.moduleId())
-                                .tableName(ref.tableName())
-                                .columnName(ref.columnName())
+                                .field(ref.tableName() + "." + ref.columnName())
                                 .direction(
                                         sort.getDirection() != null ? sort.getDirection() : "ASC")
                                 .build());
@@ -358,14 +370,36 @@ public final class PhysicalQueryMapper {
 
     // ==================== 3. MenuListReq 平铺表名/过滤/排序映射 ====================
 
-    public static List<TableSpec> toTableSpecs(
+    public static List<String> toColumns(
             List<MenuTableSpec> menuTableSpecs,
             ModuleTreeDTO moduleTree,
             Function<Long, Long> menuToModuleResolver) {
+        Set<String> columns = new LinkedHashSet<>();
         if (CollectionUtils.isEmpty(menuTableSpecs)) {
-            return null;
+            // 为 null 或空时默认查当前模块及其关联子表的全部字段
+            if (moduleTree != null && moduleTree.getModuleMap() != null) {
+                for (ModuleInfo mod : moduleTree.getModuleMap().values()) {
+                    if (mod != null && mod.getFields() != null) {
+                        String modTable = mod.getPrimaryTable();
+                        for (ModuleFieldDTO f : mod.getFields()) {
+                            if (f != null
+                                    && f.getColumnName() != null
+                                    && !f.getColumnName().isBlank()) {
+                                String table =
+                                        (f.getTableName() != null && !f.getTableName().isBlank())
+                                                ? f.getTableName().trim()
+                                                : modTable;
+                                if (table != null && !table.isBlank()) {
+                                    columns.add(table + "." + f.getColumnName().trim());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            return new ArrayList<>(columns);
         }
-        List<TableSpec> result = new ArrayList<>();
+
         for (MenuTableSpec mSpec : menuTableSpecs) {
             if (mSpec == null) {
                 continue;
@@ -395,10 +429,61 @@ public final class PhysicalQueryMapper {
             }
 
             if (table != null && !table.isBlank()) {
-                result.add(TableSpec.of(modId, table, mSpec.getColumns()));
+                if (CollectionUtils.isEmpty(mSpec.getColumns())
+                        || mSpec.getColumns().contains("*")
+                        || mSpec.getColumns().contains(table + ".*")) {
+                    // 为 null 或空（或包含 *）时代表投影该表在模块元数据定义中的所有列
+                    boolean addedFromMeta = false;
+                    if (mod != null && mod.getFields() != null) {
+                        for (ModuleFieldDTO f : mod.getFields()) {
+                            if (f != null
+                                    && f.getColumnName() != null
+                                    && !f.getColumnName().isBlank()) {
+                                String fTable =
+                                        (f.getTableName() != null && !f.getTableName().isBlank())
+                                                ? f.getTableName().trim()
+                                                : table;
+                                if (fTable.equalsIgnoreCase(table)) {
+                                    columns.add(fTable + "." + f.getColumnName().trim());
+                                    addedFromMeta = true;
+                                }
+                            }
+                        }
+                    }
+                    if (!addedFromMeta && moduleTree != null && moduleTree.getFieldMap() != null) {
+                        for (ModuleFieldDTO f : moduleTree.getFieldMap().values()) {
+                            if (f != null
+                                    && f.getColumnName() != null
+                                    && !f.getColumnName().isBlank()) {
+                                String fTable =
+                                        (f.getTableName() != null && !f.getTableName().isBlank())
+                                                ? f.getTableName().trim()
+                                                : null;
+                                if (table.equalsIgnoreCase(fTable)) {
+                                    columns.add(table + "." + f.getColumnName().trim());
+                                    addedFromMeta = true;
+                                }
+                            }
+                        }
+                    }
+                    if (!addedFromMeta) {
+                        columns.add(table + ".*");
+                    }
+                } else {
+                    for (String c : mSpec.getColumns()) {
+                        if (c != null && !c.isBlank()) {
+                            String col = c.trim();
+                            if (col.contains(".")) {
+                                columns.add(col);
+                            } else {
+                                columns.add(table + "." + col);
+                            }
+                        }
+                    }
+                }
             }
         }
-        return result;
+        return new ArrayList<>(columns);
     }
 
     public static Map<String, Set<String>> buildRequestedTableColumnsMap(
@@ -429,7 +514,7 @@ public final class PhysicalQueryMapper {
                     }
                 }
             }
-            addTableSpecToMap(requestedTableColumnsMap, rawTable, cols);
+            addTableColumnsToMap(requestedTableColumnsMap, rawTable, cols);
 
             Long modId =
                     resolveModuleIdForTable(
@@ -439,14 +524,14 @@ public final class PhysicalQueryMapper {
                             menuToModuleResolver);
             ModuleInfo mod = moduleTree != null ? moduleTree.getModule(modId) : null;
             if (mod != null && mod.getPrimaryTable() != null && !mod.getPrimaryTable().isBlank()) {
-                addTableSpecToMap(
+                addTableColumnsToMap(
                         requestedTableColumnsMap, mod.getPrimaryTable().trim().toLowerCase(), cols);
             }
         }
         return requestedTableColumnsMap;
     }
 
-    private static void addTableSpecToMap(
+    private static void addTableColumnsToMap(
             Map<String, Set<String>> map, String table, Set<String> cols) {
         if (table == null || table.isBlank()) {
             return;
@@ -487,7 +572,7 @@ public final class PhysicalQueryMapper {
                     resolveModuleIdForTable(f.getMenuId(), table, moduleTree, menuToModuleResolver);
             result.add(
                     FilterItem.builder()
-                            .moduleId(modId)
+                            .field(table + "." + f.getColumnName().trim())
                             .tableName(table)
                             .columnName(f.getColumnName().trim())
                             .operator(f.getOperator() != null ? f.getOperator() : "EQ")
@@ -518,9 +603,7 @@ public final class PhysicalQueryMapper {
                     resolveModuleIdForTable(s.getMenuId(), table, moduleTree, menuToModuleResolver);
             result.add(
                     SortItem.builder()
-                            .moduleId(modId)
-                            .tableName(table)
-                            .columnName(s.getColumnName().trim())
+                            .field(table + "." + s.getColumnName().trim())
                             .direction(s.getDirection() != null ? s.getDirection() : "DESC")
                             .build());
         }
@@ -601,7 +684,14 @@ public final class PhysicalQueryMapper {
                 if (childNode == null) {
                     continue;
                 }
-                Long subModId = childNode.getModuleId();
+                String childView = childNode.getView();
+                Long subModId = null;
+                if (childView != null && childView.matches("\\d+")) {
+                    try {
+                        subModId = Long.parseLong(childView);
+                    } catch (NumberFormatException ignored) {
+                    }
+                }
                 List<DataRecordItem> childItems = new ArrayList<>();
                 if (childNode.getRecords() != null) {
                     for (DataRow subRow : childNode.getRecords()) {
@@ -636,7 +726,7 @@ public final class PhysicalQueryMapper {
                 childrenNodes.add(
                         ModuleDataNode.builder()
                                 .moduleId(subModId)
-                                .moduleCode(childNode.getModuleCode())
+                                .moduleCode(childView)
                                 .menuId(subMenuId)
                                 .record(childItems)
                                 .build());
@@ -1166,42 +1256,54 @@ public final class PhysicalQueryMapper {
                     );
 
     /**
-     * 为当前物理表查询投影规格列表（{@link TableSpec}）自动补齐各物理表实际存在的平台内置系统级辅助列。
+     * 为当前统一投影列名列表自动补齐各物理表实际存在的平台内置系统级辅助列。
      *
-     * @param tableSpecs 当前物理表查询投影规格列表
+     * @param columns 当前统一投影列名列表（格式为 table.column）
      * @param moduleTree 模块元数据树
      * @param rootModuleId 根模块 ID
      * @param tableColumnsResolver 物理表实际列名解析函数（tableName -&gt; 物理列名集合）
      */
     public static void supplementSystemColumns(
-            List<TableSpec> tableSpecs,
+            List<String> columns,
             ModuleTreeDTO moduleTree,
             Long rootModuleId,
             Function<String, Set<String>> tableColumnsResolver) {
-        supplementSystemColumns(tableSpecs, moduleTree, rootModuleId, tableColumnsResolver, null);
+        supplementSystemColumns(columns, moduleTree, rootModuleId, tableColumnsResolver, null);
     }
 
     /**
-     * 为当前物理表查询投影规格列表（{@link TableSpec}）自动补齐各物理表实际存在的平台内置系统级辅助列，并同步放行 {@code
-     * requestedTableColumnsMap}。
+     * 为当前统一投影列名列表自动补齐各物理表实际存在的平台内置系统级辅助列，并同步放行 {@code requestedTableColumnsMap}。
      *
-     * @param tableSpecs 当前物理表查询投影规格列表
+     * @param columns 当前统一投影列名列表（格式为 table.column）
      * @param moduleTree 模块元数据树
      * @param rootModuleId 根模块 ID
      * @param tableColumnsResolver 物理表实际列名解析函数（tableName -&gt; 物理列名集合）
      * @param requestedTableColumnsMap 调用方显式请求的表列白名单映射（可选，非空时同步放行补入的辅助列）
      */
     public static void supplementSystemColumns(
-            List<TableSpec> tableSpecs,
+            List<String> columns,
             ModuleTreeDTO moduleTree,
             Long rootModuleId,
             Function<String, Set<String>> tableColumnsResolver,
             Map<String, Set<String>> requestedTableColumnsMap) {
-        if (tableSpecs == null || tableColumnsResolver == null) {
+        if (columns == null || tableColumnsResolver == null) {
             return;
         }
 
         Map<String, List<String>> resolvedSysColsCache = new HashMap<>();
+
+        Map<String, Set<String>> existingColsByTable = new LinkedHashMap<>();
+        for (String c : columns) {
+            if (c == null || c.isBlank()) {
+                continue;
+            }
+            int dot = c.indexOf('.');
+            if (dot > 0) {
+                String tbl = c.substring(0, dot).trim().toLowerCase();
+                String col = c.substring(dot + 1).trim().toLowerCase();
+                existingColsByTable.computeIfAbsent(tbl, k -> new LinkedHashSet<>()).add(col);
+            }
+        }
 
         if (moduleTree != null && rootModuleId != null) {
             ModuleInfo rootModule = moduleTree.getModule(rootModuleId);
@@ -1210,74 +1312,37 @@ public final class PhysicalQueryMapper {
                             ? rootModule.getPrimaryTable().trim()
                             : null;
             if (primaryTable != null && !primaryTable.isBlank()) {
-                boolean hasPrimary = false;
-                for (TableSpec spec : tableSpecs) {
-                    if (spec != null && primaryTable.equalsIgnoreCase(spec.getTableName())) {
-                        hasPrimary = true;
-                        break;
-                    }
-                }
-                if (!hasPrimary) {
+                String primaryLower = primaryTable.toLowerCase();
+                if (!existingColsByTable.containsKey(primaryLower)) {
                     List<String> primarySysCols =
                             resolveActualSystemColumns(
                                     primaryTable, tableColumnsResolver, resolvedSysColsCache);
-                    if (!primarySysCols.isEmpty()) {
-                        tableSpecs.add(
-                                TableSpec.of(
-                                        rootModuleId,
-                                        primaryTable,
-                                        new ArrayList<>(primarySysCols)));
+                    for (String sysCol : primarySysCols) {
+                        columns.add(primaryTable + "." + sysCol);
+                        existingColsByTable
+                                .computeIfAbsent(primaryLower, k -> new LinkedHashSet<>())
+                                .add(sysCol.toLowerCase());
                     }
                 }
             }
         }
 
-        for (TableSpec spec : tableSpecs) {
-            if (spec == null || spec.getTableName() == null || spec.getTableName().isBlank()) {
-                continue;
-            }
-            String tableName = spec.getTableName().trim();
-            List<String> currentCols = spec.getColumns();
-            if (currentCols == null) {
-                // columns 为 null 表示全字段投影（包含所有业务字段与系统字段），无需补列，保持 null
-                continue;
-            }
-            boolean hasWildcard = false;
-            for (String c : currentCols) {
-                if (c != null && "*".equals(c.trim())) {
-                    hasWildcard = true;
-                    break;
-                }
-            }
-            if (hasWildcard) {
+        for (Map.Entry<String, Set<String>> entry :
+                new ArrayList<>(existingColsByTable.entrySet())) {
+            String tableName = entry.getKey();
+            Set<String> currentColsLower = entry.getValue();
+            if (currentColsLower.contains("*")) {
                 continue;
             }
 
             List<String> actualSysCols =
                     resolveActualSystemColumns(
                             tableName, tableColumnsResolver, resolvedSysColsCache);
-            if (actualSysCols.isEmpty()) {
-                continue;
-            }
-
-            List<String> mutableCols =
-                    currentCols != null ? new ArrayList<>(currentCols) : new ArrayList<>();
-            Set<String> existingLower = new HashSet<>();
-            for (String c : mutableCols) {
-                if (c != null && !c.isBlank()) {
-                    String cleanC =
-                            c.contains(".") ? c.substring(c.lastIndexOf('.') + 1).trim() : c.trim();
-                    existingLower.add(cleanC.toLowerCase());
-                }
-            }
-
             for (String sysCol : actualSysCols) {
-                String sysColLower = sysCol.toLowerCase();
-                if (existingLower.add(sysColLower)) {
-                    mutableCols.add(sysCol);
+                if (currentColsLower.add(sysCol.toLowerCase())) {
+                    columns.add(tableName + "." + sysCol);
                 }
             }
-            spec.setColumns(mutableCols);
 
             if (requestedTableColumnsMap != null) {
                 Set<String> allowedCols = requestedTableColumnsMap.get(tableName.toLowerCase());
@@ -1333,20 +1398,20 @@ public final class PhysicalQueryMapper {
     public static final Set<String> SYSTEM_SHADOW_COLUMNS = Set.of("nature");
 
     /**
-     * 根据候选字段集合与模块元数据，自动在所属物理表的投影规格（{@link TableSpec}）中补齐缺失的影子投影列。
+     * 根据候选字段集合与模块元数据，自动在统一投影列名列表中补齐缺失的影子投影列。
      *
-     * @param tableSpecs 当前物理表查询投影规格列表
+     * @param columns 当前统一投影列名列表（格式为 table.column）
      * @param moduleTree 模块元数据树
      * @param rootModuleId 根模块 ID
      * @return 本次实际额外补入的影子列标识集合（格式为 {@code tableName.columnName}），供后续结果剥离
      */
     public static Set<String> supplementShadowColumns(
-            List<TableSpec> tableSpecs, ModuleTreeDTO moduleTree, Long rootModuleId) {
-        return supplementShadowColumns(tableSpecs, moduleTree, rootModuleId, SYSTEM_SHADOW_COLUMNS);
+            List<String> columns, ModuleTreeDTO moduleTree, Long rootModuleId) {
+        return supplementShadowColumns(columns, moduleTree, rootModuleId, SYSTEM_SHADOW_COLUMNS);
     }
 
     /**
-     * 根据候选字段集合与模块元数据，自动在所属物理表的投影规格（{@link TableSpec}）中补齐缺失的影子投影列。
+     * 根据候选字段集合与模块元数据，自动在统一投影列名列表中补齐缺失的影子投影列。
      *
      * <p>核心契约与安全机制：
      *
@@ -1360,18 +1425,18 @@ public final class PhysicalQueryMapper {
      *   <li><b>精准剥离</b>：仅记录本次真正额外补入底层 SELECT 的物理列全名（{@code table.column}），供返回前剥离。
      * </ul>
      *
-     * @param tableSpecs 当前物理表查询投影规格列表
+     * @param columns 当前统一投影列名列表（格式为 table.column）
      * @param moduleTree 模块元数据树
      * @param rootModuleId 根模块 ID
      * @param candidateColumns 待检查的候选列名集合
      * @return 本次实际额外补入的影子列标识集合（格式为小写 {@code table.column}），供后续结果剥离
      */
     public static Set<String> supplementShadowColumns(
-            List<TableSpec> tableSpecs,
+            List<String> columns,
             ModuleTreeDTO moduleTree,
             Long rootModuleId,
             Collection<String> candidateColumns) {
-        if (tableSpecs == null
+        if (columns == null
                 || moduleTree == null
                 || rootModuleId == null
                 || candidateColumns == null
@@ -1385,11 +1450,16 @@ public final class PhysicalQueryMapper {
                         ? rootModule.getPrimaryTable().trim()
                         : null;
 
-        // 收集当前查询已涉及的物理表名映射 (lowercase tableName -> TableSpec)
-        Map<String, TableSpec> existingTableSpecMap = new HashMap<>();
-        for (TableSpec spec : tableSpecs) {
-            if (spec != null && spec.getTableName() != null && !spec.getTableName().isBlank()) {
-                existingTableSpecMap.put(spec.getTableName().trim().toLowerCase(), spec);
+        Map<String, Set<String>> existingColsByTable = new LinkedHashMap<>();
+        for (String c : columns) {
+            if (c == null || c.isBlank()) {
+                continue;
+            }
+            int dot = c.indexOf('.');
+            if (dot > 0) {
+                String tbl = c.substring(0, dot).trim().toLowerCase();
+                String col = c.substring(dot + 1).trim().toLowerCase();
+                existingColsByTable.computeIfAbsent(tbl, k -> new LinkedHashSet<>()).add(col);
             }
         }
 
@@ -1399,63 +1469,36 @@ public final class PhysicalQueryMapper {
             if (cand == null || cand.isBlank()) {
                 continue;
             }
-            // 1. 在模块树中解析字段的归属模块、物理表与标准列名（支持主表及跨表解析）
             ShadowFieldTarget target =
                     resolveShadowFieldTarget(moduleTree, rootModuleId, primaryTable, cand.trim());
             if (target == null) {
                 continue;
             }
 
-            String targetTableLower = target.tableName().toLowerCase();
+            String targetTable = target.tableName();
+            String targetTableLower = targetTable.toLowerCase();
             String realColName = target.columnName();
             String realColLower = realColName.toLowerCase();
 
-            // 2. 检查当前查询条件中是否存在该表：
-            //    - 主表始终属于当前分页查询的主体；
-            //    - 其它从表必须在当前查询条件/已有 tableSpecs 中已存在，避免无故强行引入未参与查询的表
-            boolean isPrimary =
-                    primaryTable != null && primaryTable.equalsIgnoreCase(target.tableName());
-            TableSpec targetSpec = existingTableSpecMap.get(targetTableLower);
-            if (targetSpec == null) {
+            boolean isPrimary = primaryTable != null && primaryTable.equalsIgnoreCase(targetTable);
+            Set<String> tableCols = existingColsByTable.get(targetTableLower);
+            if (tableCols == null) {
                 if (!isPrimary) {
                     // 非主表且当前查询未涉及该表，跳过
                     continue;
                 }
-                // 主表尚无 TableSpec 则初始化补入
-                targetSpec = TableSpec.of(target.moduleId(), target.tableName(), new ArrayList<>());
-                tableSpecs.add(targetSpec);
-                existingTableSpecMap.put(targetTableLower, targetSpec);
+                tableCols = new LinkedHashSet<>();
+                existingColsByTable.put(targetTableLower, tableCols);
             }
 
-            // 3. 检查当前查询条件（投影规格）中是否已经存在该列：
-            List<String> currentCols = targetSpec.getColumns();
-            if (currentCols == null) {
-                currentCols = new ArrayList<>();
-                targetSpec.setColumns(currentCols);
-            }
-
-            boolean alreadyExists = false;
-            for (String c : currentCols) {
-                if (c == null) {
-                    continue;
-                }
-                String cleanC =
-                        c.contains(".") ? c.substring(c.lastIndexOf('.') + 1).trim() : c.trim();
-                if ("*".equals(cleanC) || cleanC.equalsIgnoreCase(realColLower)) {
-                    alreadyExists = true;
-                    break;
-                }
-            }
-
-            // 若当前查询条件中已经存在该列，则说明前端/查询原本就包含了它，
-            // 坚决不作为额外补充的影子列，坚决不加入 supplementedKeys，避免后续错误的移除！
-            if (alreadyExists) {
+            if (tableCols.contains("*")) {
                 continue;
             }
 
-            // 当前查询条件中确实不存在，补入底层投影，并记录为影子列以备后续剥离
-            currentCols.add(realColName);
-            supplementedKeys.add(target.tableName().toLowerCase() + "." + realColLower);
+            if (tableCols.add(realColLower)) {
+                columns.add(targetTable + "." + realColName);
+                supplementedKeys.add(targetTableLower + "." + realColLower);
+            }
         }
 
         return supplementedKeys;

@@ -7,10 +7,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
-import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.request.SortItem;
-import com.jdec.platform.data.api.dto.request.TableSpec;
+import com.jdec.platform.data.api.model.predicate.ComparisonPredicate;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -26,39 +25,29 @@ class TableQueryValidatorTest {
         ModuleTreeDTO tree = buildSampleTree();
 
         QueryReq req = new QueryReq();
-        req.setModuleId(1001L);
+        req.setView("1001");
+        req.setColumns(
+                List.of(
+                        "info.id",
+                        "info.company_name",
+                        "info.active",
+                        "info.version_no",
+                        "info.deleted"));
+        req.setFilter(ComparisonPredicate.eq("info.active", 1));
 
-        // 投影 info 表与 member 表，包含配置字段与内置系统字段 (id, active, node_id, parent_node_id)
-        TableSpec infoSpec = new TableSpec();
-        infoSpec.setModuleId(1001L);
-        infoSpec.setTableName("info");
-        infoSpec.setColumns(List.of("id", "company_name", "active", "version_no", "deleted"));
+        QueryReq memberReq = new QueryReq();
+        memberReq.setView("1003");
+        memberReq.setColumns(
+                List.of(
+                        "member.id",
+                        "member.name",
+                        "member.node_id",
+                        "member.parent_node_id",
+                        "member.sort_order"));
+        memberReq.setFilter(ComparisonPredicate.eq("member.node_id", "NODE_001"));
+        memberReq.setSort(List.of(SortItem.asc("member.sort_order")));
 
-        TableSpec memberSpec = new TableSpec();
-        memberSpec.setModuleId(1003L);
-        memberSpec.setTableName("member");
-        memberSpec.setColumns(List.of("id", "name", "node_id", "parent_node_id", "sort_order"));
-
-        req.setTables(List.of(infoSpec, memberSpec));
-
-        // 过滤条件使用 active 与 deleted 等内置辅助列
-        FilterItem filter1 = new FilterItem();
-        filter1.setModuleId(1001L);
-        filter1.setTableName("info");
-        filter1.setColumnName("active");
-        filter1.setValue(1);
-
-        FilterItem filter2 = new FilterItem();
-        filter2.setModuleId(1003L);
-        filter2.setTableName("member");
-        filter2.setColumnName("node_id");
-        filter2.setValue("NODE_001");
-
-        req.setFilters(List.of(filter1, filter2));
-
-        // 排序使用 sort_order 与 id
-        SortItem sortItem = SortItem.asc(1003L, "member", "sort_order");
-        req.setSorts(List.of(sortItem));
+        req.setChildren(List.of(memberReq));
 
         // 校验应顺利通过，不抛出任何异常
         assertThatCode(() -> TableQueryValidator.validate(req, tree)).doesNotThrowAnyException();
@@ -70,13 +59,8 @@ class TableQueryValidatorTest {
         ModuleTreeDTO tree = buildSampleTree();
 
         QueryReq req = new QueryReq();
-        req.setModuleId(1001L);
-
-        TableSpec infoSpec = new TableSpec();
-        infoSpec.setModuleId(1001L);
-        infoSpec.setTableName("info");
-        infoSpec.setColumns(List.of("company_name", "secret_unauthorized_column"));
-        req.setTables(List.of(infoSpec));
+        req.setView("1001");
+        req.setColumns(List.of("info.company_name", "info.secret_unauthorized_column"));
 
         assertThatThrownBy(() -> TableQueryValidator.validate(req, tree))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -89,13 +73,8 @@ class TableQueryValidatorTest {
         ModuleTreeDTO tree = buildSampleTree();
 
         QueryReq req = new QueryReq();
-        req.setModuleId(1001L);
-
-        TableSpec fakeSpec = new TableSpec();
-        fakeSpec.setModuleId(1001L);
-        fakeSpec.setTableName("sys_user_password");
-        fakeSpec.setColumns(List.of("id"));
-        req.setTables(List.of(fakeSpec));
+        req.setView("1001");
+        req.setColumns(List.of("sys_user_password.id"));
 
         assertThatThrownBy(() -> TableQueryValidator.validate(req, tree))
                 .isInstanceOf(IllegalArgumentException.class)

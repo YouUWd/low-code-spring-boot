@@ -52,6 +52,11 @@ public class ModuleInfo {
     @Schema(description = "是否启用变更申请: 0-否, 1-是", example = "0")
     private Integer enableChange;
 
+    @Schema(
+            description = "相对父模块的基数关系 (如 1:1, 1:N / ONE_TO_ONE, ONE_TO_MANY)",
+            example = "ONE_TO_MANY")
+    private String cardinality;
+
     @Schema(description = "物理字段字典列表 (sys_module_field)")
     private List<ModuleFieldDTO> fields;
 }

@@ -15,16 +15,7 @@ import org.springframework.stereotype.Service;
 /**
  * 动态持久化服务门面 (DataPersistenceService)
  *
- * <p>彻底基于 SavePlan 编译与执行模型驱动：
- *
- * <ul>
- *   <li>1. 由 PlanMetaLoader 取一份元数据快照（模块树 + 表关系）；
- *   <li>2. 由 SavePlanCompiler 以该快照递归编译保存树并解析父子外键传播规则；
- *   <li>3. 由 SavePlanExecutor 在单事务内执行拓扑有序落库与外键自动回填；
- *   <li>4. 返回强类型同构的 DataSaveResp。
- * </ul>
- *
- * <p>元数据快照在**编译前**取好，事务只覆盖落库（{@link SavePlanExecutor} 上的 {@code @Transactional}）， 因此编译过程不会被业务事务干扰。
+ * <p>基于 SavePlan 编译与执行模型驱动，支持读写 100% 同构的自相似 View 树保存。
  */
 @Slf4j
 @Service
@@ -45,13 +36,11 @@ public class DataPersistenceService {
         SavePlan plan = savePlanCompiler.compile(block, meta);
         Long rootId = savePlanExecutor.execute(plan);
         if (block != null
-                && block.getModuleCode() == null
+                && block.getView() == null
                 && meta != null
-                && meta.hasModuleTree()) {
-            block.setModuleCode(meta.moduleTree().getRootModule().getModuleCode());
-        }
-        if (block != null && block.getModuleId() == null && meta != null && meta.hasModuleTree()) {
-            block.setModuleId(meta.moduleTree().getRootModuleId());
+                && meta.hasModuleTree()
+                && meta.moduleTree().getRootModule() != null) {
+            block.setView(meta.moduleTree().getRootModule().getModuleCode());
         }
         return DataSaveResp.builder().rootId(rootId).data(block).build();
     }
@@ -62,15 +51,14 @@ public class DataPersistenceService {
         return savePlanExecutor.executeAndCollectIds(plan);
     }
 
-    /** 根模块 ID 无法解析时返回 null，把「空请求」的错误信息统一交给编译器抛出。 */
+    /** 视图无法解析时返回 null，把「空请求」的错误信息统一交给编译器抛出。 */
     private PlanMeta loadMetaOrNull(DataBlock block) {
         if (block == null) {
             return null;
         }
-        Long moduleId = SavePlanCompiler.resolveRootModuleId(block);
-        String moduleCode = block.getModuleCode();
-        if (moduleId != null || (moduleCode != null && !moduleCode.isBlank())) {
-            return planMetaLoader.load(moduleId, moduleCode);
+        String view = block.getView();
+        if (view != null && !view.isBlank()) {
+            return planMetaLoader.loadByView(view);
         }
         return null;
     }

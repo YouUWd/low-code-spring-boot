@@ -1,57 +1,92 @@
 package com.jdec.platform.data.api.dto.request;
 
-import com.jdec.platform.data.api.model.predicate.ColumnRef;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.jdec.platform.data.api.model.predicate.ComparisonPredicate;
 import com.jdec.platform.data.api.model.predicate.CompoundPredicate;
 import com.jdec.platform.data.api.model.predicate.Predicate;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-/** 结构化过滤条件项 (FilterItem，基于物理表名与列名) */
+/**
+ * 结构化过滤条件项 (FilterItem)
+ *
+ * <p>兼容过渡对象，核心逻辑建议直接使用 {@link Predicate} AST。
+ */
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Schema(description = "结构化过滤条件项（基于表名与列名驱动，支持树形条件组）")
+@Schema(description = "结构化过滤条件项 (基于物理表与列名)")
 public class FilterItem implements Serializable {
 
-    @Schema(description = "所属模块 ID (多模块同表或指定子模块过滤时建议显式指定)", example = "1001")
-    private Long moduleId;
+    @Schema(description = "统一字段标识 (table.column 格式，如 info.status)", example = "info.status")
+    @JsonProperty("field")
+    private String field;
 
     @Schema(description = "物理表名 (单表或根表查询时可缺省)", example = "info")
     private String tableName;
 
-    @Schema(description = "物理列名 (如 company_name 或 id)，单条件时必填", example = "company_name")
+    @Schema(description = "物理列名 (如 company_name 或 id)", example = "company_name")
     private String columnName;
 
     @Schema(
             description = "操作符: EQ, NEQ, LIKE, GT, GTE, LT, LTE, IN, BETWEEN, IS_NULL, IS_NOT_NULL",
-            example = "LIKE")
+            example = "EQ")
+    @JsonProperty("op")
     private String operator;
 
-    @Schema(description = "检索值 (单值如 '腾讯科技'，区间如 [90, 100]，多选如 ['A', 'B'])", example = "科技")
+    @Schema(description = "检索值", example = "1")
     private Object value;
 
-    @Schema(
-            description = "父子条件组合逻辑: AND, OR (用于连接当前节点自身条件与 children 子条件集合，默认为 AND)",
-            example = "AND")
+    @Schema(description = "父子条件组合逻辑: AND, OR", example = "AND")
     private String logic;
 
-    @Schema(description = "嵌套子过滤条件列表（同级 filters 列表及同一 children 列表内部均固定使用 AND 拼接）")
+    @Schema(description = "嵌套子过滤条件列表")
     private List<FilterItem> children;
+
+    public String getTableName() {
+        if (tableName != null && !tableName.isBlank()) {
+            return tableName.trim();
+        }
+        if (field != null && field.contains(".")) {
+            return field.substring(0, field.indexOf('.')).trim();
+        }
+        return tableName;
+    }
+
+    public String getColumnName() {
+        if (columnName != null && !columnName.isBlank()) {
+            return columnName.contains(".")
+                    ? columnName.substring(columnName.lastIndexOf('.') + 1).trim()
+                    : columnName.trim();
+        }
+        if (field != null && field.contains(".")) {
+            return field.substring(field.indexOf('.') + 1).trim();
+        }
+        return field != null ? field.trim() : null;
+    }
+
+    public String getField() {
+        if (field != null && !field.isBlank()) {
+            return field.trim();
+        }
+        if (tableName != null && columnName != null) {
+            return tableName.trim() + "." + getColumnName();
+        }
+        return columnName;
+    }
 
     public static FilterItem eq(String tableName, String columnName, Object value) {
         return FilterItem.builder()
                 .tableName(tableName)
                 .columnName(columnName)
+                .field(tableName != null ? tableName + "." + columnName : columnName)
                 .operator("EQ")
                 .value(value)
                 .build();
@@ -65,6 +100,7 @@ public class FilterItem implements Serializable {
         return FilterItem.builder()
                 .tableName(tableName)
                 .columnName(columnName)
+                .field(tableName != null ? tableName + "." + columnName : columnName)
                 .operator("NEQ")
                 .value(value)
                 .build();
@@ -78,6 +114,7 @@ public class FilterItem implements Serializable {
         return FilterItem.builder()
                 .tableName(tableName)
                 .columnName(columnName)
+                .field(tableName != null ? tableName + "." + columnName : columnName)
                 .operator("LIKE")
                 .value(value)
                 .build();
@@ -91,6 +128,7 @@ public class FilterItem implements Serializable {
         return FilterItem.builder()
                 .tableName(tableName)
                 .columnName(columnName)
+                .field(tableName != null ? tableName + "." + columnName : columnName)
                 .operator("IN")
                 .value(value)
                 .build();
@@ -104,6 +142,7 @@ public class FilterItem implements Serializable {
         return FilterItem.builder()
                 .tableName(tableName)
                 .columnName(columnName)
+                .field(tableName != null ? tableName + "." + columnName : columnName)
                 .operator("NOT_IN")
                 .value(value)
                 .build();
@@ -117,6 +156,7 @@ public class FilterItem implements Serializable {
         return FilterItem.builder()
                 .tableName(tableName)
                 .columnName(columnName)
+                .field(tableName != null ? tableName + "." + columnName : columnName)
                 .operator("GT")
                 .value(value)
                 .build();
@@ -130,6 +170,7 @@ public class FilterItem implements Serializable {
         return FilterItem.builder()
                 .tableName(tableName)
                 .columnName(columnName)
+                .field(tableName != null ? tableName + "." + columnName : columnName)
                 .operator("GTE")
                 .value(value)
                 .build();
@@ -143,6 +184,7 @@ public class FilterItem implements Serializable {
         return FilterItem.builder()
                 .tableName(tableName)
                 .columnName(columnName)
+                .field(tableName != null ? tableName + "." + columnName : columnName)
                 .operator("LT")
                 .value(value)
                 .build();
@@ -156,6 +198,7 @@ public class FilterItem implements Serializable {
         return FilterItem.builder()
                 .tableName(tableName)
                 .columnName(columnName)
+                .field(tableName != null ? tableName + "." + columnName : columnName)
                 .operator("LTE")
                 .value(value)
                 .build();
@@ -169,6 +212,7 @@ public class FilterItem implements Serializable {
         return FilterItem.builder()
                 .tableName(tableName)
                 .columnName(columnName)
+                .field(tableName != null ? tableName + "." + columnName : columnName)
                 .operator("IS_NULL")
                 .build();
     }
@@ -181,6 +225,7 @@ public class FilterItem implements Serializable {
         return FilterItem.builder()
                 .tableName(tableName)
                 .columnName(columnName)
+                .field(tableName != null ? tableName + "." + columnName : columnName)
                 .operator("IS_NOT_NULL")
                 .build();
     }
@@ -190,42 +235,27 @@ public class FilterItem implements Serializable {
     }
 
     public static FilterItem between(
-            String tableName, String columnName, Object lower, Object upper) {
+            String tableName, String columnName, Object start, Object end) {
         return FilterItem.builder()
                 .tableName(tableName)
                 .columnName(columnName)
+                .field(tableName != null ? tableName + "." + columnName : columnName)
                 .operator("BETWEEN")
-                .value(List.of(lower, upper))
+                .value(List.of(start, end))
                 .build();
     }
 
-    public static FilterItem between(String columnName, Object lower, Object upper) {
-        return between(null, columnName, lower, upper);
-    }
-
-    public static FilterItem and(List<FilterItem> children) {
-        return FilterItem.builder().logic("AND").children(children).build();
-    }
-
-    public static FilterItem and(FilterItem... children) {
-        return and(children != null ? Arrays.asList(children) : Collections.emptyList());
-    }
-
-    public static FilterItem or(List<FilterItem> children) {
-        return FilterItem.builder().logic("OR").children(children).build();
-    }
-
-    public static FilterItem or(FilterItem... children) {
-        return or(children != null ? Arrays.asList(children) : Collections.emptyList());
+    public static FilterItem between(String columnName, Object start, Object end) {
+        return between(null, columnName, start, end);
     }
 
     /** 将当前 FilterItem 转换为统一规范的 Predicate AST */
     public Predicate toPredicate() {
-        boolean hasSelf = this.columnName != null && !this.columnName.isBlank();
+        String f = getField();
+        boolean hasSelf = f != null && !f.isBlank();
         Predicate selfPred = null;
         if (hasSelf) {
-            var colRef = ColumnRef.of(this.moduleId, this.tableName, this.columnName);
-            selfPred = ComparisonPredicate.of(colRef, this.operator, this.value);
+            selfPred = ComparisonPredicate.of(f, this.operator, this.value);
         }
 
         if (this.children == null || this.children.isEmpty()) {
@@ -235,7 +265,7 @@ public class FilterItem implements Serializable {
         List<Predicate> childPreds = new ArrayList<>();
         for (FilterItem child : this.children) {
             if (child != null) {
-                var cp = child.toPredicate();
+                Predicate cp = child.toPredicate();
                 if (cp != null) {
                     childPreds.add(cp);
                 }
@@ -267,20 +297,11 @@ public class FilterItem implements Serializable {
             return null;
         }
         if (pred instanceof ComparisonPredicate comp) {
-            String tbl = null;
-            String col = null;
-            Long mid = null;
-            if (comp.getExpression() instanceof ColumnRef cr) {
-                tbl = cr.getTableName();
-                col = cr.getColumnName();
-                mid = cr.getModuleId();
-            } else if (comp.getExpression() != null) {
-                col = comp.getExpression().toString();
-            }
+            String f = comp.getField();
             return FilterItem.builder()
-                    .moduleId(mid)
-                    .tableName(tbl)
-                    .columnName(col)
+                    .field(f)
+                    .tableName(comp.getTableName())
+                    .columnName(comp.getColumnName())
                     .operator(comp.getOperator())
                     .value(comp.getValue())
                     .build();
@@ -288,8 +309,8 @@ public class FilterItem implements Serializable {
         if (pred instanceof CompoundPredicate comp) {
             List<FilterItem> childItems = new ArrayList<>();
             if (comp.getPredicates() != null) {
-                for (var p : comp.getPredicates()) {
-                    var item = fromPredicate(p);
+                for (Predicate p : comp.getPredicates()) {
+                    FilterItem item = fromPredicate(p);
                     if (item != null) {
                         childItems.add(item);
                     }
@@ -298,5 +319,30 @@ public class FilterItem implements Serializable {
             return FilterItem.builder().logic(comp.getOperator()).children(childItems).build();
         }
         return null;
+    }
+
+    /** 将 Predicate AST 扁平化提取为叶子 FilterItem 列表 */
+    public static List<FilterItem> fromPredicateToList(Predicate pred) {
+        List<FilterItem> list = new ArrayList<>();
+        if (pred == null) {
+            return list;
+        }
+        if (pred instanceof ComparisonPredicate comp) {
+            list.add(
+                    FilterItem.builder()
+                            .field(comp.getField())
+                            .tableName(comp.getTableName())
+                            .columnName(comp.getColumnName())
+                            .operator(comp.getOperator())
+                            .value(comp.getValue())
+                            .build());
+        } else if (pred instanceof CompoundPredicate comp) {
+            if (comp.getPredicates() != null) {
+                for (Predicate p : comp.getPredicates()) {
+                    list.addAll(fromPredicateToList(p));
+                }
+            }
+        }
+        return list;
     }
 }

@@ -39,8 +39,8 @@ public interface DataApi {
     List<DataOptionResp> getOptions(OptionReq req);
 
     /** 单据全量物理模块树精准查询快捷方法 (抓取指定模块及其伴生表、所有子孙表全部字段) */
-    default DataBlock getFullDetail(Long moduleId, Long id) {
-        return getDetail(DetailQueryReq.builder().moduleId(moduleId).id(id).build());
+    default DataBlock getFullDetail(String view, Long id) {
+        return getDetail(DetailQueryReq.builder().view(view).id(id).build());
     }
 
     // ==================== 单表轻量操作契约 (Single Table APIs) ====================

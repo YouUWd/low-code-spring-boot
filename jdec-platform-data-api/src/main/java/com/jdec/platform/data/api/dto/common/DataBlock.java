@@ -3,10 +3,8 @@ package com.jdec.platform.data.api.dto.common;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.jdec.platform.data.api.dto.response.DataPage;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import lombok.AllArgsConstructor;
@@ -15,14 +13,14 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * 自相似模块数据区块 (DataBlock)
+ * 自相似视图数据区块 (DataBlock)
  *
  * <p>数据引擎读写同构的核心载体：
  *
  * <ul>
  *   <li>1. 详情查询 (getDetail) 的出参实体；
  *   <li>2. 保存更新 (save) 的入参实体 (读写 100% 同源强约束)；
- *   <li>3. 行记录 (DataRow) 内部自相似挂载的子区块 (children)。
+ *   <li>3. 行记录 (DataRow) 内部自相似挂载的子视图区块 (children)。
  * </ul>
  */
 @Data
@@ -30,63 +28,47 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 @JsonInclude(JsonInclude.Include.NON_NULL)
-@Schema(description = "自相似模块数据区块 (读写同构核心实体)")
+@Schema(description = "自相似视图数据区块 (读写同构核心实体)")
 public class DataBlock implements Serializable {
 
-    @Schema(description = "业务模块 ID", example = "1001")
-    private Long moduleId;
+    @Schema(description = "业务视图编码", example = "COMPANY")
+    @JsonProperty("view")
+    private String view;
 
-    @Schema(description = "业务模块编码", example = "COMPANY-ROOT")
-    @JsonProperty("module_code")
-    private String moduleCode;
+    @Schema(description = "总记录数 (分页时呈现，全量时为 null)", example = "100")
+    @JsonProperty("total")
+    private Long total;
 
     @Schema(description = "区块内的行记录列表")
+    @JsonProperty("records")
     private List<DataRow> records;
 
-    /** 便捷工厂：根据模块 ID 与多行记录构建 */
-    public static DataBlock of(Long moduleId, List<DataRow> records) {
-        return DataBlock.builder().moduleId(moduleId).records(records).build();
+    // ==================== 便捷工厂 ====================
+
+    /** 便捷工厂：根据视图编码与多行记录构建 */
+    public static DataBlock of(String view, List<DataRow> records) {
+        return DataBlock.builder().view(view).records(records).build();
     }
 
-    /** 便捷工厂：根据模块 ID、模块编码与多行记录构建 */
-    public static DataBlock of(Long moduleId, String moduleCode, List<DataRow> records) {
-        return DataBlock.builder()
-                .moduleId(moduleId)
-                .moduleCode(moduleCode)
-                .records(records)
-                .build();
+    /** 便捷工厂：根据视图编码、多行记录与总条数构建 */
+    public static DataBlock of(String view, List<DataRow> records, Long total) {
+        return DataBlock.builder().view(view).records(records).total(total).build();
     }
 
-    /** 便捷工厂：根据模块 ID 与单行记录构建 */
-    public static DataBlock of(Long moduleId, DataRow singleRecord) {
+    /** 便捷工厂：根据视图编码与单行记录构建 */
+    public static DataBlock of(String view, DataRow singleRecord) {
         return DataBlock.builder()
-                .moduleId(moduleId)
+                .view(view)
                 .records(singleRecord != null ? List.of(singleRecord) : Collections.emptyList())
                 .build();
     }
 
-    /** 便捷工厂：根据模块 ID、模块编码与单行记录构建 */
-    public static DataBlock of(Long moduleId, String moduleCode, DataRow singleRecord) {
-        return DataBlock.builder()
-                .moduleId(moduleId)
-                .moduleCode(moduleCode)
-                .records(singleRecord != null ? List.of(singleRecord) : Collections.emptyList())
-                .build();
+    /** 空区块工厂 (带视图编码) */
+    public static DataBlock empty(String view) {
+        return DataBlock.builder().view(view).records(Collections.emptyList()).build();
     }
 
-    /** 空区块工厂 */
-    public static DataBlock empty(Long moduleId) {
-        return DataBlock.builder().moduleId(moduleId).records(Collections.emptyList()).build();
-    }
-
-    /** 空区块工厂 (带模块编码) */
-    public static DataBlock empty(Long moduleId, String moduleCode) {
-        return DataBlock.builder()
-                .moduleId(moduleId)
-                .moduleCode(moduleCode)
-                .records(Collections.emptyList())
-                .build();
-    }
+    // ==================== 实用辅助方法 ====================
 
     /** 获取首条单据主记录 (单据详情场景便捷访问) */
     @JsonIgnore
@@ -116,23 +98,12 @@ public class DataBlock implements Serializable {
         if (row == null) {
             return this;
         }
-        if (records == null) {
-            records = new ArrayList<>();
-        } else if (!(records instanceof ArrayList)) {
-            records = new ArrayList<>(records);
+        if (this.records == null) {
+            this.records = new java.util.ArrayList<>();
+        } else if (!(this.records instanceof java.util.ArrayList)) {
+            this.records = new java.util.ArrayList<>(this.records);
         }
-        records.add(row);
+        this.records.add(row);
         return this;
-    }
-
-    /** 从首条主记录中查找指定子模块的子数据区块 */
-    public DataBlock findChild(Long childModuleId) {
-        DataRow first = getFirstRecord();
-        return first != null ? first.getChild(childModuleId) : null;
-    }
-
-    /** 包装为标准分页响应 */
-    public DataPage<DataBlock> toPage(Integer pageNo, Integer pageSize, Long total) {
-        return DataPage.of(this, pageNo, pageSize, total);
     }
 }

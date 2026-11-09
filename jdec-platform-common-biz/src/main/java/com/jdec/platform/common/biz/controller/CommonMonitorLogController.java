@@ -61,6 +61,29 @@ public class CommonMonitorLogController {
         }
     }
 
+    @GetMapping("/operate/exists")
+    @Operation(
+            summary = "单据操作日志存在性判断",
+            description =
+                    "按菜单id + 单据id判断该单据是否存在操作日志：先由菜单id反查模块id，"
+                            + "再查操作日志索引表 monitor_operate_index 是否有关联记录；"
+                            + "与「单据操作日志查询」接口传参保持一致，仅返回是否存在")
+    public ApiResponse<Boolean> existsOperateLog(
+            @RequestParam Long menuId, @RequestParam Long dataId) {
+        try {
+            boolean exists = monitorLogApi.existsOperateLog(menuId, dataId);
+            return ApiResponse.success(exists);
+        } catch (Exception ex) {
+            log.error(
+                    "Common monitor-log existsOperateLog failed: menuId={}, dataId={}, err={}",
+                    menuId,
+                    dataId,
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
     @GetMapping("/operate")
     @Operation(
             summary = "单据操作日志查询",

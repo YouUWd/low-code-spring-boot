@@ -8,6 +8,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import java.io.Serializable;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.function.Function;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -69,22 +70,12 @@ public class DataPage<T> implements Serializable {
                 .build();
     }
 
-    public static DataPage<DataBlock> empty(Long moduleId, Integer pageNo, Integer pageSize) {
+    public static DataPage<DataBlock> empty(String view, Integer pageNo, Integer pageSize) {
         return DataPage.<DataBlock>builder()
                 .pageNo(pageNo != null ? pageNo : 1)
                 .pageSize(pageSize != null ? pageSize : 20)
                 .total(0L)
-                .data(DataBlock.empty(moduleId))
-                .build();
-    }
-
-    public static DataPage<DataBlock> empty(
-            Long moduleId, String moduleCode, Integer pageNo, Integer pageSize) {
-        return DataPage.<DataBlock>builder()
-                .pageNo(pageNo != null ? pageNo : 1)
-                .pageSize(pageSize != null ? pageSize : 20)
-                .total(0L)
-                .data(DataBlock.empty(moduleId, moduleCode))
+                .data(DataBlock.empty(view))
                 .build();
     }
 
@@ -131,17 +122,31 @@ public class DataPage<T> implements Serializable {
         if (data instanceof DataBlock block) {
             return block.getRecords() != null ? block.getRecords() : Collections.emptyList();
         }
-        if (data instanceof List<?>) {
-            return (List<DataRow>) data;
+        if (data instanceof List<?> list) {
+            if (list.isEmpty()) {
+                return Collections.emptyList();
+            }
+            if (list.get(0) instanceof DataRow) {
+                return (List<DataRow>) data;
+            }
+            if (list.get(0) instanceof Map<?, ?>) {
+                java.util.List<DataRow> converted = new java.util.ArrayList<>(list.size());
+                for (Object item : list) {
+                    if (item instanceof Map<?, ?> map) {
+                        converted.add(DataRow.of((Map<String, Object>) map));
+                    }
+                }
+                return converted;
+            }
         }
         return Collections.emptyList();
     }
 
-    /** 快捷获取根模块 ID (当 data 为 DataBlock 时) */
+    /** 快捷获取业务视图编码 (当 data 为 DataBlock 时) */
     @JsonIgnore
-    public Long getModuleId() {
+    public String getView() {
         if (data instanceof DataBlock block) {
-            return block.getModuleId();
+            return block.getView();
         }
         return null;
     }

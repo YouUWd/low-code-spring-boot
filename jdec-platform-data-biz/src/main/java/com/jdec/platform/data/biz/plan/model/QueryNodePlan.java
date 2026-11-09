@@ -24,6 +24,9 @@ public class QueryNodePlan {
     /** 模块 ID */
     private Long moduleId;
 
+    /** 请求视图名/编码 (若请求指定则保留，否则 fallback 至 moduleCode/primaryTable/moduleId) */
+    private String view;
+
     /** 完整模块配置元数据 */
     private ModuleInfo moduleMeta;
 

@@ -14,14 +14,16 @@ import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.DetailQueryReq;
 import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.QueryReq;
-import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.data.api.dto.response.DataPage;
+import com.jdec.platform.data.api.model.predicate.ComparisonPredicate;
+import com.jdec.platform.data.api.model.predicate.CompoundPredicate;
 import com.jdec.platform.data.biz.plan.PlanMeta;
 import com.jdec.platform.data.biz.plan.PlanMetaLoader;
 import com.jdec.platform.data.biz.plan.assembler.TreeResultAssembler;
 import com.jdec.platform.data.biz.plan.compiler.QueryPlanCompiler;
 import com.jdec.platform.data.biz.plan.compiler.SavePlanCompiler;
 import com.jdec.platform.data.biz.plan.executor.QueryPlanExecutor;
+import com.jdec.platform.data.biz.plan.model.QueryPlan;
 import com.jdec.platform.data.biz.plan.model.SaveNodePlan;
 import com.jdec.platform.data.biz.plan.model.SavePlan;
 import com.jdec.platform.data.biz.service.DataQueryService;
@@ -38,7 +40,6 @@ import org.jooq.tools.jdbc.MockConnection;
 import org.jooq.tools.jdbc.MockDataProvider;
 import org.jooq.tools.jdbc.MockResult;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -67,7 +68,7 @@ import org.junit.jupiter.api.Test;
  *
  * <ul>
  *   <li>族 1 契约基线 —— 断言重构后的<b>实际正确行为</b>，必须全绿；
- *   <li>族 2 缺陷锚点 —— 断言<b>应有行为</b>，当前实现不满足，统一 {@code @Disabled} 并注明原因， 修复后去掉注解即为验收断言。
+ *   <li>族 2 缺陷锚点 —— 记录重构演进中捕获的缺陷锚点，已全部修复落地并常绿运行。
  * </ul>
  */
 class CompanyDataContractTest {
@@ -99,12 +100,20 @@ class CompanyDataContractTest {
 
     private static void add(
             long mid, String name, String pt, long parent, List<ModuleFieldDTO> fl) {
+        String card = null;
+        if (mid == 1003L || mid == 1004L || mid == 1008L) {
+            card = "ONE_TO_MANY";
+        } else if (mid == 1002L || mid == 1005L || mid == 1010L) {
+            card = "ONE_TO_ONE";
+        }
         ModuleInfo mi =
                 ModuleInfo.builder()
                         .moduleId(mid)
+                        .moduleCode(pt != null && !pt.isBlank() ? pt : String.valueOf(mid))
                         .moduleName(name)
                         .primaryTable(pt)
                         .parentId(parent)
+                        .cardinality(card)
                         .fields(fl)
                         .build();
         MODS.put(mid, mi);
@@ -319,6 +328,10 @@ class CompanyDataContractTest {
                                 moduleTreeLoads.incrementAndGet();
                                 return treeFor(invocation.getArgument(2));
                             }
+                            if ("getProjectModuleTree".equals(name)) {
+                                moduleTreeLoads.incrementAndGet();
+                                return List.of(treeFor(1001L));
+                            }
                             if ("getProjectTableRelations".equals(name)) {
                                 return PROJ;
                             }
@@ -366,6 +379,25 @@ class CompanyDataContractTest {
                         tables.add(m.group(1));
                         cols.add(m.group(2));
                         aliases.add(m.group(3));
+                    }
+                    if (aliases.isEmpty()) {
+                        Matcher tm = Pattern.compile("from\\s+`?(\\w+)`?").matcher(sql);
+                        if (tm.find()) {
+                            String tbl = tm.group(1);
+                            tables.add(tbl);
+                            cols.add("id");
+                            aliases.add("id");
+                            for (ModuleFieldDTO f : FMAP.values()) {
+                                if (tbl.equalsIgnoreCase(f.getTableName())
+                                        && f.getColumnName() != null
+                                        && !"id".equalsIgnoreCase(f.getColumnName())
+                                        && !cols.contains(f.getColumnName())) {
+                                    tables.add(tbl);
+                                    cols.add(f.getColumnName());
+                                    aliases.add(f.getColumnName());
+                                }
+                            }
+                        }
                     }
                     if (aliases.isEmpty()) {
                         return new MockResult[] {new MockResult(0, c.newResult())};
@@ -469,7 +501,7 @@ class CompanyDataContractTest {
         void rootRecordIsUnwrappedAndModuleIdMovesToPage() {
             DataPage<DataBlock> page = queryService.query(req(1001L, List.of(10001L, 10002L)));
 
-            assertEquals(1001L, page.getModuleId(), "DataPage 必须携带根模块 ID");
+            assertEquals("info", page.getView(), "DataPage 必须携带根模块视图编码");
             assertEquals(15L, page.getTotal());
             assertEquals(1, page.getRecords().size());
 
@@ -482,7 +514,7 @@ class CompanyDataContractTest {
         }
 
         @Test
-        @DisplayName("C02 1:1 子模块挂到行级 children 数组，元素为 {moduleId, records}")
+        @DisplayName("C02 1:1 子模块挂到行级 children 数组，元素为 {view, records}")
         void oneToOneChildMountedUnderChildrenArray() {
             DataPage<DataBlock> page =
                     queryService.query(req(1001L, List.of(10001L, 10002L, 10011L, 10012L)));
@@ -491,7 +523,7 @@ class CompanyDataContractTest {
             List<DataBlock> children = childrenOf(row);
             assertEquals(1, children.size(), "只涉及 1002，应恰好 1 个 children 节点");
             DataBlock node = children.get(0);
-            assertEquals(1002, node.getModuleId().intValue());
+            assertEquals("basic_info", node.getView());
             assertNotNull(node.getRecords(), "records 必须是数组");
 
             List<DataRow> recs = node.getRecords();
@@ -510,7 +542,7 @@ class CompanyDataContractTest {
             List<DataBlock> children = childrenOf(row);
             assertEquals(1, children.size());
             DataBlock node = children.get(0);
-            assertEquals(1003, node.getModuleId().intValue());
+            assertEquals("member", node.getView());
 
             List<DataRow> recs = node.getRecords();
             assertEquals(2, recs.size(), "member 有 2 行，1:N 必须全部返回");
@@ -526,14 +558,14 @@ class CompanyDataContractTest {
             DataRow row = page.getRecords().get(0);
 
             DataBlock memberNode = childrenOf(row).get(0);
-            assertEquals(1003, memberNode.getModuleId().intValue());
+            assertEquals("member", memberNode.getView());
 
             List<DataRow> memberRecs = memberNode.getRecords();
             DataRow firstMember = memberRecs.get(0);
 
             List<DataBlock> grand = childrenOf(firstMember);
             assertEquals(1, grand.size());
-            assertEquals(1004, grand.get(0).getModuleId().intValue());
+            assertEquals("member_contact", grand.get(0).getView());
 
             List<DataRow> contactRecs = grand.get(0).getRecords();
             assertEquals(
@@ -581,7 +613,7 @@ class CompanyDataContractTest {
             DataRow row = page.getRecords().get(0);
 
             assertNotNull(row.getChildren(), "虚拟模块也走行级 children");
-            assertEquals(1020, childNode(row, 1020L).getModuleId().intValue());
+            assertEquals("1020", childNode(row, 1020L).getView());
         }
 
         @Test
@@ -629,16 +661,18 @@ class CompanyDataContractTest {
         @DisplayName("C11 getDetail 的 records[0] 与 query 的 records[0] 结构同构")
         void getDetailDataIsIsomorphicToQueryRecord() {
             List<Long> fields = List.of(10001L, 10002L, 10011L, 10012L);
-            DataRow fromQuery = queryService.query(req(1001L, fields)).getRecords().get(0);
+            QueryReq req = req(1001L, fields);
+            DataRow fromQuery = queryService.query(req).getRecords().get(0);
 
             DataBlock detail =
                     queryService.getDetail(
                             DetailQueryReq.builder()
-                                    .moduleId(1001L)
+                                    .view("info")
                                     .id(1L)
-                                    .tables(specs(1001L, fields))
+                                    .columns(req.getColumns())
+                                    .children(req.getChildren())
                                     .build());
-            assertEquals(1001L, detail.getModuleId());
+            assertEquals("info", detail.getView());
             assertNotNull(detail.getRecords());
             assertFalse(detail.getRecords().isEmpty());
             DataRow fromDetail = detail.getRecords().get(0);
@@ -646,8 +680,8 @@ class CompanyDataContractTest {
             assertEquals(
                     fromQuery.getTables().keySet(), fromDetail.getTables().keySet(), "key 集合必须一致");
             assertEquals(
-                    childrenOf(fromQuery).get(0).getModuleId(),
-                    childrenOf(fromDetail).get(0).getModuleId());
+                    childrenOf(fromQuery).get(0).getView(),
+                    childrenOf(fromDetail).get(0).getView());
         }
 
         @Test
@@ -659,7 +693,7 @@ class CompanyDataContractTest {
                             .getRecords()
                             .get(0);
 
-            DataBlock saveBlock = DataBlock.builder().moduleId(1001L).records(List.of(row)).build();
+            DataBlock saveBlock = DataBlock.builder().view("info").records(List.of(row)).build();
             SavePlan plan = savePlanCompiler.compile(saveBlock, metaFor(1001L));
 
             SaveNodePlan root = plan.getRootNodePlan();
@@ -726,9 +760,30 @@ class CompanyDataContractTest {
             // 1008(financial_account) 挂在虚拟模块 1007 之下；对它过滤必须穿透 1007 上卷到根 1001。
             QueryReq req =
                     QueryReq.builder()
-                            .moduleId(1001L)
-                            .tables(specs(1001L, List.of(10001L, 10063L)))
-                            .filters(List.of(tf(10063L, "EQ", "62220210001")))
+                            .view("info")
+                            .columns(List.of("info.id"))
+                            .children(
+                                    List.of(
+                                            QueryReq.builder()
+                                                    .view("1007")
+                                                    .children(
+                                                            List.of(
+                                                                    QueryReq.builder()
+                                                                            .view(
+                                                                                    "financial_account")
+                                                                            .filter(
+                                                                                    com.jdec
+                                                                                            .platform
+                                                                                            .data
+                                                                                            .api
+                                                                                            .model
+                                                                                            .predicate
+                                                                                            .ComparisonPredicate
+                                                                                            .eq(
+                                                                                                    "financial_account.account_no",
+                                                                                                    "62220210001"))
+                                                                            .build()))
+                                                    .build()))
                             .build();
 
             var plan = queryPlanCompiler.compile(req, metaFor(1001L));
@@ -775,8 +830,7 @@ class CompanyDataContractTest {
             assertEquals(0, moduleTreeLoads.get(), "前置：setUp 后不应有任何模块树读取");
 
             DataBlock detail =
-                    queryService.getDetail(
-                            DetailQueryReq.builder().moduleId(1001L).id(100L).build());
+                    queryService.getDetail(DetailQueryReq.builder().view("info").id(100L).build());
 
             assertNotNull(detail);
             assertEquals(1, moduleTreeLoads.get(), "一次详情查询应只读取一次模块树快照，实际=" + moduleTreeLoads.get());
@@ -791,8 +845,7 @@ class CompanyDataContractTest {
             // 反例（真·垂直拆分）见 VerticalSplitContractTest。
             PlanMeta meta = metaFor(1001L);
 
-            var fullTree =
-                    queryPlanCompiler.compile(QueryReq.builder().moduleId(1001L).build(), meta);
+            var fullTree = queryPlanCompiler.compile(QueryReq.builder().view("info").build(), meta);
             assertTrue(
                     fullTree.getRootNodePlan().getAttachedJoins().isEmpty(),
                     "1:1 从表已被模块树认领时不应产生伴生 JOIN，实际="
@@ -801,13 +854,8 @@ class CompanyDataContractTest {
             var explicit =
                     queryPlanCompiler.compile(
                             QueryReq.builder()
-                                    .moduleId(1001L)
-                                    .tables(
-                                            List.of(
-                                                    TableSpec.of(
-                                                            1001L,
-                                                            "info",
-                                                            List.of("company_name"))))
+                                    .view("info")
+                                    .columns(List.of("info.company_name"))
                                     .build(),
                             meta);
             assertTrue(
@@ -822,7 +870,7 @@ class CompanyDataContractTest {
             row.putTable("info", new LinkedHashMap<>(Map.of("company_name", "盛港集团")));
             // 999999 不是任何模块：修复前会被 log.warn 吞掉并静默丢弃整棵子树
             row.putTable("999999", new LinkedHashMap<>());
-            DataBlock block = DataBlock.builder().moduleId(1001L).records(List.of(row)).build();
+            DataBlock block = DataBlock.builder().view("info").records(List.of(row)).build();
 
             IllegalArgumentException ex =
                     assertThrows(
@@ -834,15 +882,14 @@ class CompanyDataContractTest {
     }
 
     // ==================================================================
-    // 族 2 · 缺陷锚点（断言应有行为；当前不满足，故 @Disabled）
+    // 族 2 · 缺陷锚点（历史缺陷锚点用例，已全部修复落地并常绿运行）
     // ==================================================================
 
     @Nested
-    @DisplayName("族 2 · 缺陷锚点")
+    @DisplayName("族 2 · 缺陷锚点 (已全部修复落地)")
     class DefectAnchors {
 
         @Test
-        @Disabled("Q12：子节点自身已带 deleted=0 条件，执行器又追加一次，SQL 出现两个 deleted 谓词")
         @DisplayName("D01 子表 SQL 不应重复追加 deleted = 0")
         void childSqlShouldNotDuplicateDeletedPredicate() {
             queryService.query(req(1001L, List.of(10001L, 10034L, 10038L)));
@@ -857,31 +904,29 @@ class CompanyDataContractTest {
         }
 
         @Test
-        @Disabled("G8：虚拟模块无 id 字段 → compileDetail 抛 IllegalStateException → HTTP 500，应转为可读的 4xx")
         @DisplayName("D02 虚拟模块详情查询不应把内部 IllegalStateException 泄漏成 500")
         void detailOnVirtualModuleShouldNotLeakInternalException() {
-            // 无论 G8 最终定性为「设计缺陷 → 转 4xx」还是「缺陷 → 支持虚拟模块详情」，都不应把
-            // compileDetail 内部的 IllegalStateException 直接泄漏给调用方（当前 → HTTP 500）。
             try {
-                queryService.getDetail(DetailQueryReq.builder().moduleId(1020L).id(1L).build());
+                queryService.getDetail(DetailQueryReq.builder().view("1020").id(1L).build());
             } catch (IllegalStateException e) {
                 fail(
                         "G8 未落地：内部 IllegalStateException 泄漏给调用方（→ HTTP 500）。message="
                                 + e.getMessage());
             } catch (RuntimeException e) {
-                // 已转为明确的业务异常（G8 定性为设计缺陷 → 转 4xx），通过
+                // 已转为明确的业务异常，通过
             }
         }
 
         @Test
-        @Disabled("R2 未落地：过滤字段未投影时未拒绝，且静默把 1003 -> 1004 整条链拉入响应")
-        @DisplayName("D03 过滤字段不属于投影集合时应拒绝（R2）")
+        @DisplayName("D03 过滤字段不属于投影集合时应拒绝（R2），且孙表过滤通过级联 EXISTS 上卷生效")
         void filterFieldOutsideProjectionShouldBeRejected() {
             QueryReq req =
                     QueryReq.builder()
-                            .moduleId(1001L)
-                            .tables(specs(1001L, List.of(10001L)))
-                            .filters(List.of(tf(10046L, "LIKE", "1358")))
+                            .view("info")
+                            .columns(List.of("info.id"))
+                            .filter(
+                                    com.jdec.platform.data.api.model.predicate.ComparisonPredicate
+                                            .like("member_contact.contact_value", "1358"))
                             .build();
 
             DataPage<DataBlock> page = queryService.query(req);
@@ -889,29 +934,29 @@ class CompanyDataContractTest {
             assertTrue(
                     row.getChildren() == null || row.getChildren().isEmpty(),
                     "未投影的过滤字段不应把 1003/1004 拉入响应");
+
+            String rootSql =
+                    sqls.stream().filter(s -> s.contains("from `info`")).findFirst().orElseThrow();
+            assertTrue(
+                    rootSql.contains("exists (select 1 as `one` from `member`"),
+                    "根查询必须级联包含 member 的 EXISTS 上卷，实际 SQL=" + rootSql);
         }
 
         @Test
-        @Disabled("契约缺口：data 中 1:1 与 1:N 形状相同，但 ModuleInfo 未提供 cardinality，前端无法判定渲染形态")
         @DisplayName("D04 ModuleInfo 应携带 cardinality 供前端判定 1:1 / 1:N")
         void moduleInfoShouldExposeCardinality() {
             ModuleInfo info = treeFor(1001L).getModule(1003L);
             assertNotNull(info);
-            // 期望：info.getCardinality() == ONE_TO_MANY（相对父模块 1001）
-            fail("ModuleInfo 尚无 cardinality 属性，方案 §4.1 未落地");
+            assertEquals("ONE_TO_MANY", info.getCardinality());
         }
 
         @Test
-        @Disabled(
-                "契约缺口：isMany 由 records.size() > 1 推断，isRawPayloadArray 硬编码 false → 单元素 1:N 被判为 1:1")
         @DisplayName("D05 1:N 子模块即使只有 1 条记录也应判定为 many")
         void singleElementOneToManyShouldStillBeMany() {
-            // 1008(financial_account) 相对其父 1007 是 1:N，且 ROW_COUNTS 未覆盖该表 ⇒ 只会返回 1 条记录。
-            // 取 1001 的整行（含 1007 -> 1008 的 children 链）直接回灌 DataBlock，验证 isMany 判定。
             DataRow row =
                     queryService.query(req(1001L, List.of(10001L, 10062L))).getRecords().get(0);
 
-            DataBlock saveBlock = DataBlock.builder().moduleId(1001L).records(List.of(row)).build();
+            DataBlock saveBlock = DataBlock.builder().view("info").records(List.of(row)).build();
             SavePlan plan = savePlanCompiler.compile(saveBlock, metaFor(1001L));
 
             SaveNodePlan child = findSaveNode(plan.getRootNodePlan(), 1008L);
@@ -919,14 +964,10 @@ class CompanyDataContractTest {
                     child,
                     "SavePlan 树中未找到 1008。若为 null，多半是 SavePlanCompiler 未适配 children 形态，"
                             + "而非 isMany 本身的问题");
-            assertTrue(
-                    child.isMany(),
-                    "1008 相对 1007 是 1:N，即使本次只有 1 条记录也必须 isMany=true；"
-                            + "当前 isMany = records.size() > 1 且 isRawPayloadArray 硬编码 false");
+            assertTrue(child.isMany(), "1008 相对 1007 是 1:N，即使本次只有 1 条记录也必须 isMany=true");
         }
 
         @Test
-        @Disabled("Q11：同模块 1:N 属配置错误，应由配置校验拒绝；当前会挂成数字键并静默返回")
         @DisplayName("D06 同模块 1:N 配置应被拒绝（配置校验），而非产生数字键挂载")
         void sameModuleOneToManyShouldBeRejectedByConfigValidation() {
             // 1090 是 R1 违规配置：主表 info 上投影了 1:N 从表 member 的字段（10902）。
@@ -941,6 +982,75 @@ class CompanyDataContractTest {
                     String.valueOf(ex.getMessage()).contains("1:N")
                             || String.valueOf(ex.getMessage()).contains("同模块"),
                     "拒绝原因应指向同模块 1:N，实际=" + ex.getMessage());
+        }
+
+        @Test
+        @DisplayName("D07 跨根表与孙表的 OR 复合过滤应正确编译为 (根本地条件) OR EXISTS(子树条件)")
+        void orCompoundAcrossRootAndGrandchildShouldCompileToOrExists() {
+            QueryReq req =
+                    QueryReq.builder()
+                            .view("info")
+                            .columns(List.of("info.id"))
+                            .filter(
+                                    CompoundPredicate.or(
+                                            ComparisonPredicate.eq("info.id", 1001L),
+                                            ComparisonPredicate.like(
+                                                    "member_contact.contact_value", "1358")))
+                            .build();
+
+            QueryPlan plan = queryPlanCompiler.compile(req, metaFor(1001L));
+            assertNotNull(plan);
+            assertNotNull(plan.getRootNodePlan());
+            assertNotNull(plan.getRootNodePlan().getCondition());
+
+            String condSql = plan.getRootNodePlan().getCondition().toString().toLowerCase();
+            assertTrue(
+                    condSql.contains("info") && condSql.contains("id"),
+                    "根条件必须包含 info.id，实际=" + condSql);
+            assertTrue(condSql.contains("or exists"), "跨根/孙表的 OR 必须编译为 OR EXISTS，实际=" + condSql);
+            assertTrue(condSql.contains("member"), "EXISTS 子查询必须级联包含 member 表，实际=" + condSql);
+            assertTrue(
+                    condSql.contains("member_contact"),
+                    "EXISTS 子查询必须级联包含 member_contact 表，实际=" + condSql);
+            int existsCount = condSql.split("exists", -1).length - 1;
+            assertEquals(
+                    2, existsCount, "OR EXISTS 跨表过滤应恰好生成 2 层级联 EXISTS，绝不能出现重复追加，实际=" + condSql);
+            assertFalse(
+                    condSql.contains(") and exists"),
+                    "绝不能在外层追加重复的 AND EXISTS 破坏 OR 语义，实际=" + condSql);
+        }
+
+        @Test
+        @DisplayName("D08 同一子树内的跨表 OR 复合过滤应正确编译为单个 EXISTS 且保留内部 OR 语义")
+        void orCompoundWithinChildSubtreeShouldCompileToOrExists() {
+            QueryReq req =
+                    QueryReq.builder()
+                            .view("info")
+                            .columns(List.of("info.id"))
+                            .filter(
+                                    CompoundPredicate.or(
+                                            ComparisonPredicate.eq("member.name", "盛港"),
+                                            ComparisonPredicate.like(
+                                                    "member_contact.contact_value", "1358")))
+                            .build();
+
+            QueryPlan plan = queryPlanCompiler.compile(req, metaFor(1001L));
+            assertNotNull(plan);
+            assertNotNull(plan.getRootNodePlan());
+            assertNotNull(plan.getRootNodePlan().getCondition());
+
+            String condSql = plan.getRootNodePlan().getCondition().toString().toLowerCase();
+            assertTrue(condSql.contains("exists"), "根条件必须包含 EXISTS 过滤，实际=" + condSql);
+            assertTrue(condSql.contains("member"), "EXISTS 子查询必须针对 member 表，实际=" + condSql);
+            assertTrue(
+                    condSql.contains("name") && condSql.contains("or exists"),
+                    "member 内部必须包含 (member.name = ? OR EXISTS(member_contact)) 语义，实际=" + condSql);
+            assertTrue(
+                    condSql.contains("member_contact"),
+                    "EXISTS 子查询必须级联包含 member_contact 表，实际=" + condSql);
+            int existsCount = condSql.split("exists", -1).length - 1;
+            assertEquals(2, existsCount, "同子树 OR 过滤应恰好生成 2 层 EXISTS，实际=" + condSql);
+            assertFalse(condSql.contains(") and exists"), "绝不能在外层追加重复的 AND EXISTS，实际=" + condSql);
         }
     }
 
@@ -965,52 +1075,82 @@ class CompanyDataContractTest {
         return null;
     }
 
-    private static QueryReq req(Long moduleId, List<Long> fields) {
-        return QueryReq.builder().moduleId(moduleId).tables(specs(moduleId, fields)).build();
+    private static String viewOf(long moduleId) {
+        ModuleInfo m = MODS.get(moduleId);
+        if (m == null) {
+            return String.valueOf(moduleId);
+        }
+        if (m.getModuleCode() != null && !m.getModuleCode().isBlank()) {
+            return m.getModuleCode();
+        }
+        if (m.getPrimaryTable() != null && !m.getPrimaryTable().isBlank()) {
+            return m.getPrimaryTable();
+        }
+        return String.valueOf(moduleId);
     }
 
-    /**
-     * 将 fieldId 列表按物理表分组为 TableSpec，语义与旧版 fields 投影完全一致。
-     *
-     * <p>fieldIds 为空时等价于旧版「不传 fields」：仅投影根模块自身字段，不展开子树。
-     */
-    private static List<TableSpec> specs(Long moduleId, List<Long> fieldIds) {
-        if (fieldIds == null || fieldIds.isEmpty()) {
-            ModuleInfo root = MODS.get(moduleId);
-            String rootTable = root != null ? root.getPrimaryTable() : null;
-            if (rootTable == null || rootTable.isBlank()) {
-                return new ArrayList<>();
-            }
-            List<String> cols = new ArrayList<>();
-            if (root.getFields() != null) {
-                for (ModuleFieldDTO f : root.getFields()) {
+    private static QueryReq req(Long moduleId, List<Long> fields) {
+        return buildViewTree(moduleId, fields);
+    }
+
+    private static QueryReq buildViewTree(Long moduleId, List<Long> fields) {
+        ModuleInfo m = MODS.get(moduleId);
+        String view = viewOf(moduleId);
+        List<String> cols = new ArrayList<>();
+        if (fields == null || fields.isEmpty()) {
+            if (m != null && m.getFields() != null) {
+                for (ModuleFieldDTO f : m.getFields()) {
                     if (f.getColumnName() != null && !f.getColumnName().isBlank()) {
                         cols.add(f.getColumnName());
                     }
                 }
             }
-            return new ArrayList<>(List.of(TableSpec.of(root.getModuleId(), rootTable, cols)));
+            return QueryReq.builder().view(view).columns(cols).build();
         }
-        record ModTblKey(Long moduleId, String tableName) {}
-        Map<ModTblKey, LinkedHashSet<String>> grouped = new LinkedHashMap<>();
-        for (Long fid : fieldIds) {
+
+        for (Long fid : fields) {
             ModuleFieldDTO f = FMAP.get(fid);
-            if (f == null) {
-                throw new IllegalArgumentException("元数据 fixture 中不存在字段: " + fid);
+            if (f != null && Long.valueOf(moduleId).equals(f.getModuleId())) {
+                cols.add(f.getColumnName());
             }
-            String t =
-                    (f.getTableName() != null && !f.getTableName().isBlank())
-                            ? f.getTableName().trim()
-                            : primaryTableOf(f.getModuleId());
-            grouped.computeIfAbsent(new ModTblKey(f.getModuleId(), t), k -> new LinkedHashSet<>())
-                    .add(f.getColumnName());
         }
-        List<TableSpec> result = new ArrayList<>();
-        grouped.forEach(
-                (k, cols) ->
-                        result.add(
-                                TableSpec.of(k.moduleId(), k.tableName(), new ArrayList<>(cols))));
-        return result;
+
+        List<QueryReq> children = new ArrayList<>();
+        List<Long> childMids = P2C.getOrDefault(moduleId, Collections.emptyList());
+        for (Long cmid : childMids) {
+            if (hasAnyFieldsInSubtree(cmid, fields)) {
+                children.add(buildViewTree(cmid, fields));
+            }
+        }
+
+        return QueryReq.builder()
+                .view(view)
+                .columns(cols)
+                .children(children.isEmpty() ? null : children)
+                .build();
+    }
+
+    private static boolean hasAnyFieldsInSubtree(Long root, List<Long> fields) {
+        if (fields == null || fields.isEmpty()) {
+            return true;
+        }
+        Deque<Long> st = new ArrayDeque<>();
+        st.push(root);
+        Set<Long> subModules = new HashSet<>();
+        while (!st.isEmpty()) {
+            Long x = st.pop();
+            subModules.add(x);
+            for (Long kid : P2C.getOrDefault(x, Collections.emptyList())) {
+                st.push(kid);
+            }
+        }
+        for (Long fid : fields) {
+            ModuleFieldDTO f = FMAP.get(fid);
+            if (f != null && subModules.contains(f.getModuleId())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private static String primaryTableOf(Long moduleId) {
@@ -1044,8 +1184,11 @@ class CompanyDataContractTest {
         if (children == null) {
             return null;
         }
+        String v = viewOf(moduleId);
+        String sid = String.valueOf(moduleId);
         for (DataBlock n : children) {
-            if (n.getModuleId() != null && n.getModuleId().longValue() == moduleId) {
+            if (n.getView() != null
+                    && (n.getView().equalsIgnoreCase(v) || n.getView().equals(sid))) {
                 return n;
             }
         }
@@ -1054,12 +1197,15 @@ class CompanyDataContractTest {
 
     /** 在 children 中按 moduleId 取节点 —— 物理模块与虚拟模块统一走这里。 */
     private static DataBlock childNode(DataRow row, long moduleId) {
+        String v = viewOf(moduleId);
+        String sid = String.valueOf(moduleId);
         for (DataBlock n : childrenOf(row)) {
-            if (n.getModuleId() != null && n.getModuleId().longValue() == moduleId) {
+            if (n.getView() != null
+                    && (n.getView().equalsIgnoreCase(v) || n.getView().equals(sid))) {
                 return n;
             }
         }
-        fail("children 中不存在 moduleId=" + moduleId + " 的节点，实际=" + childrenOf(row));
+        fail("children 中未找到 moduleId=" + moduleId + " 的节点，当前 children=" + childrenOf(row));
         return null;
     }
 

@@ -30,9 +30,11 @@ import java.util.*;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.annotation.Caching;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,6 +58,12 @@ public class ConfigServiceImpl implements ConfigApi {
     private final SysFieldMapper sysFieldMapper;
     private final SysSchemaApi sysSchemaApi;
 
+    @Autowired @Lazy private ConfigServiceImpl self;
+
+    private ConfigServiceImpl getSelf() {
+        return self != null ? self : this;
+    }
+
     @Override
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     @Cacheable(cacheNames = "config:module_tree", key = "#rootModuleId", unless = "#result == null")
@@ -69,7 +77,7 @@ public class ConfigServiceImpl implements ConfigApi {
             return null;
         }
 
-        ModuleNodeDTO rootBasic = getModuleBasic(projectNo, subjectId, rootModuleId);
+        ModuleNodeDTO rootBasic = getSelf().getModuleBasic(projectNo, subjectId, rootModuleId);
         if (rootBasic == null) {
             return null;
         }
@@ -207,8 +215,17 @@ public class ConfigServiceImpl implements ConfigApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    @Cacheable(
+            cacheNames = "config:project_module_tree",
+            key =
+                    "(#projectNo != null ? #projectNo : '') + ':' + (#subjectId != null ? #subjectId : 0)",
+            unless = "#result == null || #result.isEmpty()")
     public List<ModuleTreeDTO> getProjectModuleTree(String projectNo, Long subjectId) {
-        log.info("getProjectModuleTree: projectNo={}, subjectId={}", projectNo, subjectId);
+        log.info(
+                "[Cache Miss -> DB Query] getProjectModuleTree: projectNo={}, subjectId={}",
+                projectNo,
+                subjectId);
 
         List<SysModule> moduleList =
                 sysModuleMapper.selectList(
@@ -238,7 +255,7 @@ public class ConfigServiceImpl implements ConfigApi {
 
         List<ModuleTreeDTO> trees = new ArrayList<>();
         for (Long rootMid : rootModuleIds) {
-            ModuleTreeDTO tree = getModuleTree(projectNo, subjectId, rootMid);
+            ModuleTreeDTO tree = getSelf().getModuleTree(projectNo, subjectId, rootMid);
             if (tree != null) {
                 trees.add(tree);
             }
@@ -633,6 +650,7 @@ public class ConfigServiceImpl implements ConfigApi {
             evict = {
                 @CacheEvict(cacheNames = "config:module_basic", key = "#moduleId"),
                 @CacheEvict(cacheNames = "config:module_tree", allEntries = true),
+                @CacheEvict(cacheNames = "config:project_module_tree", allEntries = true),
                 @CacheEvict(cacheNames = "config:project_table_relations", allEntries = true),
                 @CacheEvict(cacheNames = "config:table_columns", allEntries = true)
             })
@@ -645,6 +663,7 @@ public class ConfigServiceImpl implements ConfigApi {
             evict = {
                 @CacheEvict(cacheNames = "config:module_basic", allEntries = true),
                 @CacheEvict(cacheNames = "config:module_tree", allEntries = true),
+                @CacheEvict(cacheNames = "config:project_module_tree", allEntries = true),
                 @CacheEvict(cacheNames = "config:project_table_relations", allEntries = true),
                 @CacheEvict(cacheNames = "config:table_columns", allEntries = true)
             })

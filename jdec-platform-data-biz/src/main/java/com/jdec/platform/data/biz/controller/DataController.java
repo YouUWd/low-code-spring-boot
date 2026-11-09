@@ -39,6 +39,12 @@ public class DataController {
         return ApiResponse.success(dataApi.queryPage(req));
     }
 
+    @PostMapping("/list")
+    @Operation(summary = "动态列表全量查询 (不分页)", description = "返回满足业务聚合树与过滤条件的完整数据区块")
+    public ApiResponse<DataBlock> queryList(@RequestBody QueryReq req) {
+        return ApiResponse.success(dataApi.queryList(req));
+    }
+
     @PostMapping("/detail")
     @Operation(summary = "单条业务对象详情精准查询", description = "支持加载完整自相似树或指定投影表，返回读写同构的 DataBlock")
     public ApiResponse<DataBlock> getDetail(@RequestBody DetailQueryReq req) {
@@ -57,14 +63,14 @@ public class DataController {
         return ApiResponse.success(dataApi.getOptions(req));
     }
 
-    @GetMapping("/{moduleId}/{id}/full")
+    @GetMapping("/{view}/{id}/full")
     @Operation(
             summary = "通用单条全量子孙树详情查询 (GET 快捷全量物理树)",
-            description = "自动递归抓取当前模块及所有伴生表、全部子孙物理表的全部列信息，返回完整 DataBlock")
+            description = "自动递归抓取当前视图及所有伴生表、全部子孙物理表的全部列信息，返回完整 DataBlock")
     public ApiResponse<DataBlock> getFullDetail(
-            @Parameter(description = "主模块 ID", example = "1001") @PathVariable Long moduleId,
+            @Parameter(description = "业务视图编码", example = "COMPANY") @PathVariable String view,
             @Parameter(description = "单据主键 ID", example = "100") @PathVariable Long id) {
-        return ApiResponse.success(dataApi.getFullDetail(moduleId, id));
+        return ApiResponse.success(dataApi.getFullDetail(view, id));
     }
 
     @PostMapping("/save")

@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.jdec.platform.common.api.dto.request.MenuTableSpec;
 import com.jdec.platform.common.api.dto.response.DataRecordItem;
 import com.jdec.platform.common.api.dto.response.ModuleDataNode;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
@@ -13,7 +14,6 @@ import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
 import com.jdec.platform.data.api.dto.common.DataRow;
-import com.jdec.platform.data.api.dto.request.TableSpec;
 import com.jdec.platform.data.api.dto.response.DataPage;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -27,21 +27,17 @@ import org.junit.jupiter.api.Test;
 class PhysicalQueryMapperTest {
 
     @Test
-    @DisplayName("测试 supplementShadowColumns：当根模块包含 nature 且未被勾选时，自动补入 TableSpec 并返回影子列名")
+    @DisplayName("测试 supplementShadowColumns：当根模块包含 nature 且未被勾选时，自动补入 columns 并返回影子列名")
     void testSupplementShadowColumns_addWhenMissing() {
         ModuleTreeDTO tree = buildTestModuleTree(true, true);
-        List<TableSpec> tableSpecs = new ArrayList<>();
-        tableSpecs.add(TableSpec.of(1001L, "info", new ArrayList<>(List.of("id", "company_name"))));
+        List<String> columns = new ArrayList<>(List.of("info.id", "info.company_name"));
 
         Set<String> shadowKeys =
-                PhysicalQueryMapper.supplementShadowColumns(
-                        tableSpecs, tree, 1001L, Set.of("nature"));
+                PhysicalQueryMapper.supplementShadowColumns(columns, tree, 1001L, Set.of("nature"));
 
         assertEquals(1, shadowKeys.size());
         assertTrue(shadowKeys.contains("info.nature"));
-
-        TableSpec primarySpec = tableSpecs.get(0);
-        assertEquals(List.of("id", "company_name", "nature"), primarySpec.getColumns());
+        assertEquals(List.of("info.id", "info.company_name", "info.nature"), columns);
     }
 
     @Test
@@ -49,32 +45,26 @@ class PhysicalQueryMapperTest {
     void testSupplementShadowColumns_doNotDuplicateWhenAlreadyPresent() {
         ModuleTreeDTO tree = buildTestModuleTree(true, true);
 
-        // 场景 A：TableSpec 中存的是不带表名的 "nature"
-        List<TableSpec> specs1 = new ArrayList<>();
-        specs1.add(
-                TableSpec.of(
-                        1001L, "info", new ArrayList<>(List.of("id", "company_name", "nature"))));
+        // 场景 A：columns 中存的是 "info.nature"
+        List<String> cols1 =
+                new ArrayList<>(List.of("info.id", "info.company_name", "info.nature"));
         Set<String> shadowKeys1 =
-                PhysicalQueryMapper.supplementShadowColumns(specs1, tree, 1001L, Set.of("nature"));
+                PhysicalQueryMapper.supplementShadowColumns(cols1, tree, 1001L, Set.of("nature"));
         assertTrue(shadowKeys1.isEmpty(), "已有投影列不应被加入待移除列表，避免后续错误移除");
 
-        // 场景 B：TableSpec 中存的是带表名前缀的 "info.nature"
-        List<TableSpec> specs2 = new ArrayList<>();
-        specs2.add(
-                TableSpec.of(
-                        1001L,
-                        "info",
-                        new ArrayList<>(List.of("id", "company_name", "info.nature"))));
+        // 场景 B：candidate 传 "info.nature"
+        List<String> cols2 =
+                new ArrayList<>(List.of("info.id", "info.company_name", "info.nature"));
         Set<String> shadowKeys2 =
-                PhysicalQueryMapper.supplementShadowColumns(specs2, tree, 1001L, Set.of("nature"));
+                PhysicalQueryMapper.supplementShadowColumns(
+                        cols2, tree, 1001L, Set.of("info.nature"));
         assertTrue(shadowKeys2.isEmpty(), "带表名前缀的已有投影列也必须被精准识别，避免后续错误移除");
 
-        // 场景 C：TableSpec 中使用了全列通配符 "*"
-        List<TableSpec> specs3 = new ArrayList<>();
-        specs3.add(TableSpec.of(1001L, "info", new ArrayList<>(List.of("*"))));
+        // 场景 C：columns 中使用了全列通配符 "*"
+        List<String> cols3 = new ArrayList<>(List.of("info.*"));
         Set<String> shadowKeys3 =
                 PhysicalQueryMapper.supplementShadowColumns(
-                        specs3, tree, 1001L, Set.of("info.nature"));
+                        cols3, tree, 1001L, Set.of("info.nature"));
         assertTrue(shadowKeys3.isEmpty(), "已包含 * 通配符的表不应重复补入或误删");
     }
 
@@ -84,46 +74,39 @@ class PhysicalQueryMapperTest {
         ModuleTreeDTO tree = buildTestModuleTree(true, true);
 
         // 1. 当其他表（basic_info）原本包含在当前查询条件中时，且缺少依赖列，能够为其精准补入
-        List<TableSpec> specsWithSubTable = new ArrayList<>();
-        specsWithSubTable.add(
-                TableSpec.of(1001L, "info", new ArrayList<>(List.of("id", "company_name"))));
-        specsWithSubTable.add(
-                TableSpec.of(1002L, "basic_info", new ArrayList<>(List.of("currency"))));
+        List<String> colsWithSubTable =
+                new ArrayList<>(List.of("info.id", "info.company_name", "basic_info.currency"));
 
         Set<String> shadowKeys =
                 PhysicalQueryMapper.supplementShadowColumns(
-                        specsWithSubTable, tree, 1001L, Set.of("basic_info.reg_capital"));
+                        colsWithSubTable, tree, 1001L, Set.of("basic_info.reg_capital"));
 
         assertEquals(1, shadowKeys.size());
         assertTrue(shadowKeys.contains("basic_info.reg_capital"));
-        assertEquals(List.of("currency", "reg_capital"), specsWithSubTable.get(1).getColumns());
+        assertTrue(colsWithSubTable.contains("basic_info.reg_capital"));
 
         // 2. 当其他表未参与当前查询条件时，绝不随意强行引入无关从表
-        List<TableSpec> specsWithoutSubTable = new ArrayList<>();
-        specsWithoutSubTable.add(
-                TableSpec.of(1001L, "info", new ArrayList<>(List.of("id", "company_name"))));
+        List<String> colsWithoutSubTable = new ArrayList<>(List.of("info.id", "info.company_name"));
 
         Set<String> shadowKeysSkipped =
                 PhysicalQueryMapper.supplementShadowColumns(
-                        specsWithoutSubTable, tree, 1001L, Set.of("basic_info.reg_capital"));
+                        colsWithoutSubTable, tree, 1001L, Set.of("basic_info.reg_capital"));
 
         assertTrue(shadowKeysSkipped.isEmpty(), "未参与当前查询的从表不应被强行引入");
-        assertEquals(1, specsWithoutSubTable.size());
+        assertEquals(2, colsWithoutSubTable.size());
     }
 
     @Test
     @DisplayName("测试 supplementShadowColumns：当模块元数据中根本不存在该列时，不进行多余补入")
     void testSupplementShadowColumns_doNotAddWhenNotExistsInMetadata() {
         ModuleTreeDTO tree = buildTestModuleTree(false, false);
-        List<TableSpec> tableSpecs = new ArrayList<>();
-        tableSpecs.add(TableSpec.of(1001L, "info", new ArrayList<>(List.of("id", "company_name"))));
+        List<String> columns = new ArrayList<>(List.of("info.id", "info.company_name"));
 
         Set<String> shadowKeys =
-                PhysicalQueryMapper.supplementShadowColumns(
-                        tableSpecs, tree, 1001L, Set.of("nature"));
+                PhysicalQueryMapper.supplementShadowColumns(columns, tree, 1001L, Set.of("nature"));
 
         assertTrue(shadowKeys.isEmpty());
-        assertEquals(List.of("id", "company_name"), tableSpecs.get(0).getColumns());
+        assertEquals(List.of("info.id", "info.company_name"), columns);
     }
 
     @Test
@@ -460,16 +443,14 @@ class PhysicalQueryMapperTest {
             "测试 supplementSystemColumns：根据物理表真实列交集自动补齐 BUILTIN_SYSTEM_COLUMNS，且不进入 shadowKeys 被剥离")
     void testSupplementSystemColumns_addActualSystemColumnsAndKeepOutOfShadowKeys() {
         ModuleTreeDTO tree = buildTestModuleTree(true, true);
-        List<TableSpec> tableSpecs = new ArrayList<>();
-        tableSpecs.add(TableSpec.of(1001L, "info", new ArrayList<>(List.of("company_name"))));
-        tableSpecs.add(TableSpec.of(1002L, "basic_info", new ArrayList<>(List.of("currency"))));
+        List<String> columns = new ArrayList<>(List.of("info.company_name", "basic_info.currency"));
 
         Map<String, Set<String>> requestedMap = new HashMap<>();
         requestedMap.put("info", new java.util.HashSet<>(Set.of("company_name")));
         requestedMap.put("basic_info", new java.util.HashSet<>(Set.of("currency")));
 
         PhysicalQueryMapper.supplementSystemColumns(
-                tableSpecs,
+                columns,
                 tree,
                 1001L,
                 table -> {
@@ -490,18 +471,17 @@ class PhysicalQueryMapperTest {
                 },
                 requestedMap);
 
-        assertEquals(
-                List.of(
-                        "company_name",
-                        "id",
-                        "business_no",
-                        "version_no",
-                        "business_status",
-                        "created_by",
-                        "created_date"),
-                tableSpecs.get(0).getColumns());
-        assertEquals(
-                List.of("currency", "id", "deleted", "subject_id"), tableSpecs.get(1).getColumns());
+        assertTrue(columns.contains("info.company_name"));
+        assertTrue(columns.contains("info.id"));
+        assertTrue(columns.contains("info.business_no"));
+        assertTrue(columns.contains("info.version_no"));
+        assertTrue(columns.contains("info.business_status"));
+        assertTrue(columns.contains("info.created_by"));
+        assertTrue(columns.contains("info.created_date"));
+        assertTrue(columns.contains("basic_info.currency"));
+        assertTrue(columns.contains("basic_info.id"));
+        assertTrue(columns.contains("basic_info.deleted"));
+        assertTrue(columns.contains("basic_info.subject_id"));
 
         assertTrue(requestedMap.get("info").contains("business_status"));
         assertTrue(requestedMap.get("info").contains("created_by"));
@@ -512,28 +492,57 @@ class PhysicalQueryMapperTest {
         // 已作为系统辅助列补入的 business_status、created_by 绝不进入 shadowKeys，仅 nature 进入 shadowKeys
         Set<String> shadowKeys =
                 PhysicalQueryMapper.supplementShadowColumns(
-                        tableSpecs, tree, 1001L, Set.of("business_status", "created_by", "nature"));
+                        columns, tree, 1001L, Set.of("business_status", "created_by", "nature"));
         assertEquals(Set.of("info.nature"), shadowKeys);
     }
 
     @Test
-    @DisplayName("测试 supplementSystemColumns：当 TableSpec.columns 为 null 时，保持全字段投影语义，不被覆盖为仅系统字段")
-    void testSupplementSystemColumns_whenColumnsNull_keepNullForFullProjection() {
+    @DisplayName("测试 supplementSystemColumns：当 columns 包含通配符 * 时，保持全字段投影语义，不被覆盖为仅系统字段")
+    void testSupplementSystemColumns_whenColumnsHasWildcard_keepForFullProjection() {
         ModuleTreeDTO tree = buildTestModuleTree(true, true);
-        List<TableSpec> tableSpecs = new ArrayList<>();
-        tableSpecs.add(TableSpec.builder().moduleId(1001L).tableName("info").columns(null).build());
+        List<String> columns = new ArrayList<>(List.of("info.*"));
 
         Map<String, Set<String>> requestedMap = new HashMap<>();
         requestedMap.put("info", null);
 
         PhysicalQueryMapper.supplementSystemColumns(
-                tableSpecs,
+                columns,
                 tree,
                 1001L,
                 table -> Set.of("id", "company_name", "business_no", "business_status", "deleted"),
                 requestedMap);
 
-        assertNull(tableSpecs.get(0).getColumns(), "columns=null 时必须保持为 null，避免全字段投影退化为只查系统字段");
+        assertEquals(List.of("info.*"), columns, "columns=* 时必须保持原样，避免全字段投影退化为只查系统字段");
         assertNull(requestedMap.get("info"), "requestedMap 对应表的白名单必须保持为 null（全放行）");
+    }
+
+    @Test
+    @DisplayName("测试 toColumns：当 MenuTableSpec.columns 为 null 或空时，自动投影模块元数据定义的所有列")
+    void testToColumns_whenColumnsNullOrEmpty_populatesAllFieldsFromModule() {
+        ModuleTreeDTO tree = buildTestModuleTree(true, true);
+
+        // 场景 1: columns 为 null
+        MenuTableSpec specNull = MenuTableSpec.builder().tableName("info").columns(null).build();
+        List<String> colsNull = PhysicalQueryMapper.toColumns(List.of(specNull), tree, null);
+        assertTrue(colsNull.contains("info.company_name"));
+        assertTrue(colsNull.contains("info.id"));
+
+        // 场景 2: columns 为空列表 []
+        MenuTableSpec specEmpty =
+                MenuTableSpec.builder().tableName("info").columns(List.of()).build();
+        List<String> colsEmpty = PhysicalQueryMapper.toColumns(List.of(specEmpty), tree, null);
+        assertTrue(colsEmpty.contains("info.company_name"));
+        assertTrue(colsEmpty.contains("info.id"));
+    }
+
+    @Test
+    @DisplayName("测试 toColumns：当 menuTableSpecs 为 null 或空时，默认投影模块树中所有模块的字段")
+    void testToColumns_whenMenuTableSpecsEmpty_populatesAllTreeFields() {
+        ModuleTreeDTO tree = buildTestModuleTree(true, true);
+
+        List<String> cols = PhysicalQueryMapper.toColumns((List<MenuTableSpec>) null, tree, null);
+        assertTrue(cols.contains("info.company_name"));
+        assertTrue(cols.contains("info.id"));
+        assertTrue(cols.contains("basic_info.currency"));
     }
 }

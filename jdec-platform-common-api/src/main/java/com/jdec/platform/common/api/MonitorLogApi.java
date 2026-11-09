@@ -36,6 +36,17 @@ public interface MonitorLogApi {
     PageResult<MonitorLogResp> queryLogPage(MonitorLogQueryReq req);
 
     /**
+     * 判断是否存在符合条件的监控日志
+     *
+     * <p>与 {@link #queryLogPage(MonitorLogQueryReq)} 复用同一套筛选条件（记录时间范围、日志类型、关键词模糊），但不分页，
+     * 仅返回是否存在任意匹配记录，常用于「是否有操作日志」等前置判断。
+     *
+     * @param req 存在性查询请求（不含分页参数）
+     * @return 存在符合筛选条件的日志时返回 {@code true}，否则返回 {@code false}
+     */
+    boolean existsOperateLog(Long menuId, Long dataId);
+
+    /**
      * 按菜单 + 单据查询操作日志
      *
      * <p>先由菜单ID 反查其关联的模块ID，再按 {@code module_id + data_id} 查询操作日志索引表 {@code monitor_operate_index}

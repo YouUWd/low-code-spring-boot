@@ -18,11 +18,21 @@ public class SysRoleSpecialPermission implements Serializable {
     private Long id;
 
     @Schema(description = "角色ID")
-    @Reference(target = SysRole.class, name = "其它权限关联")
+    @Reference(
+            target = SysRole.class,
+            name = "其它权限关联",
+            displayViaField = "specialPermissionId",
+            displayViaTarget = SysSpecialPermission.class,
+            displayViaColumn = "name")
     private Long roleId;
 
     @Schema(description = "特殊权限ID")
-    @Reference(target = SysSpecialPermission.class, name = "角色其它权限")
+    @Reference(
+            target = SysSpecialPermission.class,
+            name = "角色其它权限",
+            displayViaField = "roleId",
+            displayViaTarget = SysRole.class,
+            displayViaColumn = "roleName")
     private Long specialPermissionId;
 
     @Schema(description = "模拟操作用户")

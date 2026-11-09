@@ -11,8 +11,8 @@ import org.springframework.stereotype.Component;
 /**
  * 模块树聚合根装配器 (TreeResultAssembler)
  *
- * <p>职责：将物理批处理拉取出来的子孙模块记录，根据 parentForeignKey 映射关系， 在内存中精准缝合装配为纯粹的同构实体树： parentRow[childModuleId] =
- * [ childRow1, childRow2, ... ]。 杜绝任何内部技术字段泄露（如 _row_id、_fk_xxx）。
+ * <p>职责：将物理批处理拉取出来的子孙模块记录，根据 parentForeignKey 映射关系， 在内存中精准缝合装配为纯粹的同构实体树： parentRow.children = [
+ * childBlock1, childBlock2, ... ]。 杜绝任何内部技术字段泄露（如 _row_id、_fk_xxx）。
  */
 @Slf4j
 @Component
@@ -67,6 +67,14 @@ public class TreeResultAssembler {
             QueryNodePlan virtualPlan,
             Map<QueryNodePlan, List<DataRow>> rawDataByNode) {
 
+        List<QueryNodePlan> subPlans =
+                virtualPlan.getChildren() != null
+                        ? virtualPlan.getChildren()
+                        : Collections.emptyList();
+        if (subPlans.isEmpty()) {
+            return;
+        }
+
         Long virtualModuleId = virtualPlan.getModuleId();
 
         // 🌟 必须使用 IdentityHashMap 建立父行引用与当前虚拟容器的映射关系，杜绝父行内容变更导致哈希寻址失效
@@ -79,13 +87,20 @@ public class TreeResultAssembler {
                     parentContainer.setChildren(new ArrayList<>());
                 }
                 String virtualModCode =
-                        virtualPlan.getModuleMeta() != null
-                                ? virtualPlan.getModuleMeta().getModuleCode()
-                                : null;
+                        virtualPlan.getView() != null && !virtualPlan.getView().isBlank()
+                                ? virtualPlan.getView()
+                                : (virtualPlan.getModuleMeta() != null
+                                                && virtualPlan.getModuleMeta().getModuleCode()
+                                                        != null
+                                                && !virtualPlan
+                                                        .getModuleMeta()
+                                                        .getModuleCode()
+                                                        .isBlank()
+                                        ? virtualPlan.getModuleMeta().getModuleCode()
+                                        : String.valueOf(virtualModuleId));
                 DataBlock virtualNode =
                         DataBlock.builder()
-                                .moduleId(virtualModuleId)
-                                .moduleCode(virtualModCode)
+                                .view(virtualModCode)
                                 .records(Collections.singletonList(thisVirtualContainer))
                                 .build();
                 parentContainer.getChildren().add(virtualNode);
@@ -98,35 +113,24 @@ public class TreeResultAssembler {
             nextContainers.put(parentRow, thisVirtualContainer);
         }
 
-        List<QueryNodePlan> subPlans = virtualPlan.getChildren();
-        if (subPlans == null || subPlans.isEmpty()) {
-            return;
-        }
-
         for (QueryNodePlan subPlan : subPlans) {
             if (subPlan.getPrimaryTable() == null || subPlan.getPrimaryTable().isBlank()) {
-                // 子节点若依然是嵌套的虚拟模块，继续递归钻取
                 assembleVirtualPlanInternal(parentRecords, nextContainers, subPlan, rawDataByNode);
             } else {
-                // 物理子模块直接挂载进对应的虚拟容器
                 assemblePhysicalChild(parentRecords, nextContainers::get, subPlan, rawDataByNode);
             }
         }
     }
 
-    /**
-     * 装配物理从表/子模块
-     *
-     * @param parentRecords 当前层记录集合 (根主表记录列表或上级实体列表)
-     * @param containerResolver 当前父行与目标装配容器的解析函数
-     * @param childPlan 当前物理子模块节点计划
-     * @param rawDataByNode 按 QueryNodePlan 索引的各节点原始数据 Map
-     */
     private void assemblePhysicalChild(
             List<DataRow> parentRecords,
             Function<DataRow, DataRow> containerResolver,
             QueryNodePlan childPlan,
             Map<QueryNodePlan, List<DataRow>> rawDataByNode) {
+
+        if (childPlan == null || !childPlan.isFetchData()) {
+            return;
+        }
 
         Long childModId = childPlan.getModuleId();
         String fkField = childPlan.getParentForeignKey();
@@ -146,6 +150,9 @@ public class TreeResultAssembler {
                 if (fkVal == null) {
                     fkVal = crow.getTables().get(fkField);
                 }
+                if (fkVal == null && childPlan.getPrimaryTable() != null) {
+                    fkVal = crow.getTables().get(childPlan.getPrimaryTable() + "." + fkField);
+                }
             }
 
             DataRow cleanRow = new DataRow();
@@ -160,6 +167,17 @@ public class TreeResultAssembler {
 
             if (fkVal instanceof Number num) {
                 groupedByFk.computeIfAbsent(num.longValue(), k -> new ArrayList<>()).add(cleanRow);
+            } else if (fkVal instanceof String s && !s.isBlank()) {
+                try {
+                    groupedByFk
+                            .computeIfAbsent(Long.parseLong(s.trim()), k -> new ArrayList<>())
+                            .add(cleanRow);
+                } catch (NumberFormatException e) {
+                    log.warn(
+                            "[TreeResultAssembler] 物理子行 fkVal 解析为数字失败: fkField={}, fkVal={}",
+                            fkField,
+                            fkVal);
+                }
             } else {
                 log.warn(
                         "[TreeResultAssembler] 物理子行 fkVal 非数字: fkField={}, fkVal={}",
@@ -184,19 +202,22 @@ public class TreeResultAssembler {
             }
 
             String childModCode =
-                    childPlan.getModuleMeta() != null
-                            ? childPlan.getModuleMeta().getModuleCode()
-                            : null;
+                    childPlan.getView() != null && !childPlan.getView().isBlank()
+                            ? childPlan.getView()
+                            : (childPlan.getModuleMeta() != null
+                                            && childPlan.getModuleMeta().getModuleCode() != null
+                                            && !childPlan.getModuleMeta().getModuleCode().isBlank()
+                                    ? childPlan.getModuleMeta().getModuleCode()
+                                    : (childPlan.getPrimaryTable() != null
+                                                    && !childPlan.getPrimaryTable().isBlank()
+                                            ? childPlan.getPrimaryTable()
+                                            : String.valueOf(childModId)));
             if (pkVal instanceof Number pkNum) {
                 List<DataRow> matchedChildren =
                         groupedByFk.getOrDefault(pkNum.longValue(), Collections.emptyList());
 
                 DataBlock childModuleNode =
-                        DataBlock.builder()
-                                .moduleId(childModId)
-                                .moduleCode(childModCode)
-                                .records(matchedChildren)
-                                .build();
+                        DataBlock.builder().view(childModCode).records(matchedChildren).build();
                 targetContainer.getChildren().add(childModuleNode);
 
                 // 4. 🌟 递归自相似：以当前匹配的子实体列表为父级，直接向下装配孙模块
@@ -211,8 +232,7 @@ public class TreeResultAssembler {
                         childModId);
                 DataBlock childModuleNode =
                         DataBlock.builder()
-                                .moduleId(childModId)
-                                .moduleCode(childModCode)
+                                .view(childModCode)
                                 .records(Collections.emptyList())
                                 .build();
                 targetContainer.getChildren().add(childModuleNode);
@@ -238,7 +258,11 @@ public class TreeResultAssembler {
         }
         // 1. 若指定了物理主表名，严格优先从该主表命名空间提取 id
         if (primaryTable != null && !primaryTable.isBlank()) {
-            Map<String, Object> tableSpace = row.getTable(primaryTable);
+            String pt = primaryTable.trim();
+            if (row.getTables().containsKey(pt + ".id")) {
+                return row.getTables().get(pt + ".id");
+            }
+            Map<String, Object> tableSpace = row.getTable(pt);
             if (tableSpace != null && tableSpace.get("id") != null) {
                 return tableSpace.get("id");
             }
