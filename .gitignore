@@ -31,3 +31,6 @@ docs/**
 doc/**
 
 *.tmp*
+
+.workbuddy-ai/
+*.yml
