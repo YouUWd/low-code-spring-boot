@@ -501,8 +501,12 @@ public class AsyncTaskServiceImpl implements AsyncTaskService {
                         JsonNode jsonNode =
                                 mapper.readTree(approvalProcessDTO.getReason().toString());
                         reason = jsonNode.path("comment").asText("");
-                        reason = reason.replace("驳回原因：", "");
-                        reason = reason.replace("取消原因：", "");
+                        int idx = reason.indexOf("原因");
+                        if (idx >= 0) {
+                            reason = reason.substring(idx + 2);
+                            // 去掉紧跟的冒号（全角或半角）
+                            reason = reason.replaceFirst("^[：:]", "").trim();
+                        }
                     } catch (Exception e) {
                         reason = "";
                     }
