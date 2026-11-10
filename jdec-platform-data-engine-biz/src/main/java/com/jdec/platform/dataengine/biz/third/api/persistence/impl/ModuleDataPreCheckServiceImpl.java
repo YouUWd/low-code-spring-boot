@@ -6,6 +6,7 @@ import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
 import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.enums.PermissionType;
+import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPreCheckService;
 import com.jdec.platform.shared.exception.BusinessException;
@@ -44,6 +45,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
             NestedModuleDataDTO param,
             NestedModuleDataDTO base,
             PermissionType permissionType,
+            SaveType saveType,
             Map<Long, SysModuleCombineInfo> moduleCacheMap) {
         Map<Long, Map<Long, Map<String, Object>>> dataMap = new HashMap<>();
 
@@ -54,7 +56,12 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
         }
         Map<Long, Map<String, Set<String>>> result =
                 checkPermission(
-                        param, dataMap, parentToChildDataMap, permissionType, moduleCacheMap);
+                        param,
+                        dataMap,
+                        parentToChildDataMap,
+                        permissionType,
+                        saveType,
+                        moduleCacheMap);
         if (CollectionUtil.isEmpty(result)) {
             return true;
         }
@@ -159,6 +166,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
             Map<Long, Map<Long, Map<String, Object>>> dataMap,
             Map<Long, Map<Long, Map<Long, Set<Long>>>> parentToChildDataMap,
             PermissionType permissionType,
+            SaveType saveType,
             Map<Long, SysModuleCombineInfo> moduleCacheMap) {
         Map<Long, Map<String, Set<String>>> result = new HashMap<>();
         if (param == null) {
@@ -193,6 +201,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                         dataId,
                         dataId == null || dataId <= 0,
                         permissionType,
+                        saveType,
                         moduleCacheMap,
                         result);
             }
@@ -208,6 +217,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
             Long parentDataId,
             Boolean isOverAllInsert,
             PermissionType permissionType,
+            SaveType saveType,
             Map<Long, SysModuleCombineInfo> moduleCacheMap,
             Map<Long, Map<String, Set<String>>> result) {
         if (param == null) {
@@ -230,6 +240,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                                     parentDataId,
                                     isOverAllInsert,
                                     permissionType,
+                                    saveType,
                                     moduleCacheMap,
                                     result);
                         }
@@ -270,39 +281,43 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                         .filter(x -> x != null && !updateDataIds.contains(x))
                         .collect(Collectors.toSet());
 
-        // 有删除的数据 要有写字段权限
-        if (deleteIds.size() > 0) {
-            // 这个模块 下 有数据要删除，需要有写字段权限
-            Boolean canWrite = false;
-            if (permissionType == PermissionType.APPLY) {
-                canWrite =
-                        sysModuleCombineInfo
-                                        .getWriteFields()
-                                        .getOrDefault(
-                                                sysModuleCombineInfo
-                                                        .getModuleInfo()
-                                                        .getPrimaryTable(),
-                                                new HashSet<>())
-                                        .size()
-                                > 0;
-            } else if (permissionType == PermissionType.EDIT) {
-                canWrite =
-                        sysModuleCombineInfo
-                                        .getUpdateFields()
-                                        .getOrDefault(
-                                                sysModuleCombineInfo
-                                                        .getModuleInfo()
-                                                        .getPrimaryTable(),
-                                                new HashSet<>())
-                                        .size()
-                                > 0;
-            }
-            if (!canWrite) {
-                result.computeIfAbsent(
-                                sysModuleCombineInfo.getModuleInfo().getModuleId(),
-                                k -> new HashMap<>())
-                        .computeIfAbsent(permissionType.name(), k -> new HashSet<>())
-                        .add(sysModuleCombineInfo.getModuleInfo().getPrimaryTable() + ".deleted");
+        // 有删除的数据 要有写字段权限 ,实时保存不出来删除的数据
+        if (saveType != SaveType.APPROVAL_REALTIME_SAVE) {
+            if (deleteIds.size() > 0) {
+                // 这个模块 下 有数据要删除，需要有写字段权限
+                Boolean canWrite = false;
+                if (permissionType == PermissionType.APPLY) {
+                    canWrite =
+                            sysModuleCombineInfo
+                                            .getWriteFields()
+                                            .getOrDefault(
+                                                    sysModuleCombineInfo
+                                                            .getModuleInfo()
+                                                            .getPrimaryTable(),
+                                                    new HashSet<>())
+                                            .size()
+                                    > 0;
+                } else if (permissionType == PermissionType.EDIT) {
+                    canWrite =
+                            sysModuleCombineInfo
+                                            .getUpdateFields()
+                                            .getOrDefault(
+                                                    sysModuleCombineInfo
+                                                            .getModuleInfo()
+                                                            .getPrimaryTable(),
+                                                    new HashSet<>())
+                                            .size()
+                                    > 0;
+                }
+                if (!canWrite) {
+                    result.computeIfAbsent(
+                                    sysModuleCombineInfo.getModuleInfo().getModuleId(),
+                                    k -> new HashMap<>())
+                            .computeIfAbsent(permissionType.name(), k -> new HashSet<>())
+                            .add(
+                                    sysModuleCombineInfo.getModuleInfo().getPrimaryTable()
+                                            + ".deleted");
+                }
             }
         }
 
@@ -333,6 +348,7 @@ public class ModuleDataPreCheckServiceImpl implements ModuleDataPreCheckService 
                                 dataId,
                                 isInsert,
                                 permissionType,
+                                saveType,
                                 moduleCacheMap,
                                 result);
                     }

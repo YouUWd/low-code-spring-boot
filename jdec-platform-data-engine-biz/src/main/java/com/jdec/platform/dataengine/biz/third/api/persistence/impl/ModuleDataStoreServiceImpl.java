@@ -146,7 +146,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                 // todo 校验字段权限是否可编辑可写入
                 // 计算使用编辑权限还是使用申请权限
                 moduleDataPreCheckService.prePermissionCheck(
-                        nestedSaveData, detailData, permissionType, moduleCacheMap);
+                        nestedSaveData, detailData, permissionType, saveType, moduleCacheMap);
                 // 全局插入
                 if (isOverallInsert) {
                     Integer versionNo = 1;
@@ -189,7 +189,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                 }
                 // todo 校验字段权限是否可编辑可写入
                 moduleDataPreCheckService.prePermissionCheck(
-                        nestedSaveData, detailData, permissionType, moduleCacheMap);
+                        nestedSaveData, detailData, permissionType, saveType, moduleCacheMap);
 
                 // 全局更新数据,先从主表拿出 版本号
                 String businessNo =
@@ -209,7 +209,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
             case APPROVAL_CHANGE -> {
                 // todo 校验字段权限是否可编辑可写入
                 moduleDataPreCheckService.prePermissionCheck(
-                        nestedSaveData, detailData, PermissionType.APPLY, moduleCacheMap);
+                        nestedSaveData, detailData, PermissionType.APPLY, saveType, moduleCacheMap);
                 // 变更插入 根模块 主表的业务编号
                 String businessNo =
                         DataPersistenceUtil.getTableRowBusinessNoWithTabName(

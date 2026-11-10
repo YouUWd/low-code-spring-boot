@@ -48,8 +48,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                     "deleted",
                     "active",
                     "source_id",
-                    "node_id",
-                    "parent_node_id");
+                    "node_id");
 
     private final Set<String> INSERT_DEFAULT_EXCLUDE_FIELD =
             Set.of(
