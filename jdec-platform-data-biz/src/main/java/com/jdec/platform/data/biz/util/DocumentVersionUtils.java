@@ -8,6 +8,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -26,15 +27,21 @@ public final class DocumentVersionUtils {
                             Arrays.asList(
                                     "created_at",
                                     "create_time",
+                                    "created_date",
+                                    "create_date",
                                     "gmt_create",
                                     "updated_at",
                                     "update_time",
+                                    "updated_date",
+                                    "update_date",
                                     "gmt_modified",
                                     "created_by",
                                     "create_by",
+                                    "created_name",
                                     "creator",
                                     "updated_by",
                                     "update_by",
+                                    "updated_name",
                                     "updater")));
 
     private DocumentVersionUtils() {}
@@ -88,42 +95,37 @@ public final class DocumentVersionUtils {
             return cloneRow(baseRow);
         }
 
-        DataRow mergedRow = new DataRow();
+        // 先克隆 baseRow，再以 patchRow 的表字段逐项覆盖，彻底杜绝扁平键与嵌套表 Map 混存时因遍历顺序导致的旧值回盖
+        DataRow mergedRow = cloneRow(baseRow);
 
-        // 1. 合并 tables (物理表及其字段)
-        Map<String, Object> baseTables =
-                baseRow.getTables() != null ? baseRow.getTables() : Collections.emptyMap();
         Map<String, Object> patchTables =
                 patchRow.getTables() != null ? patchRow.getTables() : Collections.emptyMap();
 
-        Set<String> allTableKeys = new HashSet<>();
-        allTableKeys.addAll(baseTables.keySet());
-        allTableKeys.addAll(patchTables.keySet());
-
-        for (String tableKey : allTableKeys) {
-            Object baseVal = baseTables.get(tableKey);
-            Object patchVal = patchTables.get(tableKey);
-
-            if (patchVal == null) {
-                mergedRow.setTable(tableKey, cloneObject(baseVal));
-            } else if (baseVal instanceof Map<?, ?> baseMap
-                    && patchVal instanceof Map<?, ?> patchMap) {
-                // 表对象深度覆盖合并: base 的列为基底，patch 的列覆盖
+        for (Map.Entry<String, Object> entry : patchTables.entrySet()) {
+            String key = entry.getKey();
+            Object patchVal = entry.getValue();
+            if (key == null || patchVal == null) {
+                continue;
+            }
+            if (patchVal instanceof Map<?, ?> patchMap) {
+                Map<String, Object> existingTable = mergedRow.getTable(key);
                 Map<String, Object> mergedTable = new LinkedHashMap<>();
-                for (Map.Entry<?, ?> e : baseMap.entrySet()) {
-                    if (e.getKey() != null) {
-                        mergedTable.put(String.valueOf(e.getKey()), cloneObject(e.getValue()));
-                    }
+                if (existingTable != null) {
+                    existingTable.forEach(
+                            (k, v) -> {
+                                if (k != null) {
+                                    mergedTable.put(String.valueOf(k), cloneObject(v));
+                                }
+                            });
                 }
                 for (Map.Entry<?, ?> e : patchMap.entrySet()) {
                     if (e.getKey() != null) {
                         mergedTable.put(String.valueOf(e.getKey()), cloneObject(e.getValue()));
                     }
                 }
-                mergedRow.setTable(tableKey, mergedTable);
+                mergedRow.putTable(key, mergedTable);
             } else {
-                // 直接值字段覆盖
-                mergedRow.setTable(tableKey, cloneObject(patchVal));
+                mergedRow.put(key, cloneObject(patchVal));
             }
         }
 
@@ -147,7 +149,7 @@ public final class DocumentVersionUtils {
             }
         }
 
-        java.util.Set<String> allChildViews = new java.util.LinkedHashSet<>();
+        Set<String> allChildViews = new LinkedHashSet<>();
         allChildViews.addAll(baseChildMap.keySet());
         allChildViews.addAll(patchChildMap.keySet());
 
@@ -352,18 +354,22 @@ public final class DocumentVersionUtils {
         }
 
         if (row.getTables() != null) {
-            row.getTables().put("version_no", versionNo);
+            boolean hasTableMap = false;
+            for (Object val : row.getTables().values()) {
+                if (val instanceof Map<?, ?> subMap) {
+                    hasTableMap = true;
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> typedSubMap = (Map<String, Object>) subMap;
+                    typedSubMap.put("version_no", versionNo);
+                }
+            }
             for (String k : new ArrayList<>(row.getTables().keySet())) {
                 if (k != null && k.toLowerCase().endsWith(".version_no")) {
                     row.getTables().put(k, versionNo);
                 }
             }
-            for (Object val : row.getTables().values()) {
-                if (val instanceof Map<?, ?> subMap) {
-                    @SuppressWarnings("unchecked")
-                    Map<String, Object> typedSubMap = (Map<String, Object>) subMap;
-                    typedSubMap.put("version_no", versionNo);
-                }
+            if (!hasTableMap) {
+                row.getTables().put("version_no", versionNo);
             }
         }
 

@@ -10,7 +10,6 @@ import com.jdec.platform.data.api.model.predicate.ComparisonPredicate;
 import com.jdec.platform.data.api.model.predicate.CompoundPredicate;
 import com.jdec.platform.data.api.model.predicate.FieldExpression;
 import com.jdec.platform.data.api.model.predicate.Predicate;
-import com.jdec.platform.data.api.model.predicate.RawSqlPredicate;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
@@ -124,14 +123,7 @@ public class FilterDeserializer extends JsonDeserializer<Predicate> {
             }
 
             if (node.has("sqlTemplate")) {
-                String sql = node.get("sqlTemplate").asText();
-                List<Object> params = new ArrayList<>();
-                if (node.has("params") && node.get("params").isArray()) {
-                    for (JsonNode pElem : node.get("params")) {
-                        params.add(extractValue(pElem));
-                    }
-                }
-                return RawSqlPredicate.of(sql, params.toArray());
+                throw new IllegalArgumentException("安全限制：禁止通过外部 JSON 直接反序列化 sqlTemplate 原生 SQL 谓词");
             }
 
             FieldExpression expression = null;

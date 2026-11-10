@@ -918,11 +918,21 @@ class CompanyMenuQueryContractTest {
         assertEquals("account_no", captor.getValue().getSorts().get(0).getColumnName());
     }
 
-    private static List<String> flattenPhysicalFields(PageQueryReq req) {
-        if (req != null && req.getColumns() != null) {
-            return new ArrayList<>(req.getColumns());
+    private static List<String> flattenPhysicalFields(
+            com.jdec.platform.data.api.dto.request.QueryReq req) {
+        if (req == null) {
+            return Collections.emptyList();
         }
-        return Collections.emptyList();
+        List<String> fields = new ArrayList<>();
+        if (req.getColumns() != null) {
+            fields.addAll(req.getColumns());
+        }
+        if (req.getChildren() != null) {
+            for (com.jdec.platform.data.api.dto.request.QueryReq child : req.getChildren()) {
+                fields.addAll(flattenPhysicalFields(child));
+            }
+        }
+        return fields;
     }
 
     @Test

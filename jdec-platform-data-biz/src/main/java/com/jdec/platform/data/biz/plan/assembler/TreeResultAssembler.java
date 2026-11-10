@@ -75,6 +75,11 @@ public class TreeResultAssembler {
             return;
         }
 
+        // 若虚拟模块下没有任何需要拉取数据的物理子孙节点（例如仅用于 EXISTS 过滤的辅助分支），不挂载空虚拟容器
+        if (!hasFetchablePhysicalDescendant(virtualPlan)) {
+            return;
+        }
+
         Long virtualModuleId = virtualPlan.getModuleId();
 
         // 🌟 必须使用 IdentityHashMap 建立父行引用与当前虚拟容器的映射关系，杜绝父行内容变更导致哈希寻址失效
@@ -122,6 +127,23 @@ public class TreeResultAssembler {
         }
     }
 
+    private static boolean hasFetchablePhysicalDescendant(QueryNodePlan plan) {
+        if (plan == null) {
+            return false;
+        }
+        if (plan.getPrimaryTable() != null && !plan.getPrimaryTable().isBlank()) {
+            return plan.isFetchData();
+        }
+        if (plan.getChildren() != null) {
+            for (QueryNodePlan child : plan.getChildren()) {
+                if (hasFetchablePhysicalDescendant(child)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     private void assemblePhysicalChild(
             List<DataRow> parentRecords,
             Function<DataRow, DataRow> containerResolver,
@@ -151,15 +173,30 @@ public class TreeResultAssembler {
                     fkVal = crow.getTables().get(fkField);
                 }
                 if (fkVal == null && childPlan.getPrimaryTable() != null) {
-                    fkVal = crow.getTables().get(childPlan.getPrimaryTable() + "." + fkField);
+                    fkVal = crow.getValue(childPlan.getPrimaryTable(), fkField);
                 }
             }
 
             DataRow cleanRow = new DataRow();
             if (crow.getTables() != null) {
-                cleanRow.getTables().putAll(crow.getTables());
-                cleanRow.getTables().remove("_fk_" + fkField);
-                cleanRow.getTables().remove("_row_id");
+                for (Map.Entry<String, Object> entry : crow.getTables().entrySet()) {
+                    String k = entry.getKey();
+                    if (k == null || k.equals("_fk_" + fkField) || k.equals("_row_id")) {
+                        continue;
+                    }
+                    if (entry.getValue() instanceof Map<?, ?> subMap) {
+                        Map<String, Object> copySub = new LinkedHashMap<>();
+                        subMap.forEach(
+                                (sk, sv) -> {
+                                    if (sk != null) {
+                                        copySub.put(String.valueOf(sk), sv);
+                                    }
+                                });
+                        cleanRow.putTable(k, copySub);
+                    } else {
+                        cleanRow.put(k, entry.getValue());
+                    }
+                }
             }
             if (crow.getChildren() != null) {
                 cleanRow.setChildren(new ArrayList<>(crow.getChildren()));

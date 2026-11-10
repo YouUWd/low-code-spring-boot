@@ -16,7 +16,6 @@ import com.jdec.platform.common.biz.support.loader.UserInfoLoader;
 import com.jdec.platform.config.api.SysStatusApi;
 import com.jdec.platform.config.api.SysUserApi;
 import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
-import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.response.DataOptionResp;
 import java.util.*;
@@ -92,23 +91,10 @@ public class QueryResultEnhanceServiceImpl implements QueryResultEnhanceService 
                         .headerRoot(headerRoot)
                         .build();
 
-        // 阶段 1: 调度所有数据行增强提供者
+        // 仅处理第一层数据行增强 (无需递归处理子区块)
         for (DataRowEnhanceProvider provider : rowEnhanceProviders) {
             if (provider.supports(ctx)) {
                 provider.enhance(records, ctx);
-            }
-        }
-
-        // 阶段 2: 递归处理自相似子区块
-        for (DataRow row : records) {
-            if (row == null || row.getChildren() == null) {
-                continue;
-            }
-            for (DataBlock childBlock : row.getChildren()) {
-                if (childBlock != null && !CollectionUtils.isEmpty(childBlock.getRecords())) {
-                    enhanceDataRows(
-                            childBlock.getRecords(), rootModuleId, primaryTable, headerRoot);
-                }
             }
         }
     }

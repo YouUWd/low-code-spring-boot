@@ -5,8 +5,10 @@ import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.request.SortItem;
+import com.jdec.platform.data.api.model.predicate.ColumnRef;
 import com.jdec.platform.data.api.model.predicate.ComparisonPredicate;
 import com.jdec.platform.data.api.model.predicate.CompoundPredicate;
+import com.jdec.platform.data.api.model.predicate.FunctionExpr;
 import com.jdec.platform.data.api.model.predicate.Predicate;
 import java.util.HashSet;
 import java.util.Set;
@@ -34,8 +36,10 @@ public final class TableQueryValidator {
                     "subject_id",
                     "created_by",
                     "created_date",
+                    "created_name",
                     "updated_by",
-                    "updated_date");
+                    "updated_date",
+                    "updated_name");
 
     private TableQueryValidator() {}
 
@@ -109,7 +113,7 @@ public final class TableQueryValidator {
                     }
                 } else {
                     String clm = trimmed.toLowerCase();
-                    if (!BUILTIN_SYSTEM_COLUMNS.contains(clm)) {
+                    if (!BUILTIN_SYSTEM_COLUMNS.contains(clm) && !allowedColumns.isEmpty()) {
                         boolean matchAny =
                                 allowedColumns.stream().anyMatch(k -> k.endsWith("." + clm));
                         if (!matchAny) {
@@ -145,6 +149,15 @@ public final class TableQueryValidator {
                             && !allowedColumns.contains(physicalKey(tbl, clm))) {
                         throw new IllegalArgumentException("排序字段 [" + f + "] 不属于当前模块查询范围");
                     }
+                } else {
+                    String clm = f.toLowerCase();
+                    if (!BUILTIN_SYSTEM_COLUMNS.contains(clm) && !allowedColumns.isEmpty()) {
+                        boolean matchAny =
+                                allowedColumns.stream().anyMatch(k -> k.endsWith("." + clm));
+                        if (!matchAny) {
+                            throw new IllegalArgumentException("排序字段 [" + f + "] 不属于当前模块查询范围");
+                        }
+                    }
                 }
             }
         }
@@ -164,16 +177,35 @@ public final class TableQueryValidator {
         }
         if (p instanceof ComparisonPredicate comp) {
             String f = comp.getField();
-            if (f != null && !f.isBlank() && f.contains(".")) {
-                int dot = f.indexOf('.');
-                String tbl = f.substring(0, dot).trim().toLowerCase();
-                String clm = f.substring(dot + 1).trim().toLowerCase();
-                if (!allowedTables.contains(tbl)) {
-                    throw new IllegalArgumentException("过滤字段所属表 [" + tbl + "] 不属于当前模块查询范围");
+            if (f == null && comp.getExpression() instanceof FunctionExpr fn) {
+                ColumnRef targetCol = fn.getTargetColumn();
+                if (targetCol != null) {
+                    f = targetCol.getField();
                 }
-                if (!BUILTIN_SYSTEM_COLUMNS.contains(clm)
-                        && !allowedColumns.contains(physicalKey(tbl, clm))) {
-                    throw new IllegalArgumentException("过滤字段 [" + f + "] 不属于当前模块查询范围");
+            }
+            if (f != null && !f.isBlank()) {
+                String trimmed = f.trim();
+                if (trimmed.contains(".")) {
+                    int dot = trimmed.indexOf('.');
+                    String tbl = trimmed.substring(0, dot).trim().toLowerCase();
+                    String clm = trimmed.substring(dot + 1).trim().toLowerCase();
+                    if (!allowedTables.contains(tbl)) {
+                        throw new IllegalArgumentException("过滤字段所属表 [" + tbl + "] 不属于当前模块查询范围");
+                    }
+                    if (!BUILTIN_SYSTEM_COLUMNS.contains(clm)
+                            && !allowedColumns.contains(physicalKey(tbl, clm))) {
+                        throw new IllegalArgumentException("过滤字段 [" + trimmed + "] 不属于当前模块查询范围");
+                    }
+                } else {
+                    String clm = trimmed.toLowerCase();
+                    if (!BUILTIN_SYSTEM_COLUMNS.contains(clm) && !allowedColumns.isEmpty()) {
+                        boolean matchAny =
+                                allowedColumns.stream().anyMatch(k -> k.endsWith("." + clm));
+                        if (!matchAny) {
+                            throw new IllegalArgumentException(
+                                    "过滤字段 [" + trimmed + "] 不属于当前模块查询范围");
+                        }
+                    }
                 }
             }
         } else if (p instanceof CompoundPredicate comp) {

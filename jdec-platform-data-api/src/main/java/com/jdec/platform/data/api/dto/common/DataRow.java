@@ -25,8 +25,10 @@ import lombok.NoArgsConstructor;
  * <p>基于全链路统一 table.column 语言设计：
  *
  * <ul>
- *   <li>1. 物理表字段数据统一平铺为 {@code table.column -> value} (如 {@code "info.company_name": "腾讯"});
- *   <li>2. 级联子视图区块统一挂载在 {@code children} 中 (自相似递归嵌套).
+ *   <li>1. 物理表字段数据在 JSON 序列化时统一平铺为 {@code table.column -> value} (如 {@code "info.company_name":
+ *       "腾讯"});
+ *   <li>2. 内部存储以物理表名分组收敛 ({@code tableName -> Map<column, value>})，消除扁平键与嵌套表 Map 双写失步问题；
+ *   <li>3. 级联子视图区块统一挂载在 {@code children} 中 (自相似递归嵌套).
  * </ul>
  */
 @Data
@@ -42,12 +44,17 @@ public class DataRow implements Serializable {
     @JsonProperty("children")
     private List<DataBlock> children;
 
-    /** 动态承载物理表数据 (支持 "table.column" -> value 扁平键，或 "table" -> Map 嵌套键) */
+    /** 动态承载物理表数据 (带表名字段归一化存储为 "table" -> Map<column, value>，无表名字段直接存为 key -> value) */
     @JsonIgnore @Builder.Default private Map<String, Object> tables = new LinkedHashMap<>();
 
     public DataRow(Map<String, Object> map) {
+        this.tables = new LinkedHashMap<>();
         if (map != null) {
-            this.tables = new LinkedHashMap<>(map);
+            for (Map.Entry<String, Object> entry : map.entrySet()) {
+                if (entry.getKey() != null) {
+                    put(entry.getKey(), entry.getValue());
+                }
+            }
         }
     }
 
@@ -103,14 +110,15 @@ public class DataRow implements Serializable {
         if (tables == null || tableName == null) {
             return null;
         }
+        String t = tableName.trim();
         // 1. 若本身存有以 tableName 为键的嵌套 Map
-        Object val = tables.get(tableName);
+        Object val = tables.get(t);
         if (val instanceof Map<?, ?> m) {
             return (Map<String, Object>) m;
         }
-        // 2. 否则从扁平 "table.column" 中聚合并返回该表的 Map
+        // 2. 兼容兜底：若外部直接向 tables 注入了扁平 "table.column" 键，则聚合并返回该表的 Map
         Map<String, Object> subMap = new LinkedHashMap<>();
-        String prefix = tableName.trim() + ".";
+        String prefix = t + ".";
         for (Map.Entry<String, Object> entry : tables.entrySet()) {
             if (entry.getKey() != null && entry.getKey().startsWith(prefix)) {
                 subMap.put(entry.getKey().substring(prefix.length()), entry.getValue());
@@ -124,28 +132,42 @@ public class DataRow implements Serializable {
         ensureTablesMutable();
         if (columnData != null && tableName != null) {
             String t = tableName.trim();
+            Map<String, Object> mutableSub = new LinkedHashMap<>();
+            Object existing = tables.get(t);
+            if (existing instanceof Map<?, ?> existingMap) {
+                existingMap.forEach(
+                        (k, v) -> {
+                            if (k != null) {
+                                mutableSub.put(String.valueOf(k).trim(), v);
+                            }
+                        });
+            }
             for (Map.Entry<String, Object> entry : columnData.entrySet()) {
                 if (entry.getKey() != null) {
-                    tables.put(t + "." + entry.getKey().trim(), entry.getValue());
+                    String col = entry.getKey().trim();
+                    mutableSub.put(col, entry.getValue());
+                    tables.remove(t + "." + col);
                 }
             }
-            tables.put(t, columnData);
+            tables.put(t, mutableSub);
         }
     }
 
-    /** 获取指定表名和字段名的值 (优先匹配 table.column 扁平键) */
+    /** 获取指定表名和字段名的值 */
     public Object getValue(String tableName, String column) {
         if (tables == null) {
             return null;
         }
-        if (tableName != null && column != null) {
-            String key = tableName.trim() + "." + column.trim();
-            if (tables.containsKey(key)) {
-                return tables.get(key);
+        if (tableName != null && !tableName.isBlank() && column != null) {
+            String t = tableName.trim();
+            String col = column.trim();
+            Map<String, Object> table = getTable(t);
+            if (table != null && table.containsKey(col)) {
+                return table.get(col);
             }
-            Map<String, Object> table = getTable(tableName);
-            if (table != null && table.containsKey(column.trim())) {
-                return table.get(column.trim());
+            String flatKey = t + "." + col;
+            if (tables.containsKey(flatKey)) {
+                return tables.get(flatKey);
             }
         }
         return column != null ? tables.get(column.trim()) : null;
@@ -156,12 +178,13 @@ public class DataRow implements Serializable {
         if (tableDotColumn == null || tables == null) {
             return null;
         }
-        if (tables.containsKey(tableDotColumn)) {
-            return tables.get(tableDotColumn);
-        }
         if (tableDotColumn.contains(".")) {
             int dot = tableDotColumn.indexOf('.');
-            return getValue(tableDotColumn.substring(0, dot), tableDotColumn.substring(dot + 1));
+            Object v =
+                    getValue(tableDotColumn.substring(0, dot), tableDotColumn.substring(dot + 1));
+            if (v != null) {
+                return v;
+            }
         }
         return tables.get(tableDotColumn);
     }
@@ -193,14 +216,18 @@ public class DataRow implements Serializable {
         return null;
     }
 
-    /** 设置物理表单列值 (以 table.column 格式存储) */
+    /** 设置物理表单列值 (收敛存储于 tables.get(tableName) Map 中，消除双写失步) */
+    @SuppressWarnings("unchecked")
     public DataRow putValue(String tableName, String column, Object value) {
         ensureTablesMutable();
 
         String col = column != null ? column.trim() : "";
         if (tableName != null && !tableName.isBlank()) {
             String t = tableName.trim();
-            tables.put(t + "." + col, value);
+            if (col.toLowerCase().startsWith(t.toLowerCase() + ".")) {
+                col = col.substring(t.length() + 1).trim();
+            }
+            tables.remove(t + "." + col);
             Object obj = tables.get(t);
             if (obj instanceof Map<?, ?> subMap) {
                 try {
@@ -217,37 +244,37 @@ public class DataRow implements Serializable {
                 tables.put(t, mutableSub);
             }
         } else {
-            tables.put(col, value);
+            put(col, value);
         }
         return this;
     }
 
-    /** 直接设置 table.column 键值对 */
+    /** 直接设置 table.column 键值对或物理表 Map */
+    @SuppressWarnings("unchecked")
     public DataRow put(String key, Object value) {
         ensureTablesMutable();
-        if (key != null) {
-            tables.put(key, value);
-            if (key.contains(".")) {
-                int dot = key.indexOf('.');
-                String t = key.substring(0, dot).trim();
-                String col = key.substring(dot + 1).trim();
-                Object obj = tables.get(t);
-                if (obj instanceof Map<?, ?> subMap) {
-                    try {
-                        ((Map<String, Object>) subMap).put(col, value);
-                    } catch (UnsupportedOperationException e) {
-                        Map<String, Object> mutableSub = new LinkedHashMap<>();
-                        subMap.forEach((k, v) -> mutableSub.put(String.valueOf(k), v));
-                        mutableSub.put(col, value);
-                        tables.put(t, mutableSub);
-                    }
-                } else {
-                    Map<String, Object> mutableSub = new LinkedHashMap<>();
-                    mutableSub.put(col, value);
-                    tables.put(t, mutableSub);
-                }
-            }
+        if (key == null) {
+            return this;
         }
+        String trimmedKey = key.trim();
+        if (trimmedKey.contains(".") && !trimmedKey.startsWith("_fk_")) {
+            int dot = trimmedKey.indexOf('.');
+            String t = trimmedKey.substring(0, dot).trim();
+            String col = trimmedKey.substring(dot + 1).trim();
+            return putValue(t, col, value);
+        }
+        if (value instanceof Map<?, ?> subMap && !trimmedKey.matches("\\d+")) {
+            Map<String, Object> casted = new LinkedHashMap<>();
+            subMap.forEach(
+                    (k, v) -> {
+                        if (k != null) {
+                            casted.put(String.valueOf(k), v);
+                        }
+                    });
+            putTable(trimmedKey, casted);
+            return this;
+        }
+        tables.put(trimmedKey, value);
         return this;
     }
 
@@ -259,17 +286,14 @@ public class DataRow implements Serializable {
             return null;
         }
         return children.stream()
-                .filter(b -> view.equalsIgnoreCase(b.getView()))
+                .filter(b -> b != null && view.equalsIgnoreCase(b.getView()))
                 .findFirst()
                 .orElse(null);
     }
 
-    /** 根据数字 ID 或编码查找首个匹配的子区块 (兼容旧测试或以 ID 命名的视图) */
+    /** 根据数字 ID 转换视图编码查找首个匹配的子区块 */
     public DataBlock getChild(Long id) {
-        if (id == null) {
-            return null;
-        }
-        return getChild(String.valueOf(id));
+        return id == null ? null : getChild(String.valueOf(id));
     }
 
     /** 根据子视图编码获取所有匹配的子区块 */
@@ -278,7 +302,7 @@ public class DataRow implements Serializable {
             return Collections.emptyList();
         }
         return children.stream()
-                .filter(b -> view.equalsIgnoreCase(b.getView()))
+                .filter(b -> b != null && view.equalsIgnoreCase(b.getView()))
                 .collect(Collectors.toList());
     }
 
