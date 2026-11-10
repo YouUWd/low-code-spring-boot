@@ -105,7 +105,7 @@ public class SaveOperateLogService {
                                 .subjectId(AppContext.getSubjectId())
                                 .roleId(UserContext.getRoleId())
                                 .isBuildFieldPermission(false)
-                                .isBuildFieldPro(false)
+                                .isBuildFieldPro(true)
                                 .build());
         if (CollectionUtil.isEmpty(moduleCacheMap)) {
             return null;
