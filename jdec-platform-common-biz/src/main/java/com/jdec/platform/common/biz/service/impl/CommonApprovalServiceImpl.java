@@ -130,6 +130,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         approvalReq.setRecordId(result.getDataId());
         approvalReq.setBusinessNumber(result.getBusinessNo());
         approvalReq.setButton("save");
+        approvalReq.setMenuId(0L);
         approvalSave(result.getModuleId(), approvalReq);
         return result.getDataId();
     }
@@ -226,7 +227,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
 
     // 提交单据
     @Override
-    public Long businessSubmit(DynamicSaveReq req) {
+    public Long businessSubmit(Long menuId, DynamicSaveReq req) {
         savePrepositionProcessorService.preProcess(req.getNestedModuleData());
         boolean realTimeSave =
                 Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save");
@@ -260,6 +261,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
                     result.getVersionNo());
         }
         ApprovalReq approvalReq = new ApprovalReq();
+        approvalReq.setMenuId(menuId);
         approvalReq.setRecordId(result.getDataId());
         approvalReq.setBusinessNumber(result.getBusinessNo());
         approvalReq.setButton("submit");
@@ -315,6 +317,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         approvalEvent.setSubjectId(AppContext.getSubjectId());
         approvalEvent.setModuleId(moduleId);
         approvalEvent.setOldRecordId(req.getRecordId());
+        approvalEvent.setMenuId(req.getMenuId());
         approvalEngine.handleApproval(approvalEvent);
     }
 

@@ -175,4 +175,21 @@ public class SysButtonService implements SysButtonApi, OpenButtonApi {
         BeanUtils.copyProperties(entity, resp);
         return resp;
     }
+
+    @Override
+    public SysButtonResp getButtonByType(String btnType) {
+        LambdaQueryWrapper<SysButton> wrapper =
+                Wrappers.<SysButton>lambdaQuery()
+                        .eq(SysButton::getProjectNo, AppContext.getProjectNo())
+                        .eq(SysButton::getSubjectId, AppContext.getSubjectId())
+                        .eq(SysButton::getType, btnType)
+                        .last("LIMIT 1");
+        SysButton entity = sysButtonMapper.selectOne(wrapper);
+        if (Objects.isNull(entity)) {
+            return null;
+        }
+        SysButtonResp resp = new SysButtonResp();
+        BeanUtils.copyProperties(entity, resp);
+        return resp;
+    }
 }
