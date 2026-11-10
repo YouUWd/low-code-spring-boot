@@ -22,4 +22,7 @@ public interface SysButtonApi {
 
     /** 根据按钮ID获取按钮配置 */
     SysButtonResp getButtonById(Long id);
+
+    /** 根据按钮类型获取按钮配置 */
+    SysButtonResp getButtonByType(String btnType);
 }

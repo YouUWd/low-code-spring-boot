@@ -10,6 +10,7 @@ import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.dto.context.ModuleDetailQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.ModuleQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.ModuleSnapShotDataContext;
+import com.jdec.platform.dataengine.biz.enums.OpTypeEnum;
 import com.jdec.platform.dataengine.biz.operatelog.util.OperateLogRemarkUtil;
 import com.jdec.platform.dataengine.biz.service.*;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataApprovalBizService;
@@ -68,10 +69,13 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
         }
         Boolean isApproval =
                 moduleMetaDataService.getApprovalStatusByModuleIdAsync(req.getModuleId());
+        OpTypeEnum opType = OpTypeEnum.valueOf(req.getOp());
+        if (opType == null) {
+            throw new BusinessException(ApiResponseCodeEnum.BAD_REQUEST.getCode(), "操作类型不能为空");
+        }
         DSLContext context = jooqDataContextFactory.getContext();
-
-        Long rootModuleMainTableId = saveModuleApprovalData(req, rootModule, isApproval, context);
-        if (rootModuleMainTableId == null || rootModuleMainTableId.equals(0L)) {
+        DataResult dataResult = saveModuleApprovalData(req, rootModule, isApproval, context);
+        if (dataResult.dataId() == null || dataResult.dataId().equals(0L)) {
             throw new BusinessException(
                     ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getCode(),
                     ApiResponseCodeEnum.BAD_MODULE_SAVE_DATA_ERROR.getMessage());
@@ -150,34 +154,69 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
             }
         }
         // todo  result   tmpSnapshot 要构建 版本间的字段 对比 返回给审批链
-        JsonNode remark =
-                operateLogRemarkUtil.buildRemark(
-                        tmpSnapshot, result, moduleCacheMap, req.getMenuId(), req.getReason());
-
-        NestedModuleDataDTO tmpReferenceData =
-                ModuleTreeDataUtils.copyExternalReferenceData(tmpSnapshot, moduleCacheMap);
-        NestedModuleDataDTO currentReferenceData =
-                ModuleTreeDataUtils.copyExternalReferenceData(result, moduleCacheMap);
-
-        // 引用字段的对比
-        JsonNode remarkReferenceData =
-                operateLogRemarkUtil.buildRemark(
-                        tmpReferenceData,
-                        currentReferenceData,
-                        moduleCacheMap,
-                        req.getMenuId(),
-                        null);
-
+        // 字段对比
+        JsonNode remark = null;
+        // 词云字段对比
+        JsonNode remarkReferenceData = null;
+        switch (opType) {
+            case SUBMIT, REJECT_SUBMIT, PASS, REJECT, CANCEL -> {
+                if (tmpSnapshot != null) {
+                    remark =
+                            operateLogRemarkUtil.buildRemark(
+                                    tmpSnapshot,
+                                    result,
+                                    moduleCacheMap,
+                                    req.getMenuId(),
+                                    "id",
+                                    req.getReason());
+                }
+                NestedModuleDataDTO tmpReferenceData =
+                        ModuleTreeDataUtils.copyExternalReferenceData(tmpSnapshot, moduleCacheMap);
+                NestedModuleDataDTO currentReferenceData =
+                        ModuleTreeDataUtils.copyExternalReferenceData(result, moduleCacheMap);
+                if (tmpReferenceData != null) {
+                    remarkReferenceData =
+                            operateLogRemarkUtil.buildRemark(
+                                    tmpReferenceData,
+                                    currentReferenceData,
+                                    moduleCacheMap,
+                                    req.getMenuId(),
+                                    "id",
+                                    null);
+                }
+            }
+            case CHANGE_SUBMIT -> {
+                // 获取当前模块数据的快照
+                NestedModuleDataDTO originalData =
+                        moduleBizDataService.getModuleDetailData(
+                                ModuleDetailQueryContext.builder()
+                                        .moduleId(req.getModuleId())
+                                        .dataId(dataResult.sourceId())
+                                        .moduleCacheMap(moduleCacheMap)
+                                        .projectNo(AppContext.getProjectNo())
+                                        .subjectId(AppContext.getSubjectId())
+                                        .loginUser(UserContext.getLoginUser())
+                                        .build());
+                remark =
+                        operateLogRemarkUtil.buildRemark(
+                                originalData,
+                                result,
+                                moduleCacheMap,
+                                req.getMenuId(),
+                                "business_no",
+                                req.getReason());
+            }
+        }
         ApprovalProcessResultResp resp =
                 ApprovalProcessResultResp.builder()
                         .nestedModuleData(result)
                         .remark(remark)
-                        .referenceDataRemark(tmpReferenceData == null ? null : remarkReferenceData)
+                        .referenceDataRemark(remarkReferenceData)
                         .build();
         return resp;
     }
 
-    private Long saveModuleApprovalData(
+    private DataResult saveModuleApprovalData(
             ApprovalStatusCallBackReq req,
             SysModuleCombineInfo rootModule,
             Boolean isApproval,
@@ -194,10 +233,11 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                     ApiResponseCodeEnum.BAD_REQUEST.getCode(),
                     "审批状态回调数据ID[" + req.getDataId() + "]无此记录");
         }
+
+        Long sourceId = null;
         // 带有审批链的状态回调
         if (isApproval) {
-            Long sourceId = r.get(DSL.field(DSL.name("source_id")), Long.class);
-
+            sourceId = r.get(DSL.field(DSL.name("source_id")), Long.class);
             Map<Field<Object>, Object> fieldValues = new HashMap<>();
             fieldValues.put(
                     DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_BUSINESS_STATUS_FIELD)),
@@ -208,9 +248,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
             fieldValues.put(
                     DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD)),
                     LocalDateTime.now());
-            if (req.getIsFirstSubmit() != null
-                    && req.getIsFirstSubmit()
-                    && req.getRegistrationTime() != null) {
+            if (req.getRegistrationTime() != null) {
                 fieldValues.put(
                         DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_REGISTRATION_TIME_FIELD)),
                         req.getRegistrationTime());
@@ -244,29 +282,34 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
         } else {
             // 不带审批链 的状态 不用 回调  貌似状态不用 回调
 
-            Map<Field<Object>, Object> fieldValues = new HashMap<>();
-            fieldValues.put(
-                    DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_BUSINESS_STATUS_FIELD)),
-                    req.getBusinessStatus());
-            fieldValues.put(
-                    DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD)),
-                    UserContext.getOperateUserId());
-            fieldValues.put(
-                    DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD)),
-                    LocalDateTime.now());
-            if (req.getIsFirstSubmit() != null
-                    && req.getIsFirstSubmit()
-                    && req.getRegistrationTime() != null) {
-                fieldValues.put(
-                        DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_REGISTRATION_TIME_FIELD)),
-                        req.getRegistrationTime());
-            }
-            dslContext
-                    .update(DSL.table(rootModule.getModuleInfo().getPrimaryTable()))
-                    .set(fieldValues)
-                    .where(DSL.field(DSL.name("id")).eq(req.getDataId()))
-                    .execute();
+            //            Map<Field<Object>, Object> fieldValues = new HashMap<>();
+            //            fieldValues.put(
+            //
+            // DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_BUSINESS_STATUS_FIELD)),
+            //                    req.getBusinessStatus());
+            //            fieldValues.put(
+            //                    DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATE_BY_FIELD)),
+            //                    UserContext.getOperateUserId());
+            //            fieldValues.put(
+            //
+            // DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD)),
+            //                    LocalDateTime.now());
+            //            if (req.getIsFirstSubmit() != null
+            //                    && req.getIsFirstSubmit()
+            //                    && req.getRegistrationTime() != null) {
+            //                fieldValues.put(
+            //
+            // DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_REGISTRATION_TIME_FIELD)),
+            //                        req.getRegistrationTime());
+            //            }
+            //            dslContext
+            //                    .update(DSL.table(rootModule.getModuleInfo().getPrimaryTable()))
+            //                    .set(fieldValues)
+            //                    .where(DSL.field(DSL.name("id")).eq(req.getDataId()))
+            //                    .execute();
         }
-        return req.getDataId();
+        return new DataResult(req.getDataId(), sourceId);
     }
+
+    public record DataResult(Long dataId, Long sourceId) {}
 }
