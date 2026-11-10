@@ -214,13 +214,13 @@ public class CompanyCustomServiceImpl implements CompanyCustomService {
      */
     private Long getBadgeNumByModuleSlug(String moduleSlug, Long id) {
         switch (moduleSlug) {
-            case "COMPANY-MEMBER", "w_rygc":
+            case "COMPANY-MEMBER", "W_RYGC":
                 LambdaQueryWrapper<Member> memberLambdaQueryWrapper = new LambdaQueryWrapper<>();
                 memberLambdaQueryWrapper.in(Member::getType, "employee", "员工");
                 memberLambdaQueryWrapper.eq(Member::getCompanyId, id);
                 memberLambdaQueryWrapper.eq(Member::getDeleted, 0);
                 return memberMapper.selectCount(memberLambdaQueryWrapper);
-            case "COMPANY-MEMBER-V", "W_L_LXR":
+            case "COMPANY-MEMBER-V", "W_LXFS":
                 LambdaQueryWrapper<Address> addressLambdaQueryWrapper = new LambdaQueryWrapper<>();
                 addressLambdaQueryWrapper.eq(Address::getCompanyId, id);
                 addressLambdaQueryWrapper.eq(Address::getDeleted, 0);
