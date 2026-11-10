@@ -6,6 +6,10 @@ import lombok.Data;
 @Data
 @Schema(description = "审批请求")
 public class ApprovalReq { // 审批事件消息
+    // 菜单ID
+    @Schema(description = "菜单ID", requiredMode = Schema.RequiredMode.REQUIRED)
+    private Long menuId;
+
     // 业务记录ID
     @Schema(description = "业务记录ID", requiredMode = Schema.RequiredMode.REQUIRED)
     private Long recordId;
