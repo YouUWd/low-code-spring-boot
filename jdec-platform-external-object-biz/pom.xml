@@ -19,6 +19,10 @@
     <dependencies>
         <dependency>
             <groupId>com.jdec</groupId>
+            <artifactId>jdec-platform-shared</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.jdec</groupId>
             <artifactId>jdec-platform-external-object-api</artifactId>
         </dependency>
         <!-- 保存/审批流程复用 common 模块 -->

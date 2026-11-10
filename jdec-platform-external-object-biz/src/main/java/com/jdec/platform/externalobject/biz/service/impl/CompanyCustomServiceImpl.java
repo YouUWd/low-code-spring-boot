@@ -14,6 +14,8 @@ import com.jdec.platform.externalobject.api.dto.request.CompanyRegStatusUpdateRe
 import com.jdec.platform.externalobject.api.dto.request.ExternalObjectRealtimeValidateReq;
 import com.jdec.platform.externalobject.api.dto.response.CompanyTreeNodeResp;
 import com.jdec.platform.externalobject.api.dto.response.ExternalObjectRealtimeValidateResp;
+import com.jdec.platform.externalobject.api.dto.response.MemberContactResp;
+import com.jdec.platform.externalobject.api.dto.response.MemberTreeNodeResp;
 import com.jdec.platform.externalobject.biz.entity.*;
 import com.jdec.platform.externalobject.biz.mapper.*;
 import com.jdec.platform.externalobject.biz.service.CompanyCustomService;
@@ -48,6 +50,7 @@ public class CompanyCustomServiceImpl implements CompanyCustomService {
     private final InfoMapper infoMapper;
     private final BasicInfoMapper basicInfoMapper;
     private final MemberMapper memberMapper;
+    private final MemberContactMapper memberContactMapper;
     private final AddressMapper addressMapper;
     private final CompanyContactMapper companyContactMapper;
     private final DigitalAccountMapper digitalAccountMapper;
@@ -515,5 +518,128 @@ public class CompanyCustomServiceImpl implements CompanyCustomService {
                         .orderByAsc(CompanyContact::getSortOrder)
                         .orderByAsc(CompanyContact::getId);
         return companyContactMapper.selectList(queryWrapper);
+    }
+
+    @Override
+    public List<MemberTreeNodeResp> getMemberTree(Long companyId) {
+        if (companyId == null) {
+            throw new IllegalArgumentException("公司 ID (companyId) 不能为空");
+        }
+
+        // 1. 查询该公司的所有未删除人员/部门/组织节点，按 sort_order, id 升序
+        List<Member> memberList =
+                memberMapper.selectList(
+                        new LambdaQueryWrapper<Member>()
+                                .eq(Member::getCompanyId, companyId)
+                                .eq(Member::getDeleted, 0)
+                                .orderByAsc(Member::getSortOrder)
+                                .orderByAsc(Member::getId));
+        if (CollectionUtils.isEmpty(memberList)) {
+            return Collections.emptyList();
+        }
+
+        // 2. 收集所有成员ID，批量查询关联的人员联系方式
+        List<Long> memberIds =
+                memberList.stream()
+                        .map(Member::getId)
+                        .filter(Objects::nonNull)
+                        .collect(Collectors.toList());
+
+        Map<Long, List<MemberContactResp>> contactMap = new HashMap<>();
+        if (!memberIds.isEmpty()) {
+            List<MemberContact> contactList =
+                    memberContactMapper.selectList(
+                            new LambdaQueryWrapper<MemberContact>()
+                                    .in(MemberContact::getMemberId, memberIds)
+                                    .eq(MemberContact::getDeleted, 0)
+                                    .orderByAsc(MemberContact::getSortOrder)
+                                    .orderByAsc(MemberContact::getId));
+            if (!CollectionUtils.isEmpty(contactList)) {
+                contactMap =
+                        contactList.stream()
+                                .collect(
+                                        Collectors.groupingBy(
+                                                MemberContact::getMemberId,
+                                                Collectors.mapping(
+                                                        this::toMemberContactResp,
+                                                        Collectors.toList())));
+            }
+        }
+
+        // 3. 构建节点响应对象并建立索引
+        List<MemberTreeNodeResp> allNodes = new ArrayList<>(memberList.size());
+        Map<String, MemberTreeNodeResp> nodeKeyMap = new HashMap<>();
+
+        for (Member m : memberList) {
+            MemberTreeNodeResp resp = toMemberTreeNodeResp(m);
+            List<MemberContactResp> contacts = contactMap.get(m.getId());
+            if (contacts != null) {
+                resp.setContacts(contacts);
+            }
+            allNodes.add(resp);
+
+            if (StringUtils.hasText(m.getNodeId())) {
+                nodeKeyMap.put(m.getNodeId().trim(), resp);
+            }
+        }
+
+        // 4. 组装父子层级树
+        List<MemberTreeNodeResp> rootNodes = new ArrayList<>();
+        for (MemberTreeNodeResp node : allNodes) {
+            String parentNodeId = node.getParentNodeId();
+            if (StringUtils.hasText(parentNodeId) && nodeKeyMap.containsKey(parentNodeId.trim())) {
+                MemberTreeNodeResp parent = nodeKeyMap.get(parentNodeId.trim());
+                if (parent != node) {
+                    parent.getChildren().add(node);
+                    continue;
+                }
+            }
+            rootNodes.add(node);
+        }
+
+        return rootNodes;
+    }
+
+    private MemberContactResp toMemberContactResp(MemberContact c) {
+        return MemberContactResp.builder()
+                .id(c.getId())
+                .businessNo(c.getBusinessNo())
+                .versionNo(c.getVersionNo())
+                .subjectId(c.getSubjectId())
+                .memberId(c.getMemberId())
+                .contactType(c.getContactType())
+                .contactValue(c.getContactValue())
+                .isPrimary(c.getIsPrimary())
+                .sortOrder(c.getSortOrder())
+                .build();
+    }
+
+    private MemberTreeNodeResp toMemberTreeNodeResp(Member m) {
+        return MemberTreeNodeResp.builder()
+                .id(m.getId())
+                .businessNo(m.getBusinessNo())
+                .versionNo(m.getVersionNo())
+                .subjectId(m.getSubjectId())
+                .companyId(m.getCompanyId())
+                .type(m.getType())
+                .memberName(m.getMemberName())
+                .name(m.getName())
+                .code(m.getCode())
+                .deptLeader(m.getDeptLeader())
+                .position(m.getPosition())
+                .gender(m.getGender())
+                .sortOrder(m.getSortOrder())
+                .status(m.getStatus())
+                .nodeId(m.getNodeId())
+                .parentNodeId(m.getParentNodeId())
+                .identityType(m.getIdentityType())
+                .identityNo(m.getIdentityNo())
+                .mobilePhoneNo(m.getMobilePhoneNo())
+                .workField(m.getWorkField())
+                .expertiseField(m.getExpertiseField())
+                .photoUrl(m.getPhotoUrl())
+                .contacts(new ArrayList<>())
+                .children(new ArrayList<>())
+                .build();
     }
 }

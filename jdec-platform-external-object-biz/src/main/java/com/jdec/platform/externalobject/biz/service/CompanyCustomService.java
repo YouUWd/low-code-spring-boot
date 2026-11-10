@@ -3,6 +3,7 @@ package com.jdec.platform.externalobject.biz.service;
 import com.jdec.platform.externalobject.api.dto.request.CompanyBadgeNumReq;
 import com.jdec.platform.externalobject.api.dto.request.CompanyRegStatusUpdateReq;
 import com.jdec.platform.externalobject.api.dto.response.CompanyTreeNodeResp;
+import com.jdec.platform.externalobject.api.dto.response.MemberTreeNodeResp;
 import com.jdec.platform.externalobject.biz.entity.CompanyContact;
 import java.util.List;
 import java.util.Map;
@@ -58,4 +59,12 @@ public interface CompanyCustomService {
      * @return 公司联系方式列表
      */
     List<CompanyContact> listCompanyContacts(Long companyId);
+
+    /**
+     * 根据所属公司ID（单据物理主键ID）查询公司人员构成架构树及人员联系方式
+     *
+     * @param companyId 所属公司ID（关联 info.id）
+     * @return 公司人员构成架构树节点列表
+     */
+    List<MemberTreeNodeResp> getMemberTree(Long companyId);
 }
