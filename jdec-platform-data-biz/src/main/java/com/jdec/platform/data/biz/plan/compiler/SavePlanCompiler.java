@@ -260,7 +260,7 @@ public class SavePlanCompiler {
         }
 
         // 1.2 剥离同一模块下的 N:1 上游只读表 (例如 getDetail 查询出的 teacher/clazz 字典表空间)，
-        //     保证 getDetail 返回值原样回写 save 时不会把上游表 Map 当作主表列写入
+        //     保证 getDetail 返回值原样回写 save 时不会把上游表 Map 或扁平键当作主表列写入
         if (primaryTable != null
                 && !primaryTable.isBlank()
                 && projectRelations != null
@@ -272,12 +272,21 @@ public class SavePlanCompiler {
                     if (ModuleRelationResolver.isUpstreamRelation(rel, primaryTable, tree)) {
                         String upTable = rel.getMainTable();
                         if (upTable != null && !upTable.isBlank()) {
+                            String trimmedUpTable = upTable.trim();
                             String matchedUpKey =
-                                    findMatchingKeyIgnoreCase(cleanRow, upTable.trim());
+                                    findMatchingKeyIgnoreCase(cleanRow, trimmedUpTable);
                             if (matchedUpKey != null
                                     && cleanRow.get(matchedUpKey) instanceof Map<?, ?>) {
                                 cleanRow.remove(matchedUpKey);
                             }
+                            String upPrefix = trimmedUpTable.toLowerCase() + ".";
+                            List<String> upFlatToRemove = new ArrayList<>();
+                            for (String k : cleanRow.keySet()) {
+                                if (k != null && k.toLowerCase().startsWith(upPrefix)) {
+                                    upFlatToRemove.add(k);
+                                }
+                            }
+                            upFlatToRemove.forEach(cleanRow::remove);
                         }
                     }
                 }
@@ -321,11 +330,11 @@ public class SavePlanCompiler {
             }
         }
 
-        // 3. 检查 DataRow 自身的 children 列表 (List<DataBlock>) (读写同构核心自相似树)
+        // 3. 检查 DataRow 自身的 children 列表 (List<DataBlock>) (读写同构核心自相似树，未知子视图快速失败)
         if (rawRow.getChildren() != null && !rawRow.getChildren().isEmpty() && tree != null) {
             for (DataBlock childBlock : rawRow.getChildren()) {
                 if (childBlock != null && childBlock.getView() != null) {
-                    String targetView = childBlock.getView();
+                    String targetView = childBlock.getView().trim();
                     Long matchedChildId = null;
                     ModuleInfo matchedChildMeta = null;
                     if (childModuleIds != null) {
@@ -354,6 +363,13 @@ public class SavePlanCompiler {
                                         tree,
                                         matchedChildMeta,
                                         matchedChildId));
+                    } else {
+                        throw new IllegalArgumentException(
+                                "未知的子模块视图 ["
+                                        + targetView
+                                        + "]，不属于当前模块 ["
+                                        + (meta != null ? meta.getModuleCode() : moduleId)
+                                        + "] 的直接子模块配置范围");
                     }
                 }
             }
@@ -365,7 +381,7 @@ public class SavePlanCompiler {
             List<DataBlock> rowChildren = parseRowChildren(rowChildrenObj);
             for (DataBlock rowChildNode : rowChildren) {
                 if (rowChildNode != null && rowChildNode.getView() != null) {
-                    String targetView = rowChildNode.getView();
+                    String targetView = rowChildNode.getView().trim();
                     Long matchedChildId = null;
                     ModuleInfo matchedChildMeta = null;
                     if (childModuleIds != null) {
@@ -394,6 +410,13 @@ public class SavePlanCompiler {
                                         tree,
                                         matchedChildMeta,
                                         matchedChildId));
+                    } else {
+                        throw new IllegalArgumentException(
+                                "未知的子模块视图 ["
+                                        + targetView
+                                        + "]，不属于当前模块 ["
+                                        + (meta != null ? meta.getModuleCode() : moduleId)
+                                        + "] 的直接子模块配置范围");
                     }
                 }
             }

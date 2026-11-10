@@ -285,7 +285,13 @@ public class SavePlanExecutor {
                                                             .eq((byte) 0)))
                             .execute();
 
-                    // 级联软删除当前孤儿记录的所有下级物理子模块数据，防止孙表记录游离
+                    // 级联软删除当前孤儿记录的 1:1 伴生表与所有下级物理子模块数据，防止产生游离记录
+                    if (nodePlan.getCompanionPlans() != null) {
+                        for (List<SaveNodePlan> rowComps : nodePlan.getCompanionPlans()) {
+                            cascadeDeleteOrphanDescendants(
+                                    dsl, rowComps, orphanIds, currentUserId, now);
+                        }
+                    }
                     cascadeDeleteOrphanDescendants(
                             dsl, nodePlan.getChildren(), orphanIds, currentUserId, now);
                 }
@@ -700,6 +706,9 @@ public class SavePlanExecutor {
             return;
         }
         for (SaveNodePlan childPlan : childPlans) {
+            if (childPlan == null) {
+                continue;
+            }
             String childTable = childPlan.getPrimaryTable();
             String fkField = childPlan.getParentForeignKey();
             if (childTable == null || childTable.isBlank()) {
@@ -736,6 +745,13 @@ public class SavePlanExecutor {
                             .set(DSL.field(DSL.name(childTable, "updated_date")), now)
                             .where(DSL.field(DSL.name(childTable, "id")).in(childIds))
                             .execute();
+
+                    if (childPlan.getCompanionPlans() != null) {
+                        for (List<SaveNodePlan> rowComps : childPlan.getCompanionPlans()) {
+                            cascadeDeleteOrphanDescendants(
+                                    dsl, rowComps, childIds, currentUserId, now);
+                        }
+                    }
 
                     // 继续向下递归级联软删除更深层孙节点
                     cascadeDeleteOrphanDescendants(

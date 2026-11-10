@@ -5,6 +5,12 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
+import com.jdec.platform.config.api.dto.common.ModuleInfo;
+import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
+import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
+import com.jdec.platform.config.api.dto.common.TableRelationDTO;
+import com.jdec.platform.data.api.dto.common.DataBlock;
 import com.jdec.platform.data.api.dto.common.DataRow;
 import com.jdec.platform.data.api.dto.request.FilterItem;
 import com.jdec.platform.data.api.dto.request.OptionReq;
@@ -18,8 +24,15 @@ import com.jdec.platform.data.api.model.predicate.ComparisonPredicate;
 import com.jdec.platform.data.api.model.predicate.CompoundPredicate;
 import com.jdec.platform.data.api.model.predicate.FunctionExpr;
 import com.jdec.platform.data.api.model.predicate.Predicate;
+import com.jdec.platform.data.biz.plan.PlanMeta;
 import com.jdec.platform.data.biz.plan.compiler.PredicateCompiler;
+import com.jdec.platform.data.biz.plan.compiler.QueryPlanCompiler;
+import com.jdec.platform.data.biz.plan.compiler.SavePlanCompiler;
+import com.jdec.platform.data.biz.plan.compiler.TableQueryValidator;
+import com.jdec.platform.data.biz.plan.model.QueryNodePlan;
+import com.jdec.platform.data.biz.plan.model.QueryPlan;
 import com.jdec.platform.data.biz.service.SingleTableQueryService;
+import com.jdec.platform.data.biz.util.DocumentVersionUtils;
 import com.jdec.platform.shared.datasource.JooqDataContextFactory;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,7 +47,7 @@ import org.jooq.tools.jdbc.MockResult;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-@DisplayName("7 处自洽性修复回归校验测试")
+@DisplayName("自洽性修复回归校验测试")
 class ConsistencyFixesRegressionTest {
 
     private final ObjectMapper mapper = new ObjectMapper();
@@ -110,10 +123,8 @@ class ConsistencyFixesRegressionTest {
                         .build();
 
         // 构造最小空模块树
-        com.jdec.platform.config.api.dto.common.ModuleTreeDTO tree =
-                new com.jdec.platform.config.api.dto.common.ModuleTreeDTO();
-        com.jdec.platform.config.api.dto.common.ModuleInfo root =
-                new com.jdec.platform.config.api.dto.common.ModuleInfo();
+        ModuleTreeDTO tree = new ModuleTreeDTO();
+        ModuleInfo root = new ModuleInfo();
         root.setModuleId(1L);
         root.setModuleCode("COMPANY");
         root.setPrimaryTable("info");
@@ -123,9 +134,7 @@ class ConsistencyFixesRegressionTest {
         IllegalArgumentException ex =
                 assertThrows(
                         IllegalArgumentException.class,
-                        () ->
-                                com.jdec.platform.data.biz.plan.compiler.TableQueryValidator
-                                        .validate(req, tree));
+                        () -> TableQueryValidator.validate(req, tree));
         assertTrue(ex.getMessage().contains("unknown_table"));
         assertTrue(ex.getMessage().contains("不属于当前模块查询范围"));
     }
@@ -495,6 +504,246 @@ class ConsistencyFixesRegressionTest {
                 1,
                 countOccurrences(sql, "`info_change`.`deleted` = ?"),
                 "deleted 仅来自调用方 AST，无额外隐式追加");
+    }
+
+    // ==================== 新增自洽性修复回归测试 ====================
+
+    @Test
+    @DisplayName("修复1: QueryPlanCompiler 基于完整 View 视图树编译，且显式 children 与跨分支 filter EXISTS 辅助节点叠加共存")
+    void testViewTreeCompilationAndAdditiveCrossBranchExistsFilter() {
+        ModuleInfo root =
+                ModuleInfo.builder()
+                        .moduleId(1001L)
+                        .moduleCode("COMPANY")
+                        .primaryTable("info")
+                        .parentId(0L)
+                        .fields(
+                                List.of(
+                                        ModuleFieldDTO.builder()
+                                                .id(1L)
+                                                .moduleId(1001L)
+                                                .tableName("info")
+                                                .columnName("id")
+                                                .build(),
+                                        ModuleFieldDTO.builder()
+                                                .id(2L)
+                                                .moduleId(1001L)
+                                                .tableName("info")
+                                                .columnName("company_name")
+                                                .build()))
+                        .build();
+        ModuleInfo basic =
+                ModuleInfo.builder()
+                        .moduleId(1002L)
+                        .moduleCode("BASIC")
+                        .primaryTable("basic_info")
+                        .parentId(1001L)
+                        .fields(
+                                List.of(
+                                        ModuleFieldDTO.builder()
+                                                .id(3L)
+                                                .moduleId(1002L)
+                                                .tableName("basic_info")
+                                                .columnName("reg_capital")
+                                                .build()))
+                        .build();
+        ModuleInfo member =
+                ModuleInfo.builder()
+                        .moduleId(1003L)
+                        .moduleCode("MEMBER")
+                        .primaryTable("member")
+                        .parentId(1001L)
+                        .fields(
+                                List.of(
+                                        ModuleFieldDTO.builder()
+                                                .id(4L)
+                                                .moduleId(1003L)
+                                                .tableName("member")
+                                                .columnName("name")
+                                                .build()))
+                        .build();
+
+        ModuleTreeDTO tree =
+                ModuleTreeDTO.builder()
+                        .rootModuleId(1001L)
+                        .rootModule(root)
+                        .moduleMap(Map.of(1001L, root, 1002L, basic, 1003L, member))
+                        .parentToChildren(Map.of(1001L, List.of(1002L, 1003L)))
+                        .allowedModuleIds(Set.of(1001L, 1002L, 1003L))
+                        .build();
+
+        TableRelationDTO relBasic =
+                TableRelationDTO.builder()
+                        .mainTable("info")
+                        .mainField("id")
+                        .joinTable("basic_info")
+                        .joinField("company_id")
+                        .relationType("1:1")
+                        .build();
+        TableRelationDTO relMember =
+                TableRelationDTO.builder()
+                        .mainTable("info")
+                        .mainField("id")
+                        .joinTable("member")
+                        .joinField("company_id")
+                        .relationType("1:N")
+                        .build();
+        ProjectTableRelationsDTO relations =
+                ProjectTableRelationsDTO.builder()
+                        .projectNo("company")
+                        .allRelations(List.of(relBasic, relMember))
+                        .forwardRelations(Map.of("info", List.of(relBasic, relMember)))
+                        .build();
+
+        QueryPlanCompiler compiler = new QueryPlanCompiler();
+        // 构建标准 View 视图树：根视图 COMPANY + 子视图 BASIC，同时 filter 引用另一子视图 member.name
+        PageQueryReq req =
+                PageQueryReq.builder()
+                        .view("COMPANY")
+                        .columns(List.of("info.id", "info.company_name"))
+                        .children(
+                                List.of(
+                                        QueryReq.builder()
+                                                .view("BASIC")
+                                                .columns(List.of("basic_info.reg_capital"))
+                                                .build()))
+                        .filter(ComparisonPredicate.eq("member.name", "张三"))
+                        .pageNo(1)
+                        .pageSize(20)
+                        .build();
+
+        QueryPlan plan = compiler.compile(req, new PlanMeta(tree, relations));
+        QueryNodePlan rootPlan = plan.getRootNodePlan();
+        assertNotNull(rootPlan);
+        assertEquals(
+                2,
+                rootPlan.getChildren().size(),
+                "应同时包含显式子视图 BASIC (fetchData=true) 与过滤引用的辅助子视图 MEMBER (fetchData=false)");
+
+        QueryNodePlan basicPlan =
+                rootPlan.getChildren().stream()
+                        .filter(c -> "basic_info".equals(c.getPrimaryTable()))
+                        .findFirst()
+                        .orElseThrow();
+        assertTrue(basicPlan.isFetchData(), "平铺列引用的 basic_info 子模块必须开启 fetchData");
+        assertEquals(1, basicPlan.getProjectedFields().size());
+        assertEquals("reg_capital", basicPlan.getProjectedFields().get(0).getColumnName());
+
+        QueryNodePlan memberPlan =
+                rootPlan.getChildren().stream()
+                        .filter(c -> "member".equals(c.getPrimaryTable()))
+                        .findFirst()
+                        .orElseThrow();
+        assertFalse(memberPlan.isFetchData(), "仅在过滤条件中引用的 member 子模块不应拉取数据");
+        assertTrue(
+                rootPlan.getCondition().toString().toLowerCase().contains("exists"),
+                "根条件必须包含 member 的 EXISTS 子查询");
+    }
+
+    @Test
+    @DisplayName("修复2: DataRow 单一存储收敛与 DocumentVersionUtils.mergeDataRow 新旧值确定性覆盖")
+    void testDataRowSingleSourceAndMergeDeterministicOverride() {
+        DataRow baseRow = new DataRow();
+        baseRow.putValue("info", "id", 100L);
+        baseRow.putValue("info", "company_name", "旧企业名称");
+        baseRow.putValue("info", "created_date", "2026-01-01 00:00:00");
+        baseRow.putValue("info", "updated_date", "2026-01-02 00:00:00");
+
+        // DataRow.getTables().keySet() 只包含真实物理表名 info，不含冗余平铺键 info.company_name
+        assertEquals(Set.of("info"), baseRow.getTables().keySet());
+
+        // 通过嵌套 Map 构造 patchRow
+        DataRow patchRow = new DataRow(Map.of("info", Map.of("company_name", "新企业名称")));
+        DataRow merged = DocumentVersionUtils.mergeDataRow(baseRow, patchRow);
+        assertEquals("新企业名称", merged.getString("info", "company_name"));
+        assertEquals("新企业名称", merged.getValue("info.company_name"));
+
+        // 验证 stripIdsAndResetAudit 彻底擦除 created_date / updated_date
+        DataBlock block = DataBlock.of("COMPANY", merged);
+        DocumentVersionUtils.stripIdsAndResetAudit(block);
+        assertNull(merged.getValue("info", "id"));
+        assertNull(merged.getValue("info", "created_date"));
+        assertNull(merged.getValue("info", "updated_date"));
+    }
+
+    @Test
+    @DisplayName("修复3: SavePlanCompiler 对未知的 children 子视图执行快速失败，禁止静默丢弃")
+    void testSavePlanCompilerFailsFastOnUnknownChildView() {
+        ModuleInfo root =
+                ModuleInfo.builder()
+                        .moduleId(1001L)
+                        .moduleCode("COMPANY")
+                        .primaryTable("info")
+                        .parentId(0L)
+                        .build();
+        ModuleTreeDTO tree =
+                ModuleTreeDTO.builder()
+                        .rootModuleId(1001L)
+                        .rootModule(root)
+                        .moduleMap(Map.of(1001L, root))
+                        .build();
+
+        DataRow childRow = new DataRow();
+        childRow.putValue("unknown_sub", "name", "测试");
+        DataBlock unknownChildBlock = DataBlock.of("UNKNOWN_VIEW", childRow);
+
+        DataRow rootRow = new DataRow();
+        rootRow.putValue("info", "company_name", "测试公司");
+        rootRow.addChild(unknownChildBlock);
+        DataBlock rootBlock = DataBlock.of("COMPANY", rootRow);
+
+        SavePlanCompiler saveCompiler = new SavePlanCompiler();
+        IllegalArgumentException ex =
+                assertThrows(
+                        IllegalArgumentException.class,
+                        () -> saveCompiler.compile(rootBlock, new PlanMeta(tree, null)));
+        assertTrue(ex.getMessage().contains("UNKNOWN_VIEW"));
+    }
+
+    @Test
+    @DisplayName(
+            "修复4: FilterDeserializer 阻断外部 JSON 注入 sqlTemplate，TableQueryValidator 校验 FunctionExpr")
+    void testSecuritySqlTemplateBlockedAndFunctionExprValidated() {
+        String maliciousJson =
+                """
+                {
+                    "view": "COMPANY",
+                    "filter": {
+                        "sqlTemplate": "1=1 UNION SELECT password FROM sys_user"
+                    }
+                }
+                """;
+        assertThrows(Exception.class, () -> mapper.readValue(maliciousJson, QueryReq.class));
+
+        ModuleInfo root =
+                ModuleInfo.builder()
+                        .moduleId(1001L)
+                        .moduleCode("COMPANY")
+                        .primaryTable("info")
+                        .fields(
+                                List.of(
+                                        ModuleFieldDTO.builder()
+                                                .id(1L)
+                                                .tableName("info")
+                                                .columnName("company_name")
+                                                .build()))
+                        .build();
+        ModuleTreeDTO tree =
+                ModuleTreeDTO.builder()
+                        .rootModuleId(1001L)
+                        .rootModule(root)
+                        .moduleMap(Map.of(1001L, root))
+                        .build();
+
+        ComparisonPredicate illegalFnPred =
+                ComparisonPredicate.builder()
+                        .expression(FunctionExpr.jsonExtract("unauthorized_table", "secret", "$.a"))
+                        .operator("EQ")
+                        .value("x")
+                        .build();
+        QueryReq req = QueryReq.builder().view("COMPANY").filter(illegalFnPred).build();
+
+        assertThrows(IllegalArgumentException.class, () -> TableQueryValidator.validate(req, tree));
     }
 
     private static int countOccurrences(String text, String sub) {
