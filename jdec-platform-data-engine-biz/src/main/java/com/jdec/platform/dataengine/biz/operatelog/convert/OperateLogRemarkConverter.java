@@ -317,7 +317,8 @@ public class OperateLogRemarkConverter {
         if (CollectionUtil.isEmpty(actions.getD())) {
             actions.setD(null);
         }
-        if (actions.getI() == null && actions.getU() == null && actions.getD() == null) {
+        // columns 全部为空（没有任何一个 column 有值）且不含子模块变更的模块视为无对比，去掉该模块
+        if (!hasModuleContent(actions)) {
             return null;
         }
         return ModuleChangeLogDTO.builder()
@@ -325,6 +326,29 @@ public class OperateLogRemarkConverter {
                 .mId(moduleId)
                 .actions(actions)
                 .build();
+    }
+
+    /**
+     * 判断模块是否包含有效对比内容：任一行存在字段级变更（columns 非空）或子模块变更（children 非空）即视为有内容。 仅当所有行既无 column
+     * 值、也无子模块变更时，该模块才视为无对比、应去掉。
+     */
+    private boolean hasModuleContent(ActionChangeLogDTO actions) {
+        return hasRowContent(actions.getI())
+                || hasRowContent(actions.getU())
+                || hasRowContent(actions.getD());
+    }
+
+    private boolean hasRowContent(List<RowChangeLogDTO> rows) {
+        if (CollectionUtil.isEmpty(rows)) {
+            return false;
+        }
+        for (RowChangeLogDTO row : rows) {
+            if (CollectionUtil.isNotEmpty(row.getColumns())
+                    || CollectionUtil.isNotEmpty(row.getChildren())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** 保持原始类型生成更新行明细（数组/对象不做字符串化） */
