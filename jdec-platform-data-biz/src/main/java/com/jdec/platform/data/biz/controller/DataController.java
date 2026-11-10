@@ -14,6 +14,7 @@ import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -35,31 +36,31 @@ public class DataController {
 
     @PostMapping("/query")
     @Operation(summary = "动态分页查询", description = "支持基于业务聚合树、物理表列投影及多条件过滤进行查询")
-    public ApiResponse<DataPage<DataBlock>> queryPage(@RequestBody PageQueryReq req) {
+    public ApiResponse<DataPage<DataBlock>> queryPage(@Valid @RequestBody PageQueryReq req) {
         return ApiResponse.success(dataApi.queryPage(req));
     }
 
     @PostMapping("/list")
     @Operation(summary = "动态列表全量查询 (不分页)", description = "返回满足业务聚合树与过滤条件的完整数据区块")
-    public ApiResponse<DataBlock> queryList(@RequestBody QueryReq req) {
+    public ApiResponse<DataBlock> queryList(@Valid @RequestBody QueryReq req) {
         return ApiResponse.success(dataApi.queryList(req));
     }
 
     @PostMapping("/detail")
     @Operation(summary = "单条业务对象详情精准查询", description = "支持加载完整自相似树或指定投影表，返回读写同构的 DataBlock")
-    public ApiResponse<DataBlock> getDetail(@RequestBody DetailQueryReq req) {
+    public ApiResponse<DataBlock> getDetail(@Valid @RequestBody DetailQueryReq req) {
         return ApiResponse.success(dataApi.getDetail(req));
     }
 
     @PostMapping("/count")
     @Operation(summary = "动态计数查询", description = "返回满足业务聚合树与过滤条件的记录总数")
-    public ApiResponse<Long> count(@RequestBody QueryReq req) {
+    public ApiResponse<Long> count(@Valid @RequestBody QueryReq req) {
         return ApiResponse.success(dataApi.count(req));
     }
 
     @PostMapping("/options")
     @Operation(summary = "字段搜索下拉候选项查询", description = "获取字段去重候选值列表")
-    public ApiResponse<List<DataOptionResp>> getOptions(@RequestBody OptionReq req) {
+    public ApiResponse<List<DataOptionResp>> getOptions(@Valid @RequestBody OptionReq req) {
         return ApiResponse.success(dataApi.getOptions(req));
     }
 
@@ -77,7 +78,7 @@ public class DataController {
     @Operation(
             summary = "通用同构原子保存",
             description = "入参结构与 getDetail 响应的 DataBlock 100% 读写同构，直接提交 DataBlock，返回 DataSaveResp")
-    public ApiResponse<DataSaveResp> save(@RequestBody DataBlock block) {
+    public ApiResponse<DataSaveResp> save(@Valid @RequestBody DataBlock block) {
         return ApiResponse.success(dataApi.save(block));
     }
 
@@ -85,7 +86,7 @@ public class DataController {
     @Operation(
             summary = "单据版本派生与局部增量融合保存",
             description = "基于基准单据ID(如156)自动抓取完整数据树，并与前端提交的局部增量修改(patchData)深度合并，生成全新的独立单据版本并返回新根ID")
-    public ApiResponse<Long> forkNewVersion(@RequestBody ForkVersionReq req) {
+    public ApiResponse<Long> forkNewVersion(@Valid @RequestBody ForkVersionReq req) {
         return ApiResponse.success(dataApi.forkNewVersion(req));
     }
 }

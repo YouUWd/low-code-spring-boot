@@ -7,9 +7,11 @@ import com.jdec.platform.data.api.dto.response.DataSaveResp;
 import com.jdec.platform.data.biz.plan.PlanMeta;
 import com.jdec.platform.data.biz.plan.PlanMetaLoader;
 import com.jdec.platform.data.biz.util.DocumentVersionUtils;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.JooqDataContextFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.jooq.Condition;
 import org.jooq.DSLContext;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Service;
@@ -80,7 +82,7 @@ public class ForkVersionService {
                 && !businessNo.isBlank()
                 && primaryTable != null
                 && !primaryTable.isBlank()) {
-            Integer nextVersion = computeNextVersion(primaryTable, businessNo);
+            Integer nextVersion = computeNextVersion(primaryTable, businessNo, meta);
             DocumentVersionUtils.applyVersionNo(merged, nextVersion);
             log.info(
                     "版本派生/克隆: 主表={}, 单据号={}, 原始基准ID={}, 计算生成最新版本号={}",
@@ -95,10 +97,30 @@ public class ForkVersionService {
         return saveResp != null ? saveResp.getRootId() : null;
     }
 
-    private Integer computeNextVersion(String primaryTable, String businessNo) {
+    private Integer computeNextVersion(String primaryTable, String businessNo, PlanMeta meta) {
         DSLContext dsl = jooqDataContextFactory.getContext();
         Integer maxVersion = null;
         try {
+            Condition cond =
+                    DSL.field(DSL.name(primaryTable, "business_no"))
+                            .eq(businessNo)
+                            .and(DSL.field(DSL.name(primaryTable, "deleted")).eq((byte) 0));
+            Long subjectId = AppContext.getSubjectId();
+            boolean hasSubjectId =
+                    meta != null
+                            && meta.moduleTree() != null
+                            && meta.moduleTree().getRootModule() != null
+                            && meta.moduleTree().getRootModule().getFields() != null
+                            && meta.moduleTree().getRootModule().getFields().stream()
+                                    .anyMatch(
+                                            f ->
+                                                    primaryTable.equalsIgnoreCase(f.getTableName())
+                                                            && "subject_id"
+                                                                    .equalsIgnoreCase(
+                                                                            f.getColumnName()));
+            if (hasSubjectId && subjectId != null && subjectId > 0) {
+                cond = cond.and(DSL.field(DSL.name(primaryTable, "subject_id")).eq(subjectId));
+            }
             maxVersion =
                     dsl.select(
                                     DSL.max(
@@ -106,7 +128,7 @@ public class ForkVersionService {
                                                     DSL.name(primaryTable, "version_no"),
                                                     Integer.class)))
                             .from(DSL.table(DSL.name(primaryTable)))
-                            .where(DSL.field(DSL.name(primaryTable, "business_no")).eq(businessNo))
+                            .where(cond)
                             .fetchOne(0, Integer.class);
         } catch (Exception ex) {
             log.warn("查询主表 [{}] 单据 [{}] 最大版本号失败: {}", primaryTable, businessNo, ex.getMessage());

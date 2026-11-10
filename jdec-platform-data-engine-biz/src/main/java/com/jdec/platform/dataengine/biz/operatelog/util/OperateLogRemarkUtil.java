@@ -84,7 +84,7 @@ public class OperateLogRemarkUtil {
             NestedModuleDataDTO newData,
             Map<Long, SysModuleCombineInfo> moduleCacheMap,
             Long menuId) {
-        return buildRemark(oldData, newData, moduleCacheMap, menuId, null);
+        return buildRemark(oldData, newData, moduleCacheMap, menuId, (String) null);
     }
 
     /**
@@ -106,6 +106,62 @@ public class OperateLogRemarkUtil {
             String comment) {
         OperateLogRemarkDTO remark =
                 operateLogRemarkConverter.convert(oldData, newData, moduleCacheMap, menuId);
+        boolean hasChange =
+                remark != null
+                        && remark.getChange() != null
+                        && (remark.getChange().getMain() != null
+                                || remark.getChange().getSub() != null);
+        boolean hasComment = StringUtils.isNotBlank(comment);
+        // 无字段变更且无审批原因，调用方据此跳过日志记录
+        if (!hasChange && !hasComment) {
+            return null;
+        }
+        if (remark == null) {
+            remark = OperateLogRemarkDTO.builder().build();
+        } else if (!hasChange) {
+            // 仅有审批原因（如驳回且数据未改动）：change 置空，不输出空数组
+            remark.setChange(null);
+        }
+        if (hasComment) {
+            remark.setComment(comment);
+        }
+        JsonNode remarkNode;
+        try {
+            remarkNode = objectMapper.valueToTree(remark);
+        } catch (Exception e) {
+            log.error("操作日志 remark 转换失败", e);
+            throw new BusinessException("操作日志生成失败：remark 格式不正确");
+        }
+        // 字段明细补充词云标记与业务类型编码：均取自 sys_field 配置；无字段明细时无需查询
+        if (hasChange) {
+            fillColumnExtras(remarkNode);
+        }
+        return remarkNode;
+    }
+
+    /**
+     * 生成 remark 对象（有审批链，指定匹配字段）：{@code {"comment":"审批原因","change":[...]}}。
+     *
+     * <p>行匹配以通用字段 {@code keyField} 的值为准，而非主键 id；所有模块（含子模块中的列表）统一用它比对。
+     *
+     * @param oldData 保存前的旧数据（纯新增时为 null）
+     * @param newData 本次保存提交的数据
+     * @param moduleCacheMap 模块元数据（含字段、唯一标识、子表、模块名）
+     * @param menuId 菜单ID（取变更项名称，可为 null）
+     * @param keyField 用于行匹配的通用字段（列名，取自主表）；为空时退化为按主键 id 匹配
+     * @param comment 审批原因；为空时退化为无审批链结构；有值时即使无字段变更也返回 {@code {"comment":"审批原因"}}
+     * @return remark 对象；既无变更、也无审批原因时返回 null
+     */
+    public JsonNode buildRemark(
+            NestedModuleDataDTO oldData,
+            NestedModuleDataDTO newData,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap,
+            Long menuId,
+            String keyField,
+            String comment) {
+        OperateLogRemarkDTO remark =
+                operateLogRemarkConverter.convert(
+                        oldData, newData, moduleCacheMap, menuId, keyField);
         boolean hasChange =
                 remark != null
                         && remark.getChange() != null

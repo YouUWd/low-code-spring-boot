@@ -154,12 +154,10 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
             }
         }
         // todo  result   tmpSnapshot 要构建 版本间的字段 对比 返回给审批链
-
         // 字段对比
         JsonNode remark = null;
         // 词云字段对比
         JsonNode remarkReferenceData = null;
-
         switch (opType) {
             case SUBMIT, REJECT_SUBMIT, PASS, REJECT, CANCEL -> {
                 if (tmpSnapshot != null) {
@@ -169,6 +167,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                                     result,
                                     moduleCacheMap,
                                     req.getMenuId(),
+                                    "id",
                                     req.getReason());
                 }
                 NestedModuleDataDTO tmpReferenceData =
@@ -182,6 +181,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                                     currentReferenceData,
                                     moduleCacheMap,
                                     req.getMenuId(),
+                                    "id",
                                     null);
                 }
             }
@@ -203,6 +203,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                                 result,
                                 moduleCacheMap,
                                 req.getMenuId(),
+                                "business_no",
                                 req.getReason());
             }
         }
