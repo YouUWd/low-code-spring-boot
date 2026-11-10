@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.SysMenuApi;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
+import com.jdec.platform.config.api.dto.response.SysFieldResp;
 import com.jdec.platform.config.api.dto.response.SysMenuResp;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
@@ -13,6 +14,7 @@ import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.operatelog.dto.ActionChangeLogDTO;
 import com.jdec.platform.dataengine.biz.operatelog.dto.ChangeLogStructure;
 import com.jdec.platform.dataengine.biz.operatelog.dto.ColumnChangeLogDTO;
+import com.jdec.platform.dataengine.biz.operatelog.dto.ColumnValueWithUnitDTO;
 import com.jdec.platform.dataengine.biz.operatelog.dto.ModuleChangeLogDTO;
 import com.jdec.platform.dataengine.biz.operatelog.dto.OperateLogRemarkDTO;
 import com.jdec.platform.dataengine.biz.operatelog.dto.RowChangeLogDTO;
@@ -512,16 +514,48 @@ public class OperateLogRemarkConverter {
             }
             ModuleFieldDTO field = fieldMap != null ? fieldMap.get(column) : null;
             String fullFieldName = DataPersistenceUtil.getFullFieldName(table, column);
+            // 数字带单位字段：old/newer 包装为 {value, unit}，单位取自 sys_field.unit_column_name 同表列
+            SysFieldResp fieldResp =
+                    module.getAllFields() != null ? module.getAllFields().get(fullFieldName) : null;
+            Object oldObj;
+            Object newerObj;
+            if (fieldResp != null && StringUtils.isNotBlank(fieldResp.getUnitColumnName())) {
+                String unitColumn = resolveUnitColumn(fieldResp.getUnitColumnName());
+                Object oldUnit = oldRow != null ? normalizeValue(oldRow.get(unitColumn)) : null;
+                Object newUnit = newRow != null ? normalizeValue(newRow.get(unitColumn)) : null;
+                oldObj =
+                        ColumnValueWithUnitDTO.builder()
+                                .value(nullToPlaceholder(oldValue))
+                                .unit(oldUnit)
+                                .build();
+                newerObj = ColumnValueWithUnitDTO.builder().value(newerValue).unit(newUnit).build();
+            } else {
+                oldObj = nullToPlaceholder(oldValue);
+                newerObj = newerValue;
+            }
             columns.add(
                     ColumnChangeLogDTO.builder()
                             .name(field != null ? field.getDisplayName() : null)
-                            .old(nullToPlaceholder(oldValue))
-                            .newer(newerValue)
+                            .old(oldObj)
+                            .newer(newerObj)
                             .field(fullFieldName)
                             .fieldId(fieldIdByFullName(module, fullFieldName))
                             .build());
         }
         return columns;
+    }
+
+    /**
+     * 解析单位列名：sys_field.unit_column_name 可能带表名前缀（如 {@code basic_info.insured_count_unit}）， 行数据 map
+     * 以纯列名为键，故存在表名前缀时仅取末段列名。
+     *
+     * @param unitColumnName 配置的单位列名
+     * @return 纯列名
+     */
+    private String resolveUnitColumn(String unitColumnName) {
+        String raw = unitColumnName.trim();
+        int dot = raw.lastIndexOf('.');
+        return dot >= 0 ? raw.substring(dot + 1) : raw;
     }
 
     /** 归一化字段值：jOOQ JSON / JSON 字符串转为结构化对象，其余保持原样 */
