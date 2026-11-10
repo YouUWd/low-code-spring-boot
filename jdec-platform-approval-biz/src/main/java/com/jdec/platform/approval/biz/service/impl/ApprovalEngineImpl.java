@@ -2283,7 +2283,11 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         // 1. 查询按钮配置
         ApprovalChainButton approvalButton = null;
         SysButtonResp modelConfigButton = null;
-        SysConfigItemResp modelConfig = null;
+        SysConfigItemResp modelConfig =
+                sysConfigCategoryApi.getConfigItemsByValue("ButtonStyle", alias);
+        if (Objects.isNull(modelConfig)) {
+            return null;
+        }
         if (Objects.nonNull(buttonId)) {
             LambdaQueryWrapper<ApprovalChainButton> approvalButtonWrapper =
                     new LambdaQueryWrapper<>();
@@ -2298,8 +2302,6 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 return null;
             }
             item.put("buttonKey", alias);
-            item.put("title", modelConfigButton.getTitle());
-            item.put("showTitle", modelConfigButton.getTitle());
             modelConfigButton = sysButtonApi.getButtonById(buttonId);
             if (Objects.isNull(modelConfigButton)) {
                 Map<String, Object> property = new HashMap<>();
@@ -2310,6 +2312,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 property.put("selectedBgColor", "");
                 property.put("selectedFontColor", "");
                 item.put("extraProperty", property);
+                item.put("title", modelConfig.getLabel());
+                item.put("showTitle", modelConfig.getLabel());
             } else {
                 Map<String, Object> property = new HashMap<>();
                 property.put("defaultBgColor", modelConfigButton.getDefaultBgColor());
@@ -2319,6 +2323,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 property.put("selectedBgColor", modelConfigButton.getSelectedBgColor());
                 property.put("selectedFontColor", modelConfigButton.getSelectedFontColor());
                 item.put("extraProperty", property);
+                item.put("title", modelConfigButton.getTitle());
+                item.put("showTitle", modelConfigButton.getTitle());
             }
             item.put("actionIcon", approvalButton.getIcon());
             item.put("actionName", approvalButton.getLogName());
@@ -2337,13 +2343,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             }
             item.put("autoNextTaskFlag", approvalButton.getAutoNextTaskFlag());
         } else {
-            modelConfig = sysConfigCategoryApi.getConfigItemsByValue("ButtonStyle", alias);
-            if (Objects.isNull(modelConfig)) {
-                return null;
-            }
             item.put("buttonKey", alias);
-            item.put("title", modelConfig.getLabel());
-            item.put("showTitle", modelConfig.getLabel());
             modelConfigButton = sysButtonApi.getButtonByType(alias);
             if (Objects.isNull(modelConfigButton)) {
                 Map<String, Object> property = new HashMap<>();
@@ -2354,6 +2354,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 property.put("selectedBgColor", "");
                 property.put("selectedFontColor", "");
                 item.put("extraProperty", property);
+                item.put("title", modelConfig.getLabel());
+                item.put("showTitle", modelConfig.getLabel());
             } else {
                 Map<String, Object> property = new HashMap<>();
                 property.put("defaultBgColor", modelConfigButton.getDefaultBgColor());
@@ -2363,6 +2365,8 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 property.put("selectedBgColor", modelConfigButton.getSelectedBgColor());
                 property.put("selectedFontColor", modelConfigButton.getSelectedFontColor());
                 item.put("extraProperty", property);
+                item.put("title", modelConfigButton.getTitle());
+                item.put("showTitle", modelConfigButton.getTitle());
             }
             item.put("actionIcon", modelConfig.getValue());
             item.put("actionName", "已" + modelConfig.getLabel());
