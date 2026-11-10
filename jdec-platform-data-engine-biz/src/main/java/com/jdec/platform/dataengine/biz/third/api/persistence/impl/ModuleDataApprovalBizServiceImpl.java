@@ -166,7 +166,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                         currentReferenceData,
                         moduleCacheMap,
                         req.getMenuId(),
-                        null);
+                        (String) null);
 
         ApprovalProcessResultResp resp =
                 ApprovalProcessResultResp.builder()
