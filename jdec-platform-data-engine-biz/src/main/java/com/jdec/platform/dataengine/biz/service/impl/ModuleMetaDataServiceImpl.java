@@ -150,7 +150,7 @@ public class ModuleMetaDataServiceImpl implements ModuleMetaDataService {
                         sysModuleFieldPermissionApi.getRoleModuleFieldPermissions(
                                 moduleQueryContext.getProjectNo(),
                                 moduleQueryContext.getSubjectId(),
-                                moduleQueryContext.getRoleId(),
+                                moduleQueryContext.getLoginUser().getRoleId(),
                                 entry.getKey());
                 if (CollectionUtil.isNotEmpty(permissionTableGroupResps)) {
                     for (PermissionTableGroupResp resp : permissionTableGroupResps) {

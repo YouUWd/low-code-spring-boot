@@ -72,7 +72,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                                 .moduleId(structureRootModuleId)
                                 .projectNo(AppContext.getProjectNo())
                                 .subjectId(AppContext.getSubjectId())
-                                .roleId(UserContext.getRoleId())
+                                .loginUser(UserContext.getLoginUser())
                                 .isBuildFieldPermission(true)
                                 .isBuildFieldPro(true)
                                 .build());
@@ -360,7 +360,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                                 .moduleId(req.getModuleId())
                                 .projectNo(AppContext.getProjectNo())
                                 .subjectId(AppContext.getSubjectId())
-                                .roleId(UserContext.getRoleId())
+                                .loginUser(UserContext.getLoginUser())
                                 .build());
         String rootMainTable =
                 moduleCacheMap
@@ -418,7 +418,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                                 .moduleId(structureRootModuleId)
                                 .projectNo(AppContext.getProjectNo())
                                 .subjectId(AppContext.getSubjectId())
-                                .roleId(UserContext.getRoleId())
+                                .loginUser(UserContext.getLoginUser())
                                 .isBuildFieldPermission(false)
                                 .isBuildFieldPro(false)
                                 .build());

@@ -1,5 +1,6 @@
 package com.jdec.platform.dataengine.api.dto.model;
 
+import com.jdec.platform.shared.security.model.LoginUser;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import lombok.experimental.SuperBuilder;
@@ -14,16 +15,5 @@ public class ReqParamData implements java.io.Serializable {
 
     private Long subjectId;
 
-    private Long roleId;
-
-    private Long loginUserId;
-
-    private Long mockUserId;
-
-    public Long getUserId() {
-        if (mockUserId != null && mockUserId > 0) {
-            return mockUserId;
-        }
-        return loginUserId;
-    }
+    private LoginUser loginUser;
 }

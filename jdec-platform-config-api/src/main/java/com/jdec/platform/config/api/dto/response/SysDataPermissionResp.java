@@ -18,6 +18,9 @@ public class SysDataPermissionResp {
     @Schema(description = "类型名称")
     private String name;
 
+    @Schema(description = "所属模块名称（由「表名*字段名」经 sys_module_field、sys_module 解析得到）")
+    private String moduleName;
+
     @Schema(description = "类型描述")
     private String description;
 

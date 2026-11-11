@@ -58,7 +58,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
                                 .moduleId(req.getModuleId())
                                 .projectNo(AppContext.getProjectNo())
                                 .subjectId(AppContext.getSubjectId())
-                                .roleId(UserContext.getRoleId())
+                                .loginUser(UserContext.getLoginUser())
                                 .isBuildFieldPro(true)
                                 .build());
         SysModuleCombineInfo rootModule = moduleCacheMap.get(req.getModuleId());
@@ -69,7 +69,7 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
         }
         Boolean isApproval =
                 moduleMetaDataService.getApprovalStatusByModuleIdAsync(req.getModuleId());
-        OpTypeEnum opType = OpTypeEnum.valueOf(req.getOp());
+        OpTypeEnum opType = OpTypeEnum.getByKey(req.getOp());
         if (opType == null) {
             throw new BusinessException(ApiResponseCodeEnum.BAD_REQUEST.getCode(), "操作类型不能为空");
         }

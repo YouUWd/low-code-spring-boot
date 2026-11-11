@@ -103,7 +103,7 @@ public class SaveOperateLogService {
                                 .moduleId(structureRootModuleId)
                                 .projectNo(AppContext.getProjectNo())
                                 .subjectId(AppContext.getSubjectId())
-                                .roleId(UserContext.getRoleId())
+                                .loginUser(UserContext.getLoginUser())
                                 .isBuildFieldPermission(false)
                                 .isBuildFieldPro(true)
                                 .build());

@@ -53,6 +53,7 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
     private final com.jdec.platform.config.biz.util.AuditLogHelper auditLogHelper;
     private final SysRoleMapper sysRoleMapper;
     private final SysModuleMapper sysModuleMapper;
+    private final SysModuleFieldMapper sysModuleFieldMapper;
 
     @Override
     public List<RoleMenuResp> getRoleMenu(Long roleId, Long subjectId, String projectNo) {
@@ -476,7 +477,10 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
                 request.getPermissionPaths(),
                 request.getPermissionTypeName());
 
-        setAffectedContext(roleId);
+        // 4. 计算受影响的模块ID：根据 permissionId 反查数据权限编码，拆解表名+字段名，
+        //    在 sys_module_field 中匹配对应模块，去重后写入推送上下文
+        List<Long> affectedModuleIds = resolveDataPermissionModuleIds(saveDataPermissions);
+        setAffectedContext(roleId, affectedModuleIds);
     }
 
     /** 判断全选标识是否为1 */
@@ -505,6 +509,133 @@ public class SysRolePermissionService implements SysRolePermissionApi, OpenRoleP
         permission.setSubjectCheckAll(subjectCheckAll == null ? 0 : subjectCheckAll);
         permission.setBizName(encodeBizName(bizName));
         return permission;
+    }
+
+    /**
+     * 根据数据权限节点列表，反查受影响的<b>最顶层父类</b>模块ID集合（去重）。
+     *
+     * <p>解析流程：permissionId -> {@code sys_data_permission.code}（约定编码为「表名*字段名」） -> {@code
+     * sys_module_field}（按表名+字段名匹配）-> moduleId -> {@code sys_module} 沿 {@code parent_id}
+     * 父链找到<b>最顶层父类</b>模块，将父类 moduleId 作为受影响模块写入推送上下文（用于前端模块级局部刷新）。 多个节点解析出的顶层父类模块ID合并去重后返回。
+     *
+     * @param saveDataPermissions 数据权限节点列表
+     * @return 去重后的最顶层父类模块ID集合，无匹配时返回空列表
+     */
+    private List<Long> resolveDataPermissionModuleIds(
+            List<SaveRoleDataPermissionReq.SaveDataPermissionReq> saveDataPermissions) {
+        if (CollUtil.isEmpty(saveDataPermissions)) {
+            return Collections.emptyList();
+        }
+
+        // 1. 收集所有有效的「表名*字段名」编码
+        Set<String> codeKeys = new LinkedHashSet<>();
+        for (SaveRoleDataPermissionReq.SaveDataPermissionReq item : saveDataPermissions) {
+            Long permissionId = item.getPermissionId();
+            if (permissionId == null) {
+                continue;
+            }
+            SysDataPermission dataPermission = sysDataPermissionMapper.selectById(permissionId);
+            if (dataPermission == null || !hasText(dataPermission.getCode())) {
+                continue;
+            }
+            String[] parts = splitDataPermissionCode(dataPermission.getCode());
+            if (parts != null) {
+                codeKeys.add(parts[0] + "*" + parts[1]);
+            }
+        }
+        if (codeKeys.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 2. 按表名 + 字段名查询模块字段，精确匹配编码后反查 moduleId
+        Set<String> tableNames =
+                codeKeys.stream().map(code -> code.split("\\*", -1)[0]).collect(Collectors.toSet());
+        Set<String> columnNames =
+                codeKeys.stream().map(code -> code.split("\\*", -1)[1]).collect(Collectors.toSet());
+        List<SysModuleField> fields =
+                sysModuleFieldMapper.selectList(
+                        Wrappers.<SysModuleField>lambdaQuery()
+                                .in(SysModuleField::getTableName, tableNames)
+                                .in(SysModuleField::getColumnName, columnNames));
+
+        Set<Long> matchedModuleIds = new LinkedHashSet<>();
+        for (SysModuleField field : fields) {
+            if (field.getModuleId() == null) {
+                continue;
+            }
+            String code = field.getTableName() + "*" + field.getColumnName();
+            if (codeKeys.contains(code)) {
+                matchedModuleIds.add(field.getModuleId());
+            }
+        }
+        if (matchedModuleIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 3. 加载本项目全部模块，沿父链追溯每个命中模块的最顶层父类 moduleId
+        Map<Long, SysModule> moduleMap =
+                sysModuleMapper
+                        .selectList(
+                                Wrappers.<SysModule>lambdaQuery()
+                                        .eq(SysModule::getProjectNo, AppContext.getProjectNo()))
+                        .stream()
+                        .collect(
+                                Collectors.toMap(
+                                        SysModule::getId, m -> m, (first, second) -> first));
+        Set<Long> topLevelModuleIds = new LinkedHashSet<>();
+        for (Long moduleId : matchedModuleIds) {
+            SysModule root = findTopmostAncestor(moduleId, moduleMap);
+            if (root != null) {
+                topLevelModuleIds.add(root.getId());
+            }
+        }
+        return new ArrayList<>(topLevelModuleIds);
+    }
+
+    /**
+     * 沿 {@code parent_id} 父链找到最顶层模块（{@code parent_id} 为 0/null 的模块）。
+     *
+     * @param moduleId 起始模块ID
+     * @param moduleMap 本项目全部模块映射
+     * @return 顶层模块；父链存在环或起始模块不存在时返回 {@code null}
+     */
+    private SysModule findTopmostAncestor(Long moduleId, Map<Long, SysModule> moduleMap) {
+        Long cur = moduleId;
+        Set<Long> visited = new HashSet<>();
+        while (cur != null && cur > 0L && visited.add(cur)) {
+            SysModule module = moduleMap.get(cur);
+            if (module == null) {
+                return null;
+            }
+            Long parentId = module.getParentId();
+            if (parentId == null || parentId == 0L) {
+                return module;
+            }
+            cur = parentId;
+        }
+        return moduleMap.get(moduleId);
+    }
+
+    /** 拆解权限编码「表名*字段名」，非法编码返回 null */
+    private String[] splitDataPermissionCode(String code) {
+        if (code == null || code.isEmpty() || !code.contains("*")) {
+            return null;
+        }
+        String[] parts = code.split("\\*", -1);
+        return parts.length == 2 && !parts[0].isEmpty() && !parts[1].isEmpty() ? parts : null;
+    }
+
+    /** 判断字符串是否有实际文本（非空且非纯空白） */
+    private boolean hasText(String str) {
+        if (str == null || str.isEmpty()) {
+            return false;
+        }
+        for (int i = 0; i < str.length(); i++) {
+            if (!Character.isWhitespace(str.charAt(i))) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
