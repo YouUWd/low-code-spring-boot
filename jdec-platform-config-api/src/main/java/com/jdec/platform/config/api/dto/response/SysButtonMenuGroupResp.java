@@ -12,6 +12,6 @@ public class SysButtonMenuGroupResp {
     @Schema(description = "菜单ID")
     private Long menuId;
 
-    @Schema(description = "该菜单下匹配的按钮列表")
-    private List<SysButtonResp> buttons;
+    @Schema(description = "该菜单下匹配的按钮列表（仅返回前端需要的字段）")
+    private List<SysButtonSimpleResp> buttons;
 }
