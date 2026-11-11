@@ -1,8 +1,10 @@
-package com.jdec.platform.dataengine.biz.dto;
+package com.jdec.platform.dataengine.api.dto.model;
 
 import cn.hutool.core.collection.CollectionUtil;
 import com.jdec.platform.config.api.dto.common.*;
+import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
+import com.jdec.platform.config.api.dto.common.TableRelationDTO;
 import com.jdec.platform.config.api.dto.response.SysFieldResp;
 import com.jdec.platform.dataengine.api.common.SomeCustomizedFieldsConfig;
 import java.io.Serializable;
@@ -27,7 +29,8 @@ public class SysModuleCombineInfo implements Serializable {
     private Set<String> allTables = new HashSet<>();
 
     // 模块字段信息 按表名称分组
-    private Map<String, Map<String, ModuleFieldDTO>> fieldMapByTable = new HashMap<>();
+    private Map<String, Map<String, com.jdec.platform.config.api.dto.common.ModuleFieldDTO>>
+            fieldMapByTable = new HashMap<>();
 
     // 模块字段信息
     private Map<String, ModuleFieldDTO> fieldAllMap = new HashMap<>();
@@ -54,10 +57,11 @@ public class SysModuleCombineInfo implements Serializable {
     private ProjectTableRelationsDTO projectTableRelations;
 
     // 当前模块主表关联的 上级表
-    private TableRelationDTO mainTableRelationDTO;
+    private com.jdec.platform.config.api.dto.common.TableRelationDTO mainTableRelationDTO;
 
     // 当前模块 子表 关联的 上级表
-    private Map<String, TableRelationDTO> subTableRelationMap = new HashMap<>();
+    private Map<String, com.jdec.platform.config.api.dto.common.TableRelationDTO>
+            subTableRelationMap = new HashMap<>();
 
     public Set<String> getExternalReferenceFields() {
         if (CollectionUtil.isNotEmpty(this.allFields)) {

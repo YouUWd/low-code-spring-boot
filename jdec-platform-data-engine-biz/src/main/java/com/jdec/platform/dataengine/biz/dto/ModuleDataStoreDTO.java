@@ -24,7 +24,8 @@ public class ModuleDataStoreDTO {
     private Boolean isApproval;
 
     @Schema(description = "模块元数据")
-    private Map<Long, SysModuleCombineInfo> moduleCacheMap;
+    private Map<Long, com.jdec.platform.dataengine.api.dto.model.SysModuleCombineInfo>
+            moduleCacheMap;
 
     @Schema(description = "整体是否插入,还是新增")
     private Boolean isOverallInsert;

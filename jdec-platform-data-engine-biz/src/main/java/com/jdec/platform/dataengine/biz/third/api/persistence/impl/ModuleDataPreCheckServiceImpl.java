@@ -4,7 +4,7 @@ import cn.hutool.core.collection.CollectionUtil;
 import com.jdec.platform.dataengine.api.dto.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
-import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
+import com.jdec.platform.dataengine.api.dto.model.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.enums.PermissionType;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;

@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.jdec.platform.config.api.dto.common.FieldColumnExtrasDTO;
 import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
-import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
+import com.jdec.platform.dataengine.api.dto.model.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.operatelog.convert.OperateLogRemarkConverter;
 import com.jdec.platform.dataengine.biz.operatelog.dto.OperateLogRemarkDTO;
 import com.jdec.platform.shared.context.AppContext;

@@ -3,7 +3,7 @@ package com.jdec.platform.dataengine.biz.service;
 import cn.hutool.core.collection.CollectionUtil;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.dataengine.api.dto.model.*;
-import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
+import com.jdec.platform.dataengine.api.dto.model.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
 import java.util.*;
 import lombok.RequiredArgsConstructor;

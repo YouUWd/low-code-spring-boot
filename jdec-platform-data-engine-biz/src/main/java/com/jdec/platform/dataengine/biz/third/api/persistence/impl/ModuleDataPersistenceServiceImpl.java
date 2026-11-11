@@ -44,7 +44,8 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
         boolean isRelatedApproval = req.getIsApproval();
         // 模块是否关联审批链 保存类型
         SaveType finalSaveType = req.getSaveType();
-        Map<Long, SysModuleCombineInfo> moduleCacheMap = req.getModuleCacheMap();
+        Map<Long, com.jdec.platform.dataengine.api.dto.model.SysModuleCombineInfo> moduleCacheMap =
+                req.getModuleCacheMap();
         NestedModuleDataDTO nestedStoreData = req.getParamData();
 
         // 配置上的根模块ID

@@ -3,12 +3,12 @@ package com.jdec.platform.dataengine.biz.third.api.persistence.impl;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.jdec.platform.dataengine.api.dto.enums.ApiResponseCodeEnum;
 import com.jdec.platform.dataengine.api.dto.model.*;
+import com.jdec.platform.dataengine.api.dto.model.ModuleDetailQueryContext;
+import com.jdec.platform.dataengine.api.dto.model.ModuleQueryContext;
+import com.jdec.platform.dataengine.api.dto.model.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.api.dto.request.ApprovalStatusCallBackReq;
 import com.jdec.platform.dataengine.api.dto.response.ApprovalProcessResultResp;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
-import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
-import com.jdec.platform.dataengine.biz.dto.context.ModuleDetailQueryContext;
-import com.jdec.platform.dataengine.biz.dto.context.ModuleQueryContext;
 import com.jdec.platform.dataengine.biz.dto.context.ModuleSnapShotDataContext;
 import com.jdec.platform.dataengine.biz.enums.OpTypeEnum;
 import com.jdec.platform.dataengine.biz.operatelog.util.OperateLogRemarkUtil;
@@ -34,9 +34,9 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizService {
 
-    private final ModuleMetaDataService moduleMetaDataService;
+    private final com.jdec.platform.dataengine.api.ModuleMetaDataService moduleMetaDataService;
 
-    private final ModuleBizDataService moduleBizDataService;
+    private final com.jdec.platform.dataengine.api.ModuleBizDataService moduleBizDataService;
 
     private final JooqDataContextFactory jooqDataContextFactory;
 

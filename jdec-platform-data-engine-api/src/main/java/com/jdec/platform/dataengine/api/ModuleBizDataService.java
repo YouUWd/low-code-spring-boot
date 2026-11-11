@@ -1,7 +1,7 @@
-package com.jdec.platform.dataengine.biz.service;
+package com.jdec.platform.dataengine.api;
 
+import com.jdec.platform.dataengine.api.dto.model.ModuleDetailQueryContext;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
-import com.jdec.platform.dataengine.biz.dto.context.ModuleDetailQueryContext;
 
 public interface ModuleBizDataService {
 

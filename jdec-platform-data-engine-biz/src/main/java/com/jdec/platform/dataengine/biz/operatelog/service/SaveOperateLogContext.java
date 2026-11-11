@@ -1,7 +1,7 @@
 package com.jdec.platform.dataengine.biz.operatelog.service;
 
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
-import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
+import com.jdec.platform.dataengine.api.dto.model.SysModuleCombineInfo;
 import java.util.Map;
 import lombok.Builder;
 import lombok.Data;

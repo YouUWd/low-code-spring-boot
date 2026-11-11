@@ -1,7 +1,7 @@
 package com.jdec.platform.dataengine.biz.dto.context;
 
+import com.jdec.platform.dataengine.api.dto.model.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.dto.BasicSaveModel;
-import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import java.util.Map;
 import java.util.Set;
 import lombok.Data;

@@ -1,6 +1,5 @@
-package com.jdec.platform.dataengine.biz.dto.context;
+package com.jdec.platform.dataengine.api.dto.model;
 
-import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.shared.security.model.LoginUser;
 import io.swagger.v3.oas.annotations.media.Schema;
 import java.util.Map;
