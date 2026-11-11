@@ -25,8 +25,8 @@ public interface InfoMapper extends BaseMapper<Info> {
      */
     @Select(
             "<script>"
-                    + "SELECT * FROM info WHERE deleted = 0 AND parent_id IS NOT NULL "
-                    + "AND JSON_UNQUOTE(JSON_EXTRACT(parent_id, '$.value')) IN "
+                    + "SELECT * FROM info WHERE deleted = 0 AND parent_company IS NOT NULL "
+                    + "AND JSON_UNQUOTE(JSON_EXTRACT(parent_company, '$.value')) IN "
                     + "<foreach item='item' collection='parentBizNos' open='(' separator=',' close=')'>"
                     + "#{item}"
                     + "</foreach>"

@@ -119,7 +119,7 @@ public class CompanyCustomController {
         }
     }
 
-    @GetMapping(value = {"/member-tree", "/member/tree"})
+    @GetMapping("/member/tree")
     @Operation(
             summary = "根据公司ID查询公司人员构成及人员联系方式树",
             description = "基于所属公司ID(company_id)查询未删除的组织人员架构树，并挂载人员联系方式列表")

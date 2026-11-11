@@ -311,7 +311,7 @@ public class CompanyCustomServiceImpl implements CompanyCustomService {
         visited.add(buildNodeKey(pointer.getBusinessNo(), pointer.getVersionNo()));
 
         while (true) {
-            ParentMeta parentMeta = parseParentId(pointer.getParentId());
+            ParentMeta parentMeta = parseParentId(pointer.getParentCompany());
             if (parentMeta == null
                     || !StringUtils.hasText(parentMeta.value())
                     || parentMeta.versionNo() == null) {
@@ -374,7 +374,7 @@ public class CompanyCustomServiceImpl implements CompanyCustomService {
                     if (selectedChild == null) {
                         continue;
                     }
-                    ParentMeta childParentMeta = parseParentId(selectedChild.getParentId());
+                    ParentMeta childParentMeta = parseParentId(selectedChild.getParentCompany());
 
                     if (childParentMeta != null
                             && parentNode.getBusinessNo().equals(childParentMeta.value())
@@ -443,7 +443,7 @@ public class CompanyCustomServiceImpl implements CompanyCustomService {
                             .regStatus(info.getRegStatus())
                             .nature(info.getNature())
                             .isCurrent(isCur)
-                            .parentId(info.getParentId())
+                            .parentId(info.getParentCompany())
                             .children(new ArrayList<>())
                             .build();
             respMap.put(entry.getKey(), nodeResp);
