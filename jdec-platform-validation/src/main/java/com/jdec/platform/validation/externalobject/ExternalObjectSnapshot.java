@@ -34,7 +34,6 @@ public record ExternalObjectSnapshot(
             Long subjectId,
             Long sourceId,
             String companyName,
-            Long parentId,
             String nature,
             String regStatus,
             String cooperationTypes,

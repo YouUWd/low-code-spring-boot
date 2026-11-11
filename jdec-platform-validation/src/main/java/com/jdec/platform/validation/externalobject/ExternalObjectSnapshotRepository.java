@@ -111,7 +111,6 @@ public class ExternalObjectSnapshotRepository {
                         infoRecord.get("subject_id", Long.class),
                         infoRecord.get("source_id", Long.class),
                         infoRecord.get("company_name", String.class),
-                        infoRecord.get("parent_id", Long.class),
                         infoRecord.get("nature", String.class),
                         infoRecord.get("reg_status", String.class),
                         infoRecord.get("cooperation_types", String.class),

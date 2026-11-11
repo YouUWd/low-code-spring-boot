@@ -182,7 +182,6 @@ public class ExternalObjectSaveSnapshotConverter {
                 subjectId(row),
                 longValue(row.get("info.source_id")),
                 text(row.get("info.company_name")),
-                longValue(row.get("info.parent_id")),
                 text(row.get("info.nature")),
                 text(row.get("info.reg_status")),
                 text(row.get("info.cooperation_types")),
