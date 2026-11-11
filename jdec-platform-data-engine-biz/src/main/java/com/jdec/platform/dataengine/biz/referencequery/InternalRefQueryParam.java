@@ -14,4 +14,8 @@ import lombok.experimental.SuperBuilder;
 public class InternalRefQueryParam extends ReferenceQueryParam {
 
     private String businessNo;
+
+    private Integer versionNo;
+
+    private String labelFieldName;
 }
