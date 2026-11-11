@@ -13,7 +13,7 @@ public interface CommonApprovalService {
 
     Long businessSave(DynamicSaveReq req);
 
-    Long businessSubmit(Long menuId, DynamicSaveReq req);
+    Map<String, Object> businessSubmit(Long menuId, DynamicSaveReq req);
 
     ChangeApplySaveResp businessApplySave(DynamicSaveReq req);
 

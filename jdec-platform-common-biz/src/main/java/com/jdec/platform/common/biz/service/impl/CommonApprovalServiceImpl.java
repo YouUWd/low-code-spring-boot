@@ -227,13 +227,19 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
 
     // 提交单据
     @Override
-    public Long businessSubmit(Long menuId, DynamicSaveReq req) {
+    public Map<String, Object> businessSubmit(Long menuId, DynamicSaveReq req) {
+        Map<String, Object> result = new HashMap<>();
         try {
-            return approvalSubmit(menuId, req);
+            Long newId = approvalSubmit(menuId, req);
+            result.put("recordId", newId);
+            result.put("submitStatus", 1);
         } catch (Exception e) {
             log.error(e.getMessage());
-            return businessSave(req);
+            Long newId = businessSave(req);
+            result.put("recordId", newId);
+            result.put("submitStatus", 0);
         }
+        return result;
     }
 
     // 保存变更申请单

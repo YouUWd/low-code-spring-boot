@@ -78,7 +78,7 @@ public class CommonController {
 
     @PostMapping("/business/{menuId}/submit")
     @Operation(summary = "提交数据", description = "提交数据")
-    public ApiResponse<Long> businessSubmit(
+    public ApiResponse<Map<String, Object>> businessSubmit(
             @PathVariable Long menuId, @RequestBody DynamicSaveReq req) {
         try {
             return ApiResponse.success(commonApprovalService.businessSubmit(menuId, req));
