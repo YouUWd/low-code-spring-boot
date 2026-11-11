@@ -51,9 +51,9 @@ public class Info extends Model<Info> {
     @TableField("company_name")
     private String companyName;
 
-    /** 外部对象父级全称对应ID（自关联母集团，空为顶级） */
-    @TableField("parent_id")
-    private String parentId;
+    /** 外部对象父级（自关联母集团，空为顶级） */
+    @TableField("parent_company")
+    private String parentCompany;
 
     /** 对象性质（企业/个体工商户/社会团体/政府机关等） */
     @TableField("nature")
