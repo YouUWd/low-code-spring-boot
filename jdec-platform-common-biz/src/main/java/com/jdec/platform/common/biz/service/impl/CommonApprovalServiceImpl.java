@@ -228,6 +228,51 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     // 提交单据
     @Override
     public Long businessSubmit(Long menuId, DynamicSaveReq req) {
+        try {
+            return approvalSubmit(menuId, req);
+        } catch (Exception e) {
+            return businessSave(req);
+        }
+    }
+
+    // 保存变更申请单
+    @Override
+    public ChangeApplySaveResp businessApplySave(DynamicSaveReq req) {
+        // 保存前校验：只校验前端提交的变更数据，查重排除本次变更的原单据
+        checkChangeApplyBeforeStore(req);
+        return dataEngineApi.saveChangeApply(req);
+    }
+
+    /**
+     * 变更申请单保存前的校验。
+     *
+     * <p>校验数据完全取自前端提交的变更数据，未提交的模块不参与校验；查重时按变更申请单对应的原单据（提交结构第一行的主表主键）排除， 原单据及其同业务编号的其它版本都不作为重复比对对象。
+     */
+    private void checkChangeApplyBeforeStore(DynamicSaveReq req) {
+        if (req == null
+                || req.getNestedModuleData() == null
+                || req.getNestedModuleData().getModuleId() == null) {
+            return;
+        }
+        checkChangeOnSave(moduleTreeOf(req.getNestedModuleData()), req.getNestedModuleData());
+    }
+
+    /**
+     * 变更类单据落库前的保存校验（变更申请单保存、变更提交共用）。
+     *
+     * <p>校验数据完全取自前端提交的变更数据，未提交的模块不参与校验；查重时按变更的原单据（提交结构第一行的主表主键）排除， 原单据及其同业务编号的其它版本都不作为重复比对对象。
+     */
+    private void checkChangeOnSave(ModuleTreeDTO moduleTree, NestedModuleDataDTO nestedModuleData) {
+        Long rootModuleId =
+                moduleTree == null || moduleTree.getRootModuleId() == null
+                        ? nestedModuleData.getModuleId()
+                        : moduleTree.getRootModuleId();
+        submitCheckRouter.checkOnSave(
+                rootModuleId, nestedModuleData, mainRecordId(moduleTree, nestedModuleData));
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public Long approvalSubmit(Long menuId, DynamicSaveReq req) {
         savePrepositionProcessorService.preProcess(req.getNestedModuleData());
         boolean realTimeSave =
                 Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save");
@@ -267,42 +312,6 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         approvalReq.setButton("submit");
         approvalSave(result.getModuleId(), approvalReq);
         return result.getDataId();
-    }
-
-    // 保存变更申请单
-    @Override
-    public ChangeApplySaveResp businessApplySave(DynamicSaveReq req) {
-        // 保存前校验：只校验前端提交的变更数据，查重排除本次变更的原单据
-        checkChangeApplyBeforeStore(req);
-        return dataEngineApi.saveChangeApply(req);
-    }
-
-    /**
-     * 变更申请单保存前的校验。
-     *
-     * <p>校验数据完全取自前端提交的变更数据，未提交的模块不参与校验；查重时按变更申请单对应的原单据（提交结构第一行的主表主键）排除， 原单据及其同业务编号的其它版本都不作为重复比对对象。
-     */
-    private void checkChangeApplyBeforeStore(DynamicSaveReq req) {
-        if (req == null
-                || req.getNestedModuleData() == null
-                || req.getNestedModuleData().getModuleId() == null) {
-            return;
-        }
-        checkChangeOnSave(moduleTreeOf(req.getNestedModuleData()), req.getNestedModuleData());
-    }
-
-    /**
-     * 变更类单据落库前的保存校验（变更申请单保存、变更提交共用）。
-     *
-     * <p>校验数据完全取自前端提交的变更数据，未提交的模块不参与校验；查重时按变更的原单据（提交结构第一行的主表主键）排除， 原单据及其同业务编号的其它版本都不作为重复比对对象。
-     */
-    private void checkChangeOnSave(ModuleTreeDTO moduleTree, NestedModuleDataDTO nestedModuleData) {
-        Long rootModuleId =
-                moduleTree == null || moduleTree.getRootModuleId() == null
-                        ? nestedModuleData.getModuleId()
-                        : moduleTree.getRootModuleId();
-        submitCheckRouter.checkOnSave(
-                rootModuleId, nestedModuleData, mainRecordId(moduleTree, nestedModuleData));
     }
 
     public void approvalSave(Long moduleId, ApprovalReq req) {
