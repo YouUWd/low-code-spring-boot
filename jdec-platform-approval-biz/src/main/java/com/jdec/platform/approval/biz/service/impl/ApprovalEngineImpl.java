@@ -165,7 +165,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalVersionRecord approvalVersionRecord =
                 approvalVersionRecordMapper.selectOne(businessWrapper);
         if (Objects.isNull(approvalVersionRecord)) {
-            throw new BusinessException(601, "单据记录不存在");
+            return new HashMap<>();
         }
         if (approvalVersionRecord.getCurrentStep() > 0
                 && (Objects.isNull(req.getButton())
