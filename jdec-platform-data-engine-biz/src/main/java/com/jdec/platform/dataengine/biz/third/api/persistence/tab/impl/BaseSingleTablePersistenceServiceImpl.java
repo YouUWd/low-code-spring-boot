@@ -76,6 +76,12 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         context.setDefaultExcludeFields(INSERT_DEFAULT_EXCLUDE_FIELD);
         Map<Field<Object>, Object> fieldValues = getInsertRecordFieldValues(context);
 
+        if (!fieldValues.containsKey(DSL.field(DSL.name(StrUtil.toUnderlineCase("node_id"))))) {
+            fieldValues.put(
+                    DSL.field(DSL.name(StrUtil.toUnderlineCase("node_id"))),
+                    UUID.randomUUID().toString());
+        }
+
         String tableName = context.getTableName();
         // 手动定义表和主键字段，标记IDENTITY
         // 1. 构造【带自增标记】的数据类型
