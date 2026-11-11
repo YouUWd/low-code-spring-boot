@@ -231,6 +231,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         try {
             return approvalSubmit(menuId, req);
         } catch (Exception e) {
+            log.error(e.getMessage());
             return businessSave(req);
         }
     }
@@ -299,11 +300,11 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         DynamicSaveResp result = dataEngineApi.save(req);
         if (realTimeSave) return result.getDataId();
         if (mainRecordExists && !changeSubmit) {
-            submitCheckRouter.check(
-                    result.getModuleId(),
-                    result.getDataId(),
-                    result.getBusinessNo(),
-                    result.getVersionNo());
+            //            submitCheckRouter.check(
+            //                    result.getModuleId(),
+            //                    result.getDataId(),
+            //                    result.getBusinessNo(),
+            //                    result.getVersionNo());
         }
         ApprovalReq approvalReq = new ApprovalReq();
         approvalReq.setMenuId(menuId);
