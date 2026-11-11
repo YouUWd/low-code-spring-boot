@@ -434,6 +434,9 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
                 result.put("btnList", null);
                 result.put("canEdit", 0);
             }
+            Integer canEdit = (Integer) result.get("canEdit");
+            boolean showSaveBtn = canEdit.equals(1) && !approvalChainStatus;
+            result.put("showSaveBtn", showSaveBtn);
         }
         return result;
     }
