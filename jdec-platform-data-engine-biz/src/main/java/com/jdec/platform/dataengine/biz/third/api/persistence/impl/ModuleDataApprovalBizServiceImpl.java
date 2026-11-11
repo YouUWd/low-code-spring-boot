@@ -248,11 +248,12 @@ public class ModuleDataApprovalBizServiceImpl implements ModuleDataApprovalBizSe
             fieldValues.put(
                     DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_UPDATED_DATE_FIELD)),
                     LocalDateTime.now());
-            if (req.getRegistrationTime() != null) {
-                fieldValues.put(
-                        DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_REGISTRATION_TIME_FIELD)),
-                        req.getRegistrationTime());
-            }
+            //            if (req.getRegistrationTime() != null) {
+            //                fieldValues.put(
+            //
+            // DSL.field(DSL.name(CommonConstant.TABLE_DEFAULT_REGISTRATION_TIME_FIELD)),
+            //                        req.getRegistrationTime());
+            //            }
             // 如果是 取消状态  而且有上一个版本的数据
             if (req.getBusinessStatus() == -99 && (sourceId != null && sourceId > 0)) {
                 // 当前版本 要设置成 非活跃

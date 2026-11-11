@@ -15,14 +15,14 @@ public interface SysButtonMapper extends BaseMapper<SysButton> {
      * 故初始化单独走此方法；普通新增仍走 {@code insert} 由数据库自增。
      */
     @Insert(
-            "INSERT INTO sys_button (id, title, alias, type, description, default_bg_color, default_font_color,"
+            "INSERT INTO sys_button (id, title, type, default_bg_color, default_font_color,"
                     + " default_border, levitate_bg_color, levitate_font_color, levitate_border_color,"
-                    + " selected_bg_color, selected_font_color, selected_border_color, icon, log_name, sort_order,"
-                    + " showed, enabled, subject_id, project_no, created_date, updated_date) "
-                    + "VALUES (#{id}, #{title}, #{alias}, #{type}, #{description}, #{defaultBgColor},"
+                    + " selected_bg_color, selected_font_color, selected_border_color, menu_ids,"
+                    + " enabled, subject_id, project_no, created_date, updated_date) "
+                    + "VALUES (#{id}, #{title}, #{type}, #{defaultBgColor},"
                     + " #{defaultFontColor}, #{defaultBorder}, #{levitateBgColor}, #{levitateFontColor},"
                     + " #{levitateBorderColor}, #{selectedBgColor}, #{selectedFontColor}, #{selectedBorderColor},"
-                    + " #{icon}, #{logName}, #{sortOrder}, #{showed}, #{enabled}, #{subjectId}, #{projectNo},"
+                    + " #{menuIds}, #{enabled}, #{subjectId}, #{projectNo},"
                     + " #{createdDate}, #{updatedDate})")
     int insertWithId(SysButton entity);
 }

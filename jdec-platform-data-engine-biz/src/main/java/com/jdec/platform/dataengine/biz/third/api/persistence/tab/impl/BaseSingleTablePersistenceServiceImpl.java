@@ -76,7 +76,8 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         context.setDefaultExcludeFields(INSERT_DEFAULT_EXCLUDE_FIELD);
         Map<Field<Object>, Object> fieldValues = getInsertRecordFieldValues(context);
 
-        if (!fieldValues.containsKey(DSL.field(DSL.name(StrUtil.toUnderlineCase("node_id"))))) {
+        Object uuid = fieldValues.get(DSL.field(DSL.name(StrUtil.toUnderlineCase("node_id"))));
+        if (uuid == null || StrUtil.isEmpty(uuid.toString())) {
             fieldValues.put(
                     DSL.field(DSL.name(StrUtil.toUnderlineCase("node_id"))),
                     UUID.randomUUID().toString());

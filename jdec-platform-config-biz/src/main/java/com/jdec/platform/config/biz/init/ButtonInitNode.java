@@ -16,14 +16,8 @@ public class ButtonInitNode {
     /** 按钮名称 */
     private String title;
 
-    /** 别名 */
-    private String alias;
-
     /** 按钮类型 */
     private String type;
-
-    /** 描述 */
-    private String description;
 
     /** 默认背景颜色 */
     private String defaultBgColor;
@@ -51,18 +45,6 @@ public class ButtonInitNode {
 
     /** 选中边框色 */
     private String selectedBorderColor;
-
-    /** 日志对应图标 */
-    private String icon;
-
-    /** 日志对应状态 */
-    private String logName;
-
-    /** 排序 */
-    private Integer sortOrder;
-
-    /** 1显示 0隐藏 */
-    private Integer showed;
 
     /** 是否启用(1:启用。0：不启用) */
     private Integer enabled;
