@@ -123,15 +123,9 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         savePrepositionProcessorService.preProcess(req.getNestedModuleData());
         // 保存前校验：无审批链保存，以及有审批链的新增保存（主单ID没有值），落库前基于前端提交的参数执行
         //        checkSaveBeforeStore(req);
-        DynamicSaveResp result = dataEngineApi.save(req);
+        DynamicSaveResp result = approvalSave(req);
         if (Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save"))
             return result.getChildDataId();
-        ApprovalReq approvalReq = new ApprovalReq();
-        approvalReq.setRecordId(result.getDataId());
-        approvalReq.setBusinessNumber(result.getBusinessNo());
-        approvalReq.setButton("save");
-        approvalReq.setMenuId(0L);
-        approvalSave(result.getModuleId(), approvalReq);
         return result.getDataId();
     }
 
@@ -235,9 +229,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
             result.put("submitStatus", 1);
         } catch (Exception e) {
             log.error(e.getMessage());
-            Long newId = businessSave(req);
-            result.put("recordId", newId);
-            result.put("submitStatus", 0);
+            throw new BusinessException("提交失败");
         }
         return result;
     }
@@ -278,7 +270,6 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
                 rootModuleId, nestedModuleData, mainRecordId(moduleTree, nestedModuleData));
     }
 
-    @Transactional(rollbackFor = Exception.class)
     public Long approvalSubmit(Long menuId, DynamicSaveReq req) {
         savePrepositionProcessorService.preProcess(req.getNestedModuleData());
         boolean realTimeSave =
@@ -303,14 +294,14 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
                             : moduleTree.getRootModuleId();
             submitCheckRouter.checkOnSubmit(rootModuleId, req.getNestedModuleData());
         }
-        DynamicSaveResp result = dataEngineApi.save(req);
+        DynamicSaveResp result = approvalSave(req);
         if (realTimeSave) return result.getDataId();
         if (mainRecordExists && !changeSubmit) {
-            //            submitCheckRouter.check(
-            //                    result.getModuleId(),
-            //                    result.getDataId(),
-            //                    result.getBusinessNo(),
-            //                    result.getVersionNo());
+            submitCheckRouter.check(
+                    result.getModuleId(),
+                    result.getDataId(),
+                    result.getBusinessNo(),
+                    result.getVersionNo());
         }
         ApprovalReq approvalReq = new ApprovalReq();
         approvalReq.setMenuId(menuId);
@@ -319,6 +310,21 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         approvalReq.setButton("submit");
         approvalSave(result.getModuleId(), approvalReq);
         return result.getDataId();
+    }
+
+    @Transactional(rollbackFor = Exception.class)
+    public DynamicSaveResp approvalSave(DynamicSaveReq req) {
+        savePrepositionProcessorService.preProcess(req.getNestedModuleData());
+        // 保存前校验：无审批链保存，以及有审批链的新增保存（主单ID没有值），落库前基于前端提交的参数执行
+        //        checkSaveBeforeStore(req);
+        DynamicSaveResp result = dataEngineApi.save(req);
+        ApprovalReq approvalReq = new ApprovalReq();
+        approvalReq.setRecordId(result.getDataId());
+        approvalReq.setBusinessNumber(result.getBusinessNo());
+        approvalReq.setButton("save");
+        approvalReq.setMenuId(0L);
+        approvalSave(result.getModuleId(), approvalReq);
+        return result;
     }
 
     public void approvalSave(Long moduleId, ApprovalReq req) {
