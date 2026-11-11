@@ -1,8 +1,10 @@
 package com.jdec.platform.config.biz.controller;
 
 import com.jdec.platform.config.api.SysButtonApi;
+import com.jdec.platform.config.api.dto.request.SysButtonMenuQueryReq;
 import com.jdec.platform.config.api.dto.request.SysButtonPageReq;
 import com.jdec.platform.config.api.dto.request.SysButtonSaveReq;
+import com.jdec.platform.config.api.dto.response.SysButtonMenuGroupResp;
 import com.jdec.platform.config.api.dto.response.SysButtonResp;
 import com.jdec.platform.shared.model.ApiResponse;
 import com.jdec.platform.shared.model.PageResult;
@@ -36,6 +38,15 @@ public class SysButtonController {
     @Operation(summary = "查询所有按钮（不分页）")
     public ApiResponse<List<SysButtonResp>> list() {
         return ApiResponse.success(sysButtonApi.list());
+    }
+
+    @PostMapping("/list/by-menu")
+    @Operation(
+            summary = "按菜单+类型查询按钮",
+            description = "根据菜单ID和按钮类型查询已启用的按钮（仅返回前端需要的字段），并按菜单分组返回；支持菜单ID为空、仅按类型查询的场景")
+    public ApiResponse<List<SysButtonMenuGroupResp>> listByMenu(
+            @RequestBody List<SysButtonMenuQueryReq> req) {
+        return ApiResponse.success(sysButtonApi.queryButtonsByMenu(req));
     }
 
     @PostMapping("/save")

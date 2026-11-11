@@ -12,6 +12,7 @@ import com.jdec.platform.config.api.dto.request.SysButtonPageReq;
 import com.jdec.platform.config.api.dto.request.SysButtonSaveReq;
 import com.jdec.platform.config.api.dto.response.SysButtonMenuGroupResp;
 import com.jdec.platform.config.api.dto.response.SysButtonResp;
+import com.jdec.platform.config.api.dto.response.SysButtonSimpleResp;
 import com.jdec.platform.config.api.dto.response.SysConfigItemResp;
 import com.jdec.platform.config.biz.entity.SysButton;
 import com.jdec.platform.config.biz.entity.SysMenu;
@@ -191,28 +192,26 @@ public class SysButtonService implements SysButtonApi, OpenButtonApi {
                         Wrappers.<SysButton>lambdaQuery()
                                 .eq(SysButton::getProjectNo, AppContext.getProjectNo())
                                 .eq(SysButton::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysButton::getEnabled, 1)
                                 .orderByAsc(SysButton::getId));
-        Map<Long, String> menuTitleMap =
-                loadMenuTitleMap(
-                        all.stream()
-                                .flatMap(e -> toMenuIds(e.getMenuIds()).stream())
-                                .distinct()
-                                .collect(Collectors.toList()));
-        Map<String, String> typeLabelMap = loadButtonTypeLabelMap();
 
         // 菜单ID -> (该菜单下的按钮列表 + 已加入的按钮ID集合，用于去重)
-        Map<Long, List<SysButtonResp>> groupMap = new LinkedHashMap<>();
+        Map<Long, List<SysButtonSimpleResp>> groupMap = new LinkedHashMap<>();
         Map<Long, Set<Long>> groupSeen = new HashMap<>();
 
         for (SysButtonMenuQueryReq item : req) {
             Long menuId = parseMenuId(item.getMenuId());
             List<String> types = item.getType();
+            boolean typeEmpty = (types == null || types.isEmpty());
             for (SysButton button : all) {
                 List<Long> btnMenuIds = toMenuIds(button.getMenuIds());
-                if (menuId != null && !btnMenuIds.contains(menuId)) {
-                    continue;
+                if (menuId != null) {
+                    // 已绑定该菜单的按钮收录；未传类型时，未绑定任何菜单的全局按钮也归入该菜单
+                    if (!btnMenuIds.contains(menuId) && !(typeEmpty && btnMenuIds.isEmpty())) {
+                        continue;
+                    }
                 }
-                if (types != null && !types.isEmpty() && !types.contains(button.getType())) {
+                if (!typeEmpty && !types.contains(button.getType())) {
                     continue;
                 }
                 // 指定了菜单则归入该菜单；未指定菜单则归入按钮自身关联的全部菜单
@@ -220,7 +219,7 @@ public class SysButtonService implements SysButtonApi, OpenButtonApi {
                 if (targetMenus.isEmpty()) {
                     continue;
                 }
-                SysButtonResp resp = toResp(button, menuTitleMap, typeLabelMap);
+                SysButtonSimpleResp resp = toSimpleResp(button);
                 for (Long tm : targetMenus) {
                     Set<Long> seen = groupSeen.computeIfAbsent(tm, k -> new HashSet<>());
                     if (!seen.add(button.getId())) {
@@ -232,13 +231,30 @@ public class SysButtonService implements SysButtonApi, OpenButtonApi {
         }
 
         List<SysButtonMenuGroupResp> result = new ArrayList<>();
-        for (Map.Entry<Long, List<SysButtonResp>> entry : groupMap.entrySet()) {
+        for (Map.Entry<Long, List<SysButtonSimpleResp>> entry : groupMap.entrySet()) {
             SysButtonMenuGroupResp group = new SysButtonMenuGroupResp();
             group.setMenuId(entry.getKey());
             group.setButtons(entry.getValue());
             result.add(group);
         }
         return result;
+    }
+
+    /** 单条转换：仅保留前端需要的字段（名称、类型、颜色相关），并排除未启用的按钮 */
+    private SysButtonSimpleResp toSimpleResp(SysButton entity) {
+        SysButtonSimpleResp resp = new SysButtonSimpleResp();
+        resp.setTitle(entity.getTitle());
+        resp.setType(entity.getType());
+        resp.setDefaultBgColor(entity.getDefaultBgColor());
+        resp.setDefaultFontColor(entity.getDefaultFontColor());
+        resp.setDefaultBorder(entity.getDefaultBorder());
+        resp.setLevitateBgColor(entity.getLevitateBgColor());
+        resp.setLevitateFontColor(entity.getLevitateFontColor());
+        resp.setLevitateBorderColor(entity.getLevitateBorderColor());
+        resp.setSelectedBgColor(entity.getSelectedBgColor());
+        resp.setSelectedFontColor(entity.getSelectedFontColor());
+        resp.setSelectedBorderColor(entity.getSelectedBorderColor());
+        return resp;
     }
 
     /** 解析菜单ID：空字符串或非数字返回 null（表示不限定菜单） */
