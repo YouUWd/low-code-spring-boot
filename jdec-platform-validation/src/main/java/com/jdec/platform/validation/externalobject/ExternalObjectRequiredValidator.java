@@ -200,11 +200,9 @@ public class ExternalObjectRequiredValidator {
             NatureFlags flags,
             ExternalObjectValidationMessages messages) {
         requireText(info.companyName(), "外部对象全称", messages);
-        requireJson(info.nature(), "对象性质", messages);
+        // 对象性质、登记状态不再必填（前端会给默认值），故移除此处校验。
         if (flags.individual()) {
             requireText(info.gender(), "性别", messages);
-        } else {
-            requireJson(info.regStatus(), "登记状态", messages);
         }
         requireJson(info.cooperationTypes(), "合作类型", messages);
         if (flags.enterprise()) {
