@@ -48,6 +48,7 @@ public class ModuleTreeDiffService {
                     "business_no",
                     "source_id",
                     "subject_id",
+                    "parent_id",
                     "info_id",
                     "pid",
                     "version_no",
