@@ -49,8 +49,14 @@ public class SysButtonResp {
     @Schema(description = "是否启用(1:启用。0：不启用)")
     private Integer enabled;
 
+    @Schema(description = "关联菜单名称(逗号拼接)")
+    private String menuNames;
+
     @Schema(description = "关联菜单ID列表")
     private List<Long> menuIds;
+
+    @Schema(description = "按钮类型中文标签")
+    private String typeLabel;
 
     @Schema(description = "所属主体")
     private Long subjectId;

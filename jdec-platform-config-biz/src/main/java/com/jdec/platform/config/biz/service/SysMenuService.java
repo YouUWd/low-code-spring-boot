@@ -6,6 +6,7 @@ import com.jdec.platform.config.api.SysMenuApi;
 import com.jdec.platform.config.api.dto.request.SaveMenuReq;
 import com.jdec.platform.config.api.dto.request.SysMenuDragReq;
 import com.jdec.platform.config.api.dto.request.SysMenuSaveReq;
+import com.jdec.platform.config.api.dto.response.SysMenuOptionResp;
 import com.jdec.platform.config.api.dto.response.SysMenuResp;
 import com.jdec.platform.config.api.dto.response.SysMenuTreeResp;
 import com.jdec.platform.config.api.enums.MenuCategoryEnum;
@@ -616,6 +617,55 @@ public class SysMenuService implements SysMenuApi {
             siblings.get(i).setSortOrder(i);
         }
         sysMenuMapper.updateById(siblings);
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public List<SysMenuOptionResp> listMenuOptions() {
+        List<SysMenu> list =
+                sysMenuMapper.selectList(
+                        new LambdaQueryWrapper<SysMenu>()
+                                .eq(SysMenu::getMenuType, MENU_TYPE_PAGE)
+                                .eq(SysMenu::getSubjectId, AppContext.getSubjectId())
+                                .eq(SysMenu::getProjectNo, AppContext.getProjectNo())
+                                .orderByAsc(SysMenu::getCategory)
+                                .orderByAsc(SysMenu::getSortOrder)
+                                .orderByAsc(SysMenu::getId));
+        if (CollectionUtils.isEmpty(list)) {
+            return Collections.emptyList();
+        }
+        // 按菜单分类（业务菜单/系统菜单）分组，构造两级树：分类分组 -> 页面菜单叶子
+        Map<Integer, List<SysMenu>> grouped = new LinkedHashMap<>();
+        for (SysMenu menu : list) {
+            grouped.computeIfAbsent(menu.getCategory(), k -> new ArrayList<>()).add(menu);
+        }
+        List<SysMenuOptionResp> result = new ArrayList<>();
+        for (Map.Entry<Integer, List<SysMenu>> entry : grouped.entrySet()) {
+            Integer category = entry.getKey();
+            SysMenuOptionResp group = new SysMenuOptionResp();
+            group.setKey("category-" + category);
+            group.setLabel(categoryDesc(category));
+            group.setChildren(new ArrayList<>());
+            for (SysMenu menu : entry.getValue()) {
+                SysMenuOptionResp leaf = new SysMenuOptionResp();
+                leaf.setKey("menu-" + menu.getId());
+                leaf.setValue(menu.getId());
+                leaf.setLabel(menu.getTitle());
+                group.getChildren().add(leaf);
+            }
+            result.add(group);
+        }
+        return result;
+    }
+
+    /** 菜单分类编码转中文名称（业务菜单/系统菜单） */
+    private String categoryDesc(Integer category) {
+        for (MenuCategoryEnum item : MenuCategoryEnum.values()) {
+            if (item.getCode().equals(category)) {
+                return item.getDesc();
+            }
+        }
+        return category == null ? "" : String.valueOf(category);
     }
 
     @Override
