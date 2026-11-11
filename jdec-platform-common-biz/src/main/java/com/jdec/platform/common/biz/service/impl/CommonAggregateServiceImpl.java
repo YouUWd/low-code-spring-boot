@@ -234,7 +234,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         moduleTree,
                         checkedFieldIds,
                         flatColumns,
-                        PhysicalQueryMapper.toPredicate(finalFilters),
+                        finalFilters,
                         finalSorts,
                         pageNo,
                         pageSize);

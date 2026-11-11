@@ -22,7 +22,10 @@ import com.jdec.platform.data.api.dto.request.PageQueryReq;
 import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.request.SortItem;
 import com.jdec.platform.data.api.dto.response.DataPage;
+import com.jdec.platform.data.api.model.predicate.ColumnRef;
+import com.jdec.platform.data.api.model.predicate.ComparisonPredicate;
 import com.jdec.platform.data.api.model.predicate.CompoundPredicate;
+import com.jdec.platform.data.api.model.predicate.FunctionExpr;
 import com.jdec.platform.data.api.model.predicate.Predicate;
 import com.jdec.platform.shared.exception.BusinessException;
 import java.util.ArrayList;
@@ -210,6 +213,28 @@ public final class PhysicalQueryMapper {
     }
 
     /**
+     * 根据模块树、勾选字段及补齐后的列集合，构建完整的自相似分页查询视图树 (PageQueryReq View Tree)。 自动将过滤条件按所属模块拆分分发至根节点与各子视图节点的
+     * filter 中。
+     */
+    public static PageQueryReq buildPageQueryViewTree(
+            ModuleTreeDTO moduleTree,
+            Collection<Long> checkedFieldIds,
+            List<String> flatColumns,
+            Collection<FilterItem> filters,
+            List<SortItem> sorts,
+            Integer pageNo,
+            Integer pageSize) {
+        return buildPageQueryViewTree(
+                moduleTree,
+                checkedFieldIds,
+                flatColumns,
+                toPredicate(filters),
+                sorts,
+                pageNo,
+                pageSize);
+    }
+
+    /**
      * 根据模块树、勾选字段及补齐后的列集合，构建完整的自相似分页查询视图树 (PageQueryReq View Tree)。 每个模块作为一个多表组合的 View
      * 节点，仅携带归属本视图表的列，子模块递归挂载于 children。
      */
@@ -233,6 +258,24 @@ public final class PhysicalQueryMapper {
                 .pageNo(pageNo)
                 .pageSize(pageSize)
                 .build();
+    }
+
+    /** 根据模块树、MenuTableSpec 列表及补齐后的列集合，构建完整的自相似列表查询视图树 (QueryReq View Tree)。 */
+    public static QueryReq buildQueryViewTree(
+            ModuleTreeDTO moduleTree,
+            List<MenuTableSpec> menuTableSpecs,
+            Function<Long, Long> menuToModuleResolver,
+            List<String> flatColumns,
+            Collection<FilterItem> filters,
+            List<SortItem> sorts) {
+        return buildViewTreeInternal(
+                moduleTree,
+                null,
+                menuTableSpecs,
+                menuToModuleResolver,
+                flatColumns,
+                toPredicate(filters),
+                sorts);
     }
 
     /** 根据模块树、MenuTableSpec 列表及补齐后的列集合，构建完整的自相似列表查询视图树 (QueryReq View Tree)。 */
@@ -293,8 +336,11 @@ public final class PhysicalQueryMapper {
                         menuToModuleResolver,
                         flatColumns);
 
+        Map<Long, Predicate> filtersByModule = groupPredicateByModule(moduleTree, filter);
+
         List<QueryReq> children =
-                buildViewTreeChildren(rootModuleId, moduleTree, colsByModule, sorts);
+                buildViewTreeChildren(
+                        rootModuleId, moduleTree, colsByModule, filtersByModule, sorts);
 
         Set<String> rootColSet = rootModuleId != null ? colsByModule.get(rootModuleId) : null;
         List<String> rootCols =
@@ -307,10 +353,15 @@ public final class PhysicalQueryMapper {
             rootCols = List.of(rootMod.getPrimaryTable().trim() + ".id");
         }
 
+        Predicate rootFilter =
+                (rootModuleId != null && filtersByModule != null)
+                        ? filtersByModule.get(rootModuleId)
+                        : filter;
+
         return QueryReq.builder()
                 .view(rootView)
                 .columns(rootCols)
-                .filter(filter)
+                .filter(rootFilter)
                 .sort(sorts)
                 .children(children.isEmpty() ? null : children)
                 .build();
@@ -400,6 +451,7 @@ public final class PhysicalQueryMapper {
             Long parentModuleId,
             ModuleTreeDTO moduleTree,
             Map<Long, Set<String>> colsByModule,
+            Map<Long, Predicate> filtersByModule,
             List<SortItem> allSorts) {
         if (parentModuleId == null || moduleTree == null) {
             return Collections.emptyList();
@@ -411,13 +463,16 @@ public final class PhysicalQueryMapper {
 
         List<QueryReq> children = new ArrayList<>();
         for (Long childMid : childModuleIds) {
-            if (!hasAnyColumnsInSubtree(childMid, moduleTree, colsByModule)) {
+            boolean hasCols = hasAnyColumnsInSubtree(childMid, moduleTree, colsByModule);
+            boolean hasFilters = hasAnyFilterInSubtree(childMid, moduleTree, filtersByModule);
+            if (!hasCols && !hasFilters) {
                 continue;
             }
             ModuleInfo childMod = moduleTree.getModule(childMid);
             String childView = resolveModuleView(childMod, childMid);
             List<QueryReq> subChildren =
-                    buildViewTreeChildren(childMid, moduleTree, colsByModule, allSorts);
+                    buildViewTreeChildren(
+                            childMid, moduleTree, colsByModule, filtersByModule, allSorts);
 
             Set<String> colSet = colsByModule.get(childMid);
             List<String> childCols =
@@ -432,15 +487,242 @@ public final class PhysicalQueryMapper {
             List<SortItem> childSorts =
                     filterSortsForModule(allSorts, getDeclaredTablesOfModule(childMod));
 
+            Predicate childFilter = filtersByModule != null ? filtersByModule.get(childMid) : null;
+
             children.add(
                     QueryReq.builder()
                             .view(childView)
                             .columns(childCols)
+                            .filter(childFilter)
                             .sort(childSorts.isEmpty() ? null : childSorts)
                             .children(subChildren.isEmpty() ? null : subChildren)
                             .build());
         }
         return children;
+    }
+
+    private static boolean hasAnyFilterInSubtree(
+            Long moduleId, ModuleTreeDTO moduleTree, Map<Long, Predicate> filtersByModule) {
+        if (moduleId == null || filtersByModule == null || filtersByModule.isEmpty()) {
+            return false;
+        }
+        Predicate direct = filtersByModule.get(moduleId);
+        if (direct != null) {
+            return true;
+        }
+        for (Long childMid : resolveChildModuleIds(moduleTree, moduleId)) {
+            if (hasAnyFilterInSubtree(childMid, moduleTree, filtersByModule)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 将 FilterItem 过滤条件集合按其物理表归属分组映射至各模块 ID (moduleId -> List<FilterItem>)。 */
+    public static Map<Long, List<FilterItem>> groupFiltersByModule(
+            ModuleTreeDTO moduleTree, Collection<FilterItem> filters) {
+        if (filters == null || filters.isEmpty() || moduleTree == null) {
+            return Collections.emptyMap();
+        }
+        Long rootModuleId = moduleTree.getRootModuleId();
+        if (rootModuleId == null && moduleTree.getRootModule() != null) {
+            rootModuleId = moduleTree.getRootModule().getModuleId();
+        }
+
+        Map<Long, List<FilterItem>> grouped = new LinkedHashMap<>();
+        for (FilterItem item : filters) {
+            if (item == null) {
+                continue;
+            }
+            Long modId = resolveModuleIdForTable(moduleTree, item.getTableName());
+            if (modId == null) {
+                modId = rootModuleId;
+            }
+            grouped.computeIfAbsent(modId, k -> new ArrayList<>()).add(item);
+        }
+        return grouped;
+    }
+
+    /**
+     * 将统一的 Predicate 过滤条件树按物理表归属，安全拆解分发至模块树中的各模块 ID (moduleId -> Predicate)。 顶层 AND
+     * 组合将被解包，针对各模块引用的表分别聚合为该模块局部的 Predicate。
+     */
+    public static Map<Long, Predicate> groupPredicateByModule(
+            ModuleTreeDTO moduleTree, Predicate filter) {
+        if (filter == null || moduleTree == null) {
+            return Collections.emptyMap();
+        }
+        Long rootModuleId = moduleTree.getRootModuleId();
+        if (rootModuleId == null && moduleTree.getRootModule() != null) {
+            rootModuleId = moduleTree.getRootModule().getModuleId();
+        }
+
+        List<Predicate> flatPredicates = flattenTopLevelAndPredicates(filter);
+        if (flatPredicates.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        Map<Long, List<Predicate>> grouped = new LinkedHashMap<>();
+        for (Predicate p : flatPredicates) {
+            if (p == null) {
+                continue;
+            }
+            Long modId = resolveModuleIdForPredicate(moduleTree, p);
+            if (modId == null) {
+                modId = rootModuleId;
+            }
+            grouped.computeIfAbsent(modId, k -> new ArrayList<>()).add(p);
+        }
+
+        Map<Long, Predicate> result = new LinkedHashMap<>();
+        for (Map.Entry<Long, List<Predicate>> entry : grouped.entrySet()) {
+            List<Predicate> list = entry.getValue();
+            if (list == null || list.isEmpty()) {
+                continue;
+            }
+            Predicate combined = (list.size() == 1) ? list.get(0) : CompoundPredicate.and(list);
+            result.put(entry.getKey(), combined);
+        }
+        return result;
+    }
+
+    private static List<Predicate> flattenTopLevelAndPredicates(Predicate filter) {
+        List<Predicate> result = new ArrayList<>();
+        if (filter == null) {
+            return result;
+        }
+        if (filter instanceof CompoundPredicate compound
+                && "AND".equalsIgnoreCase(compound.getOperator())) {
+            if (compound.getPredicates() != null) {
+                for (Predicate sub : compound.getPredicates()) {
+                    result.addAll(flattenTopLevelAndPredicates(sub));
+                }
+            }
+        } else {
+            result.add(filter);
+        }
+        return result;
+    }
+
+    /** 根据单个 Predicate AST 提取其引用的物理表，判定其唯一归属的模块 ID。 若引用无表名或跨多个不同模块，则回退归属根模块。 */
+    public static Long resolveModuleIdForPredicate(ModuleTreeDTO moduleTree, Predicate predicate) {
+        if (moduleTree == null) {
+            return null;
+        }
+        Long rootModuleId = moduleTree.getRootModuleId();
+        if (rootModuleId == null && moduleTree.getRootModule() != null) {
+            rootModuleId = moduleTree.getRootModule().getModuleId();
+        }
+        Set<String> tables = extractReferencedTables(predicate);
+        if (tables.isEmpty()) {
+            return rootModuleId;
+        }
+        if (tables.size() == 1) {
+            return resolveModuleIdForTable(moduleTree, tables.iterator().next());
+        }
+
+        // 包含多个物理表：检查是否存在某一个模块包含全部引用的表
+        if (moduleTree.getModuleMap() != null) {
+            for (Map.Entry<Long, ModuleInfo> entry : moduleTree.getModuleMap().entrySet()) {
+                if (rootModuleId != null && rootModuleId.equals(entry.getKey())) {
+                    continue;
+                }
+                Set<String> declared = getDeclaredTablesOfModule(entry.getValue());
+                if (declared.containsAll(tables)) {
+                    return entry.getKey();
+                }
+            }
+        }
+        ModuleInfo rootMod =
+                rootModuleId != null
+                        ? moduleTree.getModule(rootModuleId)
+                        : moduleTree.getRootModule();
+        if (rootMod != null && getDeclaredTablesOfModule(rootMod).containsAll(tables)) {
+            return rootModuleId;
+        }
+
+        // 跨模块复合条件，回退至根节点
+        return rootModuleId;
+    }
+
+    /** 根据物理表名（不区分大小写）查找归属的模块 ID。 匹配优先级：各模块 primaryTable 精确匹配 -> 子模块声明表集合 -> 根模块声明表集合 -> 根模块回退。 */
+    public static Long resolveModuleIdForTable(ModuleTreeDTO moduleTree, String rawTable) {
+        if (moduleTree == null || rawTable == null || rawTable.isBlank()) {
+            return moduleTree != null ? moduleTree.getRootModuleId() : null;
+        }
+        String table = rawTable.trim().toLowerCase();
+        Long rootModuleId = moduleTree.getRootModuleId();
+        ModuleInfo rootMod =
+                rootModuleId != null
+                        ? moduleTree.getModule(rootModuleId)
+                        : moduleTree.getRootModule();
+
+        // 1. 优先比对主表名 (精确匹配各模块 primaryTable)
+        if (rootMod != null
+                && rootMod.getPrimaryTable() != null
+                && table.equalsIgnoreCase(rootMod.getPrimaryTable().trim())) {
+            return rootModuleId;
+        }
+        if (moduleTree.getModuleMap() != null) {
+            for (Map.Entry<Long, ModuleInfo> entry : moduleTree.getModuleMap().entrySet()) {
+                ModuleInfo mod = entry.getValue();
+                if (mod != null
+                        && mod.getPrimaryTable() != null
+                        && table.equalsIgnoreCase(mod.getPrimaryTable().trim())) {
+                    return entry.getKey();
+                }
+            }
+        }
+
+        // 2. 比对模块声明的物理表集合 (伴生表、上游表等)
+        // 优先检查子模块
+        if (moduleTree.getModuleMap() != null) {
+            for (Map.Entry<Long, ModuleInfo> entry : moduleTree.getModuleMap().entrySet()) {
+                if (rootModuleId != null && rootModuleId.equals(entry.getKey())) {
+                    continue;
+                }
+                if (getDeclaredTablesOfModule(entry.getValue()).contains(table)) {
+                    return entry.getKey();
+                }
+            }
+        }
+        // 其次检查根模块
+        if (rootMod != null && getDeclaredTablesOfModule(rootMod).contains(table)) {
+            return rootModuleId;
+        }
+
+        return rootModuleId;
+    }
+
+    /** 递归从 Predicate AST 中抽取所有引用的物理表名（转为小写）。 */
+    public static Set<String> extractReferencedTables(Predicate predicate) {
+        if (predicate == null) {
+            return Collections.emptySet();
+        }
+        Set<String> tables = new LinkedHashSet<>();
+        if (predicate instanceof ComparisonPredicate comp) {
+            String tbl = comp.getTableName();
+            if (tbl == null && comp.getExpression() instanceof ColumnRef col) {
+                tbl = col.getTableName();
+            } else if (tbl == null
+                    && comp.getExpression() instanceof FunctionExpr fn
+                    && fn.getTargetColumn() != null) {
+                tbl = fn.getTargetColumn().getTableName();
+            }
+            if (tbl == null && comp.getField() != null && comp.getField().contains(".")) {
+                tbl = comp.getField().substring(0, comp.getField().indexOf('.')).trim();
+            }
+            if (tbl != null && !tbl.isBlank()) {
+                tables.add(tbl.trim().toLowerCase());
+            }
+        } else if (predicate instanceof CompoundPredicate comp) {
+            if (comp.getPredicates() != null) {
+                for (Predicate sub : comp.getPredicates()) {
+                    tables.addAll(extractReferencedTables(sub));
+                }
+            }
+        }
+        return tables;
     }
 
     private static boolean hasAnyColumnsInSubtree(
