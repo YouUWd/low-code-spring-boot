@@ -11,8 +11,8 @@ import com.jdec.platform.dataengine.biz.enums.RelationType;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
 import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPersistenceService;
+import com.jdec.platform.dataengine.biz.third.api.persistence.ModuleDataPostService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.tab.BaseSingleTablePersistenceService;
-import com.jdec.platform.dataengine.biz.util.JsonUtil;
 import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.datasource.JooqDataContextFactory;
@@ -37,6 +37,8 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
     private final JooqDataContextFactory jooqContextFactory;
 
     private final BaseSingleTablePersistenceService baseSingleTablePersistenceService;
+
+    private final ModuleDataPostService moduleDataPostService;
 
     @Transactional(rollbackFor = Exception.class)
     public Long save(ModuleDataStoreDTO req) {
@@ -132,18 +134,20 @@ public class ModuleDataPersistenceServiceImpl implements ModuleDataPersistenceSe
                         req.getMainTableDataSourceId());
             }
 
-            // 审批保存，刷新了引用字段，需要记录日志
-            if (SaveType.APPROVAL_SAVE.equals(finalSaveType)) {}
-
-            // 其他sql
+            // 后置处理，由业务自己实现
+            moduleDataPostService.postProcessData(
+                    DataPostParamDTO.builder()
+                            .projectNo(AppContext.getProjectNo())
+                            .subjectId(AppContext.getSubjectId())
+                            .loginUser(UserContext.getLoginUser())
+                            .originalData(req.getDetailData())
+                            .saveData(req.getParamData())
+                            .rootModuleId(req.getRootModuleId())
+                            .rootDataId(rootModuleMainTableDataId.get())
+                            .build());
         } catch (Exception e) {
             // 抛出异常，jooq自动回滚
             throw new RuntimeException(e);
-        }
-        try {
-            log.info("=======" + "\n");
-            log.info("=======" + JsonUtil.obj2Json(req.getParamData()));
-        } catch (Exception e) {
         }
         return rootModuleMainTableDataId.get();
     }
