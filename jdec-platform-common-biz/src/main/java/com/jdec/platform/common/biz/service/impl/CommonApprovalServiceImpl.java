@@ -223,13 +223,54 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     @Override
     public Map<String, Object> businessSubmit(Long menuId, DynamicSaveReq req) {
         Map<String, Object> result = new HashMap<>();
+        savePrepositionProcessorService.preProcess(req.getNestedModuleData());
+        boolean realTimeSave =
+                Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save");
+        // 变更提交（change_save）：与无审批链保存、有审批链新增保存使用同一套保存校验，
+        // 落库前只校验前端提交的模块，查重排除本次变更的原单据
+        boolean changeSubmit =
+                Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("change_save");
+        // 提交前判断主单ID：有主单ID时保存后按主单ID加载数据库整单数据校验；
+        // 主单ID没有值时从数据库查不到整单数据，改为基于前端提交的模块数据校验
+        ModuleTreeDTO moduleTree = realTimeSave ? null : moduleTreeOf(req.getNestedModuleData());
+        boolean mainRecordExists =
+                moduleTree != null && hasMainRecordId(moduleTree, req.getNestedModuleData());
+        if (!realTimeSave && changeSubmit && req.getNestedModuleData() != null) {
+            // 变更提交：与保存校验一致，落库前基于前端提交的数据校验，查重排除原单据
+            checkChangeOnSave(moduleTree, req.getNestedModuleData());
+        } else if (!realTimeSave && !mainRecordExists && req.getNestedModuleData() != null) {
+            // 前端未提交的模块按该模块校验全部不通过处理，所有需要校验的模块都通过后才允许提交
+            Long rootModuleId =
+                    moduleTree == null || moduleTree.getRootModuleId() == null
+                            ? req.getNestedModuleData().getModuleId()
+                            : moduleTree.getRootModuleId();
+            submitCheckRouter.checkOnSubmit(rootModuleId, req.getNestedModuleData());
+        }
+        DynamicSaveResp resp = approvalSave(req);
+        if (realTimeSave) {
+            result.put("recordId", resp.getDataId());
+            result.put("submitStatus", 0);
+        }
+        if (mainRecordExists && !changeSubmit) {
+            submitCheckRouter.check(
+                    resp.getModuleId(),
+                    resp.getDataId(),
+                    resp.getBusinessNo(),
+                    resp.getVersionNo());
+        }
         try {
-            Long newId = approvalSubmit(menuId, req);
-            result.put("recordId", newId);
+            ApprovalReq approvalReq = new ApprovalReq();
+            approvalReq.setMenuId(menuId);
+            approvalReq.setRecordId(resp.getDataId());
+            approvalReq.setBusinessNumber(resp.getBusinessNo());
+            approvalReq.setButton("submit");
+            approvalSave(resp.getModuleId(), approvalReq);
+            result.put("recordId", resp.getDataId());
             result.put("submitStatus", 1);
         } catch (Exception e) {
             log.error(e.getMessage());
-            throw new BusinessException("提交失败");
+            result.put("recordId", resp.getDataId());
+            result.put("submitStatus", 0);
         }
         return result;
     }
@@ -270,54 +311,14 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
                 rootModuleId, nestedModuleData, mainRecordId(moduleTree, nestedModuleData));
     }
 
-    public Long approvalSubmit(Long menuId, DynamicSaveReq req) {
-        savePrepositionProcessorService.preProcess(req.getNestedModuleData());
-        boolean realTimeSave =
-                Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save");
-        // 变更提交（change_save）：与无审批链保存、有审批链新增保存使用同一套保存校验，
-        // 落库前只校验前端提交的模块，查重排除本次变更的原单据
-        boolean changeSubmit =
-                Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("change_save");
-        // 提交前判断主单ID：有主单ID时保存后按主单ID加载数据库整单数据校验；
-        // 主单ID没有值时从数据库查不到整单数据，改为基于前端提交的模块数据校验
-        ModuleTreeDTO moduleTree = realTimeSave ? null : moduleTreeOf(req.getNestedModuleData());
-        boolean mainRecordExists =
-                moduleTree != null && hasMainRecordId(moduleTree, req.getNestedModuleData());
-        if (!realTimeSave && changeSubmit && req.getNestedModuleData() != null) {
-            // 变更提交：与保存校验一致，落库前基于前端提交的数据校验，查重排除原单据
-            checkChangeOnSave(moduleTree, req.getNestedModuleData());
-        } else if (!realTimeSave && !mainRecordExists && req.getNestedModuleData() != null) {
-            // 前端未提交的模块按该模块校验全部不通过处理，所有需要校验的模块都通过后才允许提交
-            Long rootModuleId =
-                    moduleTree == null || moduleTree.getRootModuleId() == null
-                            ? req.getNestedModuleData().getModuleId()
-                            : moduleTree.getRootModuleId();
-            submitCheckRouter.checkOnSubmit(rootModuleId, req.getNestedModuleData());
-        }
-        DynamicSaveResp result = approvalSave(req);
-        if (realTimeSave) return result.getDataId();
-        if (mainRecordExists && !changeSubmit) {
-            submitCheckRouter.check(
-                    result.getModuleId(),
-                    result.getDataId(),
-                    result.getBusinessNo(),
-                    result.getVersionNo());
-        }
-        ApprovalReq approvalReq = new ApprovalReq();
-        approvalReq.setMenuId(menuId);
-        approvalReq.setRecordId(result.getDataId());
-        approvalReq.setBusinessNumber(result.getBusinessNo());
-        approvalReq.setButton("submit");
-        approvalSave(result.getModuleId(), approvalReq);
-        return result.getDataId();
-    }
-
     @Transactional(rollbackFor = Exception.class)
     public DynamicSaveResp approvalSave(DynamicSaveReq req) {
         savePrepositionProcessorService.preProcess(req.getNestedModuleData());
         // 保存前校验：无审批链保存，以及有审批链的新增保存（主单ID没有值），落库前基于前端提交的参数执行
         //        checkSaveBeforeStore(req);
         DynamicSaveResp result = dataEngineApi.save(req);
+        if (Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save"))
+            return result;
         ApprovalReq approvalReq = new ApprovalReq();
         approvalReq.setRecordId(result.getDataId());
         approvalReq.setBusinessNumber(result.getBusinessNo());
