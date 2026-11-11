@@ -21,14 +21,8 @@ public class SysButton implements Serializable {
     @Schema(description = "按钮名称")
     private String title;
 
-    @Schema(description = "别名")
-    private String alias;
-
     @Schema(description = "按钮类型")
     private String type;
-
-    @Schema(description = "描述")
-    private String description;
 
     @Schema(description = "默认背景颜色")
     private String defaultBgColor;
@@ -57,20 +51,11 @@ public class SysButton implements Serializable {
     @Schema(description = "选中边框色")
     private String selectedBorderColor;
 
-    @Schema(description = "日志对应图标")
-    private String icon;
-
-    @Schema(description = "日志对应状态")
-    private String logName;
-
-    @Schema(description = "排序")
-    private Integer sortOrder;
-
-    @Schema(description = "1显示 0隐藏")
-    private Integer showed;
-
     @Schema(description = "是否启用(1:启用。0：不启用)")
     private Integer enabled;
+
+    @Schema(description = "关联菜单ID列表(JSON数组字符串)")
+    private String menuIds;
 
     @Schema(description = "所属主体")
     private Long subjectId;

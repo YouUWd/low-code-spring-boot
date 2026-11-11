@@ -1,5 +1,6 @@
 package com.jdec.platform.config.biz.service;
 
+import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -21,6 +22,7 @@ import com.jdec.platform.shared.datasource.DataSourceConstants;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.exception.PopException;
 import com.jdec.platform.shared.model.PageResult;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.stream.Collectors;
@@ -49,26 +51,13 @@ public class SysButtonService implements SysButtonApi, OpenButtonApi {
                                 StringUtils.hasText(req.getTitle()),
                                 SysButton::getTitle,
                                 req.getTitle())
-                        .like(
-                                StringUtils.hasText(req.getAlias()),
-                                SysButton::getAlias,
-                                req.getAlias())
                         .eq(StringUtils.hasText(req.getType()), SysButton::getType, req.getType())
                         .eq(req.getEnabled() != null, SysButton::getEnabled, req.getEnabled())
-                        .eq(req.getShowed() != null, SysButton::getShowed, req.getShowed())
-                        .orderByAsc(SysButton::getSortOrder)
                         .orderByAsc(SysButton::getId);
         Page<SysButton> pageParam = new Page<>(req.getPageNum(), req.getPageSize());
         IPage<SysButton> pageResult = sysButtonMapper.selectPage(pageParam, wrapper);
         List<SysButtonResp> respList =
-                pageResult.getRecords().stream()
-                        .map(
-                                entity -> {
-                                    SysButtonResp resp = new SysButtonResp();
-                                    BeanUtils.copyProperties(entity, resp);
-                                    return resp;
-                                })
-                        .collect(Collectors.toList());
+                pageResult.getRecords().stream().map(this::toResp).collect(Collectors.toList());
         return PageResult.of(req.getPageNum(), req.getPageSize(), pageResult.getTotal(), respList);
     }
 
@@ -79,16 +68,8 @@ public class SysButtonService implements SysButtonApi, OpenButtonApi {
                         Wrappers.<SysButton>lambdaQuery()
                                 .eq(SysButton::getProjectNo, AppContext.getProjectNo())
                                 .eq(SysButton::getSubjectId, AppContext.getSubjectId())
-                                .orderByAsc(SysButton::getSortOrder)
                                 .orderByAsc(SysButton::getId));
-        return list.stream()
-                .map(
-                        entity -> {
-                            SysButtonResp resp = new SysButtonResp();
-                            BeanUtils.copyProperties(entity, resp);
-                            return resp;
-                        })
-                .collect(Collectors.toList());
+        return list.stream().map(this::toResp).collect(Collectors.toList());
     }
 
     @DataAudit(
@@ -117,6 +98,7 @@ public class SysButtonService implements SysButtonApi, OpenButtonApi {
         if (req.getId() == null) {
             SysButton entity = new SysButton();
             BeanUtils.copyProperties(req, entity);
+            entity.setMenuIds(toJson(req.getMenuIds()));
             entity.setSubjectId(AppContext.getSubjectId());
             entity.setProjectNo(AppContext.getProjectNo());
             sysButtonMapper.insert(entity);
@@ -125,6 +107,7 @@ public class SysButtonService implements SysButtonApi, OpenButtonApi {
         } else {
             SysButton entity = new SysButton();
             BeanUtils.copyProperties(req, entity);
+            entity.setMenuIds(toJson(req.getMenuIds()));
             entity.setId(req.getId());
             sysButtonMapper.updateById(entity);
         }
@@ -171,9 +154,7 @@ public class SysButtonService implements SysButtonApi, OpenButtonApi {
         if (Objects.isNull(entity)) {
             return null;
         }
-        SysButtonResp resp = new SysButtonResp();
-        BeanUtils.copyProperties(entity, resp);
-        return resp;
+        return toResp(entity);
     }
 
     @Override
@@ -188,8 +169,30 @@ public class SysButtonService implements SysButtonApi, OpenButtonApi {
         if (Objects.isNull(entity)) {
             return null;
         }
+        return toResp(entity);
+    }
+
+    /** 实体转响应：将数据库中 JSON 字符串形式的 menuIds 解析为菜单ID列表 */
+    private SysButtonResp toResp(SysButton entity) {
         SysButtonResp resp = new SysButtonResp();
         BeanUtils.copyProperties(entity, resp);
+        resp.setMenuIds(toMenuIds(entity.getMenuIds()));
         return resp;
+    }
+
+    /** 将数据库中 JSON 字符串形式的 menuIds 解析为菜单ID列表 */
+    private List<Long> toMenuIds(String menuIds) {
+        if (!StringUtils.hasText(menuIds)) {
+            return new ArrayList<>();
+        }
+        return JSON.parseArray(menuIds, Long.class);
+    }
+
+    /** 将前端传入的菜单ID列表转为 JSON 字符串存入数据库 */
+    private String toJson(List<Long> menuIds) {
+        if (menuIds == null) {
+            return null;
+        }
+        return JSON.toJSONString(menuIds);
     }
 }

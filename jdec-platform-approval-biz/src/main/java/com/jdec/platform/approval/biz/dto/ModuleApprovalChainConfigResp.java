@@ -147,12 +147,6 @@ public class ModuleApprovalChainConfigResp {
         @Schema(description = "按钮名称")
         private String buttonTitle;
 
-        @Schema(description = "按钮别名")
-        private String buttonAlias;
-
-        @Schema(description = "按钮描述")
-        private String buttonDescription;
-
         @Schema(description = "默认背景颜色")
         private String defaultBgColor;
 
@@ -170,12 +164,6 @@ public class ModuleApprovalChainConfigResp {
 
         @Schema(description = "选中字体颜色")
         private String selectedFontColor;
-
-        @Schema(description = "按钮排序")
-        private Integer buttonSortOrder;
-
-        @Schema(description = "按钮显示状态 1:显示 0:隐藏")
-        private Integer buttonShowed;
 
         @Schema(description = "按钮启用状态 1:启用 0:不启用")
         private Integer buttonEnabled;
