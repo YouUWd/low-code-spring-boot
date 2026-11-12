@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.event.ApprovalEvent;
 import com.jdec.platform.common.api.CommonBusinessApi;
+import com.jdec.platform.common.api.MonitorLogApi;
 import com.jdec.platform.common.api.dto.request.ApprovalReq;
 import com.jdec.platform.common.biz.preprocess.SavePrepositionProcessorService;
 import com.jdec.platform.common.biz.service.CommonApprovalService;
@@ -57,6 +58,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     private final ConfigApi configApi;
     private final SubmitCheckRouter submitCheckRouter;
     private final SavePrepositionProcessorService savePrepositionProcessorService;
+    private final MonitorLogApi monitorLogApi;
 
     // 审批单据
     @Override
@@ -382,7 +384,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         if (Objects.isNull(recordData)) {
             throw new BusinessException(608, "业务记录异常");
         }
-        boolean approvalChainStatus = approvalEngine.getApprovalChainStatus(rootModuleId, recordId);
+        boolean approvalChainStatus = monitorLogApi.existsOperateLog(menuId, recordId);
         // 单据编号
         result.put("businessNumber", recordData.get("business_no"));
         // 创建人
@@ -466,7 +468,11 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
             }
             Integer canEdit = (Integer) result.get("canEdit");
             if (Objects.isNull(canEdit)) canEdit = 0;
-            boolean showSaveBtn = canEdit.equals(1) && !approvalChainStatus;
+            boolean showSaveBtn =
+                    canEdit.equals(1)
+                            && (!approvalChainStatus
+                                    || btnType.equals("change")
+                                    || btnType.equals("change-change"));
             result.put("showSaveBtn", showSaveBtn);
         }
         return result;
