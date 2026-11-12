@@ -1,8 +1,6 @@
 package com.jdec.platform.config.biz.entity;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.annotation.*;
 import java.time.LocalDateTime;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -34,6 +32,7 @@ public class SysModuleField {
     private String displayName;
 
     /** 业务唯一标识顺序 * */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Integer bizKeyOrder;
 
     /** 显示排序 */
