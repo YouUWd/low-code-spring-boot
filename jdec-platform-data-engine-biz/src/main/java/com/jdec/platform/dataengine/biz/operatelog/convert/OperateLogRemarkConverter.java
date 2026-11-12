@@ -379,6 +379,10 @@ public class OperateLogRemarkConverter {
             Long menuId,
             Map<Long, String> menuNameCache,
             ActionChangeLogDTO actions) {
+        // 移除 columns 为空数组且不含子模块变更的数据行：若某操作的行因此全部清空，则该操作 key 不再返回
+        filterEmptyColumnRows(actions.getI());
+        filterEmptyColumnRows(actions.getU());
+        filterEmptyColumnRows(actions.getD());
         if (CollectionUtil.isEmpty(actions.getI())) {
             actions.setI(null);
         }
@@ -397,6 +401,25 @@ public class OperateLogRemarkConverter {
                 .mId(moduleId)
                 .actions(actions)
                 .build();
+    }
+
+    /**
+     * 过滤数据行：移除 {@code columns} 为「空数组」且不含子模块变更（children 为空）的行。
+     *
+     * <p>这样当某个操作（i/u/d）下的行都因无字段变更而 columns 为空时，这些空行被剔除；若该操作因此没有任何行， 上层会将该操作 key 置为 null，从而在 remark
+     * 中不再返回（例如 {@code u} 下没有有效字段变更时，{@code u} key 不出现）。
+     *
+     * <p>仅针对空数组（{@code new ArrayList<>()}）做处理，{@code columns} 为 null 的行（如仅有子模块变更或删除行）不受影响。
+     */
+    private void filterEmptyColumnRows(List<RowChangeLogDTO> rows) {
+        if (CollectionUtil.isEmpty(rows)) {
+            return;
+        }
+        rows.removeIf(
+                row ->
+                        row.getColumns() != null
+                                && row.getColumns().isEmpty()
+                                && CollectionUtil.isEmpty(row.getChildren()));
     }
 
     /**
@@ -513,6 +536,10 @@ public class OperateLogRemarkConverter {
                 continue;
             }
             ModuleFieldDTO field = fieldMap != null ? fieldMap.get(column) : null;
+            // 仅 sys_module_field 中配置的字段参与 remark 构造；未在该表登记的字段跳过，不进入变更明细
+            if (field == null) {
+                continue;
+            }
             String fullFieldName = DataPersistenceUtil.getFullFieldName(table, column);
             // 数字带单位字段：old/newer 包装为 {value, unit}，单位取自 sys_field.unit_column_name 同表列
             SysFieldResp fieldResp =

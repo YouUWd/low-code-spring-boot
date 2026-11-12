@@ -56,7 +56,7 @@ public class ExternalObjectValidationPipeline {
                 ExternalObjectCheckStage.REQUIRED,
                 messages ->
                         requiredValidator.validateOnSubmit(
-                                snapshot, basicInfoAbsentOnCreate, messages));
+                                snapshot, basicInfoAbsentOnCreate, true, messages));
         run(
                 ExternalObjectCheckStage.BUSINESS,
                 messages -> businessValidator.validate(snapshot, messages));
@@ -94,7 +94,7 @@ public class ExternalObjectValidationPipeline {
                 ExternalObjectCheckStage.REQUIRED,
                 messages ->
                         requiredValidator.validateOnSave(
-                                snapshot, tables, basicInfoAbsentOnCreate, messages));
+                                snapshot, tables, basicInfoAbsentOnCreate, true, messages));
         run(
                 ExternalObjectCheckStage.BUSINESS,
                 messages -> businessValidator.validate(snapshot, messages));

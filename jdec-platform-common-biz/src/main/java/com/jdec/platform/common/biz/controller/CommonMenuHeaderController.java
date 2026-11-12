@@ -4,8 +4,10 @@ import com.jdec.platform.common.api.UserMenuHeaderApi;
 import com.jdec.platform.common.api.dto.request.SaveUserMenuHeaderReq;
 import com.jdec.platform.common.api.dto.request.SaveUserMenuHeaderWidthReq;
 import com.jdec.platform.config.api.SysBusinessTypeApi;
+import com.jdec.platform.config.api.dto.response.MenuHeaderDisplayResp;
 import com.jdec.platform.config.api.dto.response.SearchConfigItemResp;
 import com.jdec.platform.config.api.dto.response.SysMenuHeaderResp;
+import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.model.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -64,6 +66,32 @@ public class CommonMenuHeaderController {
                     userId,
                     menuId,
                     roleId,
+                    ex.getMessage(),
+                    ex);
+            throw ex;
+        }
+    }
+
+    @GetMapping("/display")
+    @Operation(
+            summary = "用户个性化多级列头展示查询",
+            description =
+                    "按用户 + 列表菜单返回多级列头展示结构；前端仅传 menuId，userId 与 roleId 取自当前登录上下文（UserContext），"
+                            + "type / operate / hasApprove / currentRoleId 默认传 null（由后端按默认口径组装展示）。"
+                            + "展示组装逻辑与查询接口一致：以菜单/字段 + 系统表头配置生成的默认表头树为骨架，按 virId 叠加该用户个性化配置，"
+                            + "只输出已勾选的列并保留其祖先菜单节点；roleId 为空时不做角色权限过滤")
+    public ApiResponse<MenuHeaderDisplayResp> getUserMenuHeaderDisplay(@RequestParam Long menuId) {
+        try {
+            Long userId = UserContext.getUserId();
+            Long roleId = UserContext.getRoleId();
+            MenuHeaderDisplayResp result =
+                    userMenuHeaderApi.getUserMenuHeaderDisplay(
+                            userId, menuId, roleId, null, null, null, null);
+            return ApiResponse.success(result);
+        } catch (Exception ex) {
+            log.error(
+                    "Common menu-header getUserMenuHeaderDisplay failed: menuId={}, err={}",
+                    menuId,
                     ex.getMessage(),
                     ex);
             throw ex;
