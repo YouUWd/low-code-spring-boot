@@ -30,6 +30,7 @@ logs/
 docs/**
 doc/**
 
+.workbuddy-ai
 *.tmp*
 
 .workbuddy-ai/

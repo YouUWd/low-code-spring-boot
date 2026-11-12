@@ -92,6 +92,32 @@ public class DataSourceResolver {
         return new JdbcTemplate(resolve(projectNo));
     }
 
+    /**
+     * 根据数据源名称构建 DSLContext，<b>直接绑定该数据源的物理连接池</b>，绕过事务路由代理。
+     *
+     * <p>适用于与业务事务解耦、且必须落到指定库的查询/写入（如监控日志在事务提交后落业务库、 跨库补全人力信息等）。事务内调用也不会被强制路由到事务已绑定的数据源。
+     *
+     * @param dsName 数据源名称（如 {@code hr_manage} / {@code config_center} / 业务库映射名）
+     */
+    public DSLContext getDSLContextPhysical(String dsName) {
+        DataSource physical = dynamicRoutingDataSource.getDataSource(dsName);
+        if (physical == null) {
+            log.error("数据源不存在: {}", dsName);
+            throw new BusinessException("系统配置错误：找不到对应的数据源 [" + dsName + "]");
+        }
+        return DSL.using(physical, SQLDialect.MYSQL);
+    }
+
+    /**
+     * 根据项目编码构建物理 DSLContext（绕过事务路由，直接命中项目业务库物理池）。
+     *
+     * @param projectNo 项目编码
+     */
+    public DSLContext getDSLContextPhysicalByProjectNo(String projectNo) {
+        String dsName = projectProperties.getDatasourceMapping().getOrDefault(projectNo, projectNo);
+        return getDSLContextPhysical(dsName);
+    }
+
     // ==================== 内部统一入口 ====================
 
     /**

@@ -1,5 +1,7 @@
 package com.jdec.platform.common.biz.controller;
 
+import com.jdec.platform.config.api.dto.request.SysButtonMenuQueryReq;
+import com.jdec.platform.config.api.dto.response.SysButtonMenuGroupResp;
 import com.jdec.platform.config.api.dto.response.SysButtonResp;
 import com.jdec.platform.config.open.api.OpenButtonApi;
 import com.jdec.platform.shared.model.ApiResponse;
@@ -9,6 +11,8 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -29,6 +33,20 @@ public class CommonButtonController {
             return ApiResponse.success(openButtonApi.listButtons());
         } catch (Exception ex) {
             log.error("Common button list failed: err={}", ex.getMessage(), ex);
+            throw ex;
+        }
+    }
+
+    @PostMapping("/list/by-menu")
+    @Operation(
+            summary = "按菜单+类型查询按钮",
+            description = "根据菜单ID和按钮类型查询按钮信息并按菜单分组返回；支持菜单ID为空、仅按类型查询（对象数组仅一个元素、menuId为空）的场景")
+    public ApiResponse<List<SysButtonMenuGroupResp>> listByMenu(
+            @RequestBody List<SysButtonMenuQueryReq> req) {
+        try {
+            return ApiResponse.success(openButtonApi.queryButtonsByMenu(req));
+        } catch (Exception ex) {
+            log.error("Common button list by menu failed: err={}", ex.getMessage(), ex);
             throw ex;
         }
     }

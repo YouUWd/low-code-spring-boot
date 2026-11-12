@@ -4,6 +4,7 @@ import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.response.DataRightConfigResp;
+import com.jdec.platform.config.open.api.ConfigApi;
 import com.jdec.platform.config.open.api.OpenRolePermissionApi;
 import com.jdec.platform.data.api.DataApi;
 import com.jdec.platform.data.api.dto.common.DataBlock;
@@ -13,14 +14,15 @@ import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.model.predicate.ComparisonPredicate;
 import com.jdec.platform.data.api.model.predicate.CompoundPredicate;
 import com.jdec.platform.data.api.model.predicate.Predicate;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.context.UserContext;
 import com.jdec.platform.shared.utils.JsonValueUtils;
 import java.util.*;
 import java.util.stream.Collectors;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jooq.Condition;
 import org.jooq.impl.DSL;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.springframework.util.CollectionUtils;
 
@@ -39,13 +41,28 @@ import org.springframework.util.CollectionUtils;
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
 public class DataPermissionConditionResolver {
 
     public static final String SUBJECT_ID_COLUMN = "subject_id";
 
     private final OpenRolePermissionApi openRolePermissionApi;
     private final DataApi dataApi;
+    private final ConfigApi configApi;
+
+    @Autowired
+    public DataPermissionConditionResolver(
+            OpenRolePermissionApi openRolePermissionApi,
+            DataApi dataApi,
+            @Autowired(required = false) ConfigApi configApi) {
+        this.openRolePermissionApi = openRolePermissionApi;
+        this.dataApi = dataApi;
+        this.configApi = configApi;
+    }
+
+    public DataPermissionConditionResolver(
+            OpenRolePermissionApi openRolePermissionApi, DataApi dataApi) {
+        this(openRolePermissionApi, dataApi, null);
+    }
 
     /**
      * 根据当前用户登录角色与完整模块树，解析主表及所有子模块表的数据权限组合条件
@@ -91,6 +108,13 @@ public class DataPermissionConditionResolver {
             return Optional.empty();
         }
 
+        String projectNo =
+                moduleTree.getProjectNo() != null && !moduleTree.getProjectNo().isBlank()
+                        ? moduleTree.getProjectNo()
+                        : (projectRelations != null && projectRelations.getProjectNo() != null
+                                ? projectRelations.getProjectNo()
+                                : AppContext.getProjectNo());
+
         // 收集模块树中所有有效的物理模块节点列表 (包含根模块与各级子孙模块)
         List<ModuleInfo> allModules = new ArrayList<>();
         if (moduleTree.getRootModule() != null) {
@@ -121,6 +145,12 @@ public class DataPermissionConditionResolver {
             if (!permMap.containsKey(tableName)) {
                 continue;
             }
+
+            String cleanTable = module.getPrimaryTable().trim().replace("`", "");
+            if (cleanTable.contains(".")) {
+                cleanTable = cleanTable.substring(cleanTable.lastIndexOf('.') + 1);
+            }
+            Set<String> jsonColumns = getTableJsonColumns(projectNo, cleanTable);
 
             hasAnyTableInTree = true;
             DataRightConfigResp config = permMap.get(tableName);
@@ -183,11 +213,19 @@ public class DataPermissionConditionResolver {
                                         : dc.getBizNames().stream()
                                                 .map(JsonValueUtils::toSqlValue)
                                                 .collect(Collectors.toList());
+                        boolean isJson =
+                                isJsonField(
+                                        dc.getColumnName(),
+                                        jsonColumns,
+                                        dc.getBizNames(),
+                                        effectiveBizNames);
+                        String op =
+                                (isJson && !effectiveBizNames.isEmpty()) ? "JSON_CONTAINS" : "IN";
                         singleSubjectPreds.add(
                                 ComparisonPredicate.of(
                                         module.getPrimaryTable().trim(),
                                         dc.getColumnName().trim(),
-                                        "IN",
+                                        op,
                                         effectiveBizNames));
                     }
                 }
@@ -211,11 +249,18 @@ public class DataPermissionConditionResolver {
                                     : dc.getBizNames().stream()
                                             .map(JsonValueUtils::toSqlValue)
                                             .collect(Collectors.toList());
+                    boolean isJson =
+                            isJsonField(
+                                    dc.getColumnName(),
+                                    jsonColumns,
+                                    dc.getBizNames(),
+                                    effectiveBizNames);
+                    String op = (isJson && !effectiveBizNames.isEmpty()) ? "JSON_CONTAINS" : "IN";
                     nonSubjectPreds.add(
                             ComparisonPredicate.of(
                                     module.getPrimaryTable().trim(),
                                     dc.getColumnName().trim(),
-                                    "IN",
+                                    op,
                                     effectiveBizNames));
                 }
             }
@@ -258,7 +303,16 @@ public class DataPermissionConditionResolver {
             return Optional.of(DSL.trueCondition());
         }
 
-        // 3. 复用底层数据引擎 dataApi.queryList(QueryReq) 求解主表 ID 集合
+        // 3. 安全防御加固：若标记了受限但未生成任何有效过滤谓词，遵循默认拒绝原则，防止空 Filter 查出全量数据越权
+        if (CollectionUtils.isEmpty(tablePredicates)) {
+            log.warn(
+                    "[DataPermission] 存在受限表但未生成有效谓词条件，安全拦截默认拒绝: rootModuleId={}, primaryTable={}",
+                    rootModuleId,
+                    primaryTable);
+            return Optional.of(DSL.falseCondition());
+        }
+
+        // 4. 复用底层数据引擎 dataApi.queryList(QueryReq) 求解主表 ID 集合
         // 投影规格仅声明主表 id，底层引擎自动将子表 FilterItem 上卷为 EXISTS 关联子查询并跳过子表数据抓取
         String rootCode =
                 moduleTree.getRootModule() != null
@@ -283,12 +337,13 @@ public class DataPermissionConditionResolver {
         try {
             block = dataApi.queryList(queryReq);
         } catch (Exception ex) {
-            log.warn(
-                    "通过 dataApi.queryList 求解数据权限符合单据失败: rootModuleId={}, primaryTable={}, err={}",
+            log.error(
+                    "通过 dataApi.queryList 求解数据权限符合单据失败，遵循默认拒绝原则拦截: rootModuleId={}, primaryTable={}, err={}",
                     rootModuleId,
                     primaryTable,
-                    ex.getMessage());
-            return Optional.empty();
+                    ex.getMessage(),
+                    ex);
+            return Optional.of(DSL.falseCondition());
         }
 
         List<Long> matchedIds = extractIds(block, primaryTable);
@@ -330,6 +385,63 @@ public class DataPermissionConditionResolver {
             }
         }
         return ids;
+    }
+
+    /** 从 INFORMATION_SCHEMA.COLUMNS 查询指定表的 JSON 列集合 (通过 ConfigApi 缓存门面) */
+    private Set<String> getTableJsonColumns(String projectNo, String tableName) {
+        if (configApi == null || tableName == null || tableName.isBlank()) {
+            return Collections.emptySet();
+        }
+        try {
+            Set<String> jsonCols = configApi.getTableJsonColumnNames(projectNo, tableName);
+            return jsonCols != null ? jsonCols : Collections.emptySet();
+        } catch (Exception ex) {
+            log.warn("通过 configApi 查询表 {} 的 JSON 列集合失败: err={}", tableName, ex.getMessage());
+            return Collections.emptySet();
+        }
+    }
+
+    /** 判断字段是否为 JSON 结构字段 (基于从 INFORMATION_SCHEMA 查出的列集合或取值特征) */
+    private static boolean isJsonField(
+            String columnName,
+            Set<String> jsonColumns,
+            List<Object> rawBizNames,
+            List<Object> effectiveBizNames) {
+        if (columnName != null && jsonColumns != null && !jsonColumns.isEmpty()) {
+            String cleanCol = columnName.trim().replace("`", "").toLowerCase();
+            if (cleanCol.contains(".")) {
+                cleanCol = cleanCol.substring(cleanCol.lastIndexOf('.') + 1);
+            }
+            if (jsonColumns.contains(cleanCol)) {
+                return true;
+            }
+        }
+        if (rawBizNames != null
+                && rawBizNames.stream()
+                        .anyMatch(DataPermissionConditionResolver::isJsonStructureValue)) {
+            return true;
+        }
+        if (effectiveBizNames != null
+                && effectiveBizNames.stream()
+                        .anyMatch(DataPermissionConditionResolver::isJsonStructureValue)) {
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean isJsonStructureValue(Object val) {
+        if (val == null) {
+            return false;
+        }
+        if (val instanceof Map || val instanceof Collection) {
+            return true;
+        }
+        if (val instanceof String s) {
+            String trimmed = s.trim();
+            return (trimmed.startsWith("{") && trimmed.endsWith("}"))
+                    || (trimmed.startsWith("[") && trimmed.endsWith("]"));
+        }
+        return false;
     }
 
     /** 向后兼容快捷方法：根据表名直接解析单表数据权限 */

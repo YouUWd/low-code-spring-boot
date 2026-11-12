@@ -14,7 +14,13 @@ import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.response.MenuHeaderColumnResp;
 import com.jdec.platform.data.api.dto.common.DataRow;
+import com.jdec.platform.data.api.dto.request.FilterItem;
+import com.jdec.platform.data.api.dto.request.PageQueryReq;
+import com.jdec.platform.data.api.dto.request.QueryReq;
 import com.jdec.platform.data.api.dto.response.DataPage;
+import com.jdec.platform.data.api.model.predicate.ComparisonPredicate;
+import com.jdec.platform.data.api.model.predicate.CompoundPredicate;
+import com.jdec.platform.data.api.model.predicate.Predicate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -544,5 +550,112 @@ class PhysicalQueryMapperTest {
         assertTrue(cols.contains("info.company_name"));
         assertTrue(cols.contains("info.id"));
         assertTrue(cols.contains("basic_info.currency"));
+    }
+
+    @Test
+    @DisplayName("测试 groupPredicateByModule：将顶层 AND 复合过滤条件精准拆解分发至根模块与各子模块")
+    void testGroupPredicateByModule_distributesRootAndChildConditions() {
+        ModuleTreeDTO tree = buildTestModuleTree(true, true);
+        Predicate rootFilter =
+                CompoundPredicate.and(
+                        ComparisonPredicate.of("info", "company_name", "EQ", "测试企业"),
+                        ComparisonPredicate.of("basic_info", "currency", "EQ", "CNY"));
+
+        Map<Long, Predicate> grouped = PhysicalQueryMapper.groupPredicateByModule(tree, rootFilter);
+
+        assertEquals(2, grouped.size());
+        assertTrue(grouped.containsKey(1001L), "应当包含根模块 1001 的过滤条件");
+        assertTrue(grouped.containsKey(1002L), "应当包含子模块 1002 的过滤条件");
+
+        List<FilterItem> rootItems = FilterItem.fromPredicateToList(grouped.get(1001L));
+        assertEquals(1, rootItems.size());
+        assertEquals("info", rootItems.get(0).getTableName());
+        assertEquals("company_name", rootItems.get(0).getColumnName());
+
+        List<FilterItem> childItems = FilterItem.fromPredicateToList(grouped.get(1002L));
+        assertEquals(1, childItems.size());
+        assertEquals("basic_info", childItems.get(0).getTableName());
+        assertEquals("currency", childItems.get(0).getColumnName());
+    }
+
+    @Test
+    @DisplayName("测试 buildPageQueryViewTree：子表过滤条件被正确分发至子节点 children[i].filter，根节点仅保留本模块条件")
+    void testBuildPageQueryViewTree_distributesFiltersToChildNodes() {
+        ModuleTreeDTO tree = buildTestModuleTree(true, true);
+        List<FilterItem> filters =
+                List.of(
+                        FilterItem.eq("info", "company_name", "测试企业"),
+                        FilterItem.eq("basic_info", "currency", "CNY"));
+
+        PageQueryReq pageReq =
+                PhysicalQueryMapper.buildPageQueryViewTree(
+                        tree,
+                        List.of(1L, 2L, 4L), // 包含 info 与 basic_info 的列
+                        List.of("info.id", "info.company_name", "basic_info.currency"),
+                        filters,
+                        List.of(),
+                        1,
+                        20);
+
+        assertNotNull(pageReq);
+        assertNotNull(pageReq.getFilter(), "根节点应包含 info 的过滤条件");
+        List<FilterItem> rootFilters = FilterItem.fromPredicateToList(pageReq.getFilter());
+        assertEquals(1, rootFilters.size());
+        assertEquals("info", rootFilters.get(0).getTableName());
+
+        assertNotNull(pageReq.getChildren(), "应当生成子视图节点");
+        assertEquals(1, pageReq.getChildren().size());
+        QueryReq childReq = pageReq.getChildren().get(0);
+        assertEquals("COMPANY-BASIC", childReq.getView());
+        assertNotNull(childReq.getFilter(), "子视图节点必须携带子模块过滤条件");
+        List<FilterItem> childFilters = FilterItem.fromPredicateToList(childReq.getFilter());
+        assertEquals(1, childFilters.size());
+        assertEquals("basic_info", childFilters.get(0).getTableName());
+        assertEquals("currency", childFilters.get(0).getColumnName());
+    }
+
+    @Test
+    @DisplayName("测试 buildPageQueryViewTree：当子模块未被勾选任何列但存在子表过滤条件时，子节点必须保留并挂载 filter 以触发 EXISTS")
+    void testBuildPageQueryViewTree_retainsChildWhenNoColumnsCheckedButFilterPresent() {
+        ModuleTreeDTO tree = buildTestModuleTree(true, true);
+        List<FilterItem> filters =
+                List.of(
+                        FilterItem.eq("info", "company_name", "测试企业"),
+                        FilterItem.eq("basic_info", "currency", "CNY"));
+
+        // 仅勾选根模块的列 (1L, 2L)，未勾选 basic_info 的任何列
+        PageQueryReq pageReq =
+                PhysicalQueryMapper.buildPageQueryViewTree(
+                        tree,
+                        List.of(1L, 2L),
+                        List.of("info.id", "info.company_name"),
+                        filters,
+                        List.of(),
+                        1,
+                        20);
+
+        assertNotNull(pageReq.getChildren(), "子模块虽无展示列，但因携带 filter 必须保留以触发 EXISTS 半连接");
+        assertEquals(1, pageReq.getChildren().size());
+        QueryReq childReq = pageReq.getChildren().get(0);
+        assertNotNull(childReq.getFilter());
+        assertEquals(List.of("basic_info.id"), childReq.getColumns(), "缺省列时自动补全主表 id 列");
+    }
+
+    @Test
+    @DisplayName("测试 resolveModuleIdForPredicate：跨多模块或未明确物理表时回退至根模块")
+    void testResolveModuleIdForPredicate_fallbackToRootOnCrossModuleOrUnknown() {
+        ModuleTreeDTO tree = buildTestModuleTree(true, true);
+
+        // 未知表回退根模块
+        Predicate unknownTablePred = ComparisonPredicate.of("unknown_tbl", "id", "EQ", 1);
+        assertEquals(
+                1001L, PhysicalQueryMapper.resolveModuleIdForPredicate(tree, unknownTablePred));
+
+        // 跨模块复合条件回退根模块
+        Predicate crossModulePred =
+                CompoundPredicate.or(
+                        ComparisonPredicate.of("info", "company_name", "EQ", "A"),
+                        ComparisonPredicate.of("basic_info", "currency", "EQ", "B"));
+        assertEquals(1001L, PhysicalQueryMapper.resolveModuleIdForPredicate(tree, crossModulePred));
     }
 }

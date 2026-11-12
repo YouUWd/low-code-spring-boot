@@ -18,11 +18,21 @@ public class SysRoleDataPermission implements Serializable {
     private Long id;
 
     @Schema(description = "角色ID")
-    @Reference(target = SysRole.class, name = "数据权限关联")
+    @Reference(
+            target = SysRole.class,
+            name = "数据权限关联",
+            displayViaField = "dataPermissionId",
+            displayViaTarget = SysDataPermission.class,
+            displayViaColumn = "name")
     private Long roleId;
 
     @Schema(description = "数据权限类型ID")
-    @Reference(target = SysDataPermission.class, name = "角色数据权限")
+    @Reference(
+            target = SysDataPermission.class,
+            name = "角色数据权限",
+            displayViaField = "roleId",
+            displayViaTarget = SysRole.class,
+            displayViaColumn = "roleName")
     private Long dataPermissionId;
 
     @Schema(description = "数据权限全选：1=全选，0=非全选")

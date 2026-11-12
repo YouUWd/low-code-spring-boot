@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.extension.activerecord.Model;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 import lombok.Getter;
@@ -22,7 +23,7 @@ import lombok.experimental.Accessors;
 @Setter
 @ToString
 @Accessors(chain = true)
-@TableName("member")
+@TableName(value = "member", autoResultMap = true)
 public class Member extends Model<Member> {
 
     private static final long serialVersionUID = 1L;
@@ -51,8 +52,8 @@ public class Member extends Model<Member> {
     @TableField("type")
     private String type;
 
-    /** 父节点ID（员工指向部门，子部门指向上级部门，顶级部门为NULL） */
-    @TableField("parent_id")
+    /** 父节点ID（员工指向部门，子部门指向上级部门，顶级部门为NULL，数据库中物理字段已迁移为 parent_node_id） */
+    @TableField(exist = false)
     private Long parentId;
 
     /** 成员名称 */
@@ -67,9 +68,13 @@ public class Member extends Model<Member> {
     @TableField("code")
     private String code;
 
-    /** 部门负责人（0：否，1:是） */
-    @TableField("dept_leader_flag")
+    /** 部门负责人标识（历史冗余字段，数据库物理字段为 dept_leader JSON） */
+    @TableField(exist = false)
     private Integer deptLeaderFlag;
+
+    /** 部门负责人（JSON对象） */
+    @TableField(value = "dept_leader", typeHandler = JacksonTypeHandler.class)
+    private Object deptLeader;
 
     /** 职务/岗位（type=EMPLOYEE时有效） */
     @TableField("position")
@@ -83,9 +88,33 @@ public class Member extends Model<Member> {
     @TableField("sort_order")
     private Integer sortOrder;
 
-    /** 状态（1:在职/启用, 0:离职/停用） */
-    @TableField("status")
-    private String status;
+    /** 状态（JSON对象或数组） */
+    @TableField(value = "status", typeHandler = JacksonTypeHandler.class)
+    private Object status;
+
+    /** 证件类型（JSON对象或数组） */
+    @TableField(value = "identity_type", typeHandler = JacksonTypeHandler.class)
+    private Object identityType;
+
+    /** 证件号码 */
+    @TableField("identity_no")
+    private String identityNo;
+
+    /** 移动电话 */
+    @TableField("mobile_phone_no")
+    private String mobilePhoneNo;
+
+    /** 工作领域 */
+    @TableField("work_field")
+    private String workField;
+
+    /** 专业领域 */
+    @TableField("expertise_field")
+    private String expertiseField;
+
+    /** 照片URL */
+    @TableField("photo_url")
+    private String photoUrl;
 
     /** 创建人ID */
     @TableField("created_by")
@@ -154,6 +183,20 @@ public class Member extends Model<Member> {
     public static final String UPDATED_DATE = "updated_date";
 
     public static final String DELETED = "deleted";
+
+    public static final String DEPT_LEADER = "dept_leader";
+
+    public static final String IDENTITY_TYPE = "identity_type";
+
+    public static final String IDENTITY_NO = "identity_no";
+
+    public static final String MOBILE_PHONE_NO = "mobile_phone_no";
+
+    public static final String WORK_FIELD = "work_field";
+
+    public static final String EXPERTISE_FIELD = "expertise_field";
+
+    public static final String PHOTO_URL = "photo_url";
 
     public static final String NODE_ID = "node_id";
 

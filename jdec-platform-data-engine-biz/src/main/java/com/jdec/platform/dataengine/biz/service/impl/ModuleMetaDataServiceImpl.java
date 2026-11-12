@@ -12,9 +12,9 @@ import com.jdec.platform.config.api.dto.response.ColumnInfoResp;
 import com.jdec.platform.config.api.dto.response.PermissionTableGroupResp;
 import com.jdec.platform.config.api.dto.response.SysFieldResp;
 import com.jdec.platform.config.open.api.ConfigApi;
-import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
-import com.jdec.platform.dataengine.biz.dto.context.ModuleQueryContext;
-import com.jdec.platform.dataengine.biz.service.ModuleMetaDataService;
+import com.jdec.platform.dataengine.api.ModuleMetaDataService;
+import com.jdec.platform.dataengine.api.dto.model.ModuleQueryContext;
+import com.jdec.platform.dataengine.api.dto.model.SysModuleCombineInfo;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -150,7 +150,7 @@ public class ModuleMetaDataServiceImpl implements ModuleMetaDataService {
                         sysModuleFieldPermissionApi.getRoleModuleFieldPermissions(
                                 moduleQueryContext.getProjectNo(),
                                 moduleQueryContext.getSubjectId(),
-                                moduleQueryContext.getRoleId(),
+                                moduleQueryContext.getLoginUser().getRoleId(),
                                 entry.getKey());
                 if (CollectionUtil.isNotEmpty(permissionTableGroupResps)) {
                     for (PermissionTableGroupResp resp : permissionTableGroupResps) {

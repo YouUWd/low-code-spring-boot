@@ -229,21 +229,17 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 PhysicalQueryMapper.supplementShadowColumns(
                         flatColumns, moduleTree, rootModuleId, candidateShadowCols);
 
-        String rootView =
-                (rootModuleCode != null && !rootModuleCode.isBlank())
-                        ? rootModuleCode
-                        : String.valueOf(rootModuleId);
+        PageQueryReq pageQueryReq =
+                PhysicalQueryMapper.buildPageQueryViewTree(
+                        moduleTree,
+                        checkedFieldIds,
+                        flatColumns,
+                        finalFilters,
+                        finalSorts,
+                        pageNo,
+                        pageSize);
 
-        DataPage<DataBlock> rawDataPage =
-                dataApi.queryPage(
-                        PageQueryReq.builder()
-                                .view(rootView)
-                                .columns(flatColumns)
-                                .filter(PhysicalQueryMapper.toPredicate(finalFilters))
-                                .sort(finalSorts)
-                                .pageNo(pageNo)
-                                .pageSize(pageSize)
-                                .build());
+        DataPage<DataBlock> rawDataPage = dataApi.queryPage(pageQueryReq);
 
         long total =
                 (rawDataPage != null && rawDataPage.getTotal() != null)
@@ -255,7 +251,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                         : Collections.emptyList();
 
         List<DataRecordItem> recordItems =
-                enhanceAndConvertRecords(rawRecords, rootModuleId, primaryTable, headerRoot);
+                enhanceAndConvertRecords(
+                        rawRecords, rootModuleId, primaryTable, headerRoot, moduleTree);
         List<ActionRowItem> approvalRows =
                 approvalEnabled
                         ? ApprovalActionBuilder.buildApprovalRows(
@@ -391,7 +388,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 (pageResult != null && pageResult.getTotal() != null) ? pageResult.getTotal() : 0L;
         List<DataRow> rawRecords = PhysicalQueryMapper.toChangeDataRows(pageResult, primaryTable);
         List<DataRecordItem> recordItems =
-                enhanceAndConvertRecords(rawRecords, rootModuleId, primaryTable, prunedHeader);
+                enhanceAndConvertRecords(
+                        rawRecords, rootModuleId, primaryTable, prunedHeader, moduleTree);
 
         ModuleDataNode rootNode =
                 ModuleDataNode.builder()
@@ -467,22 +465,16 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
 
         FilterItem idInFilter = FilterItem.in(primaryTable, "id", latestEnabledIds);
 
-        ModuleInfo rootModuleInfo = moduleTree != null ? moduleTree.getRootModule() : null;
-        String rootView =
-                (rootModuleInfo != null
-                                && rootModuleInfo.getModuleCode() != null
-                                && !rootModuleInfo.getModuleCode().isBlank())
-                        ? rootModuleInfo.getModuleCode()
-                        : String.valueOf(rootModuleId);
+        QueryReq listQueryReq =
+                PhysicalQueryMapper.buildQueryViewTree(
+                        moduleTree,
+                        reqTables,
+                        openMenuApi::getModuleIdByMenuId,
+                        flatColumns,
+                        idInFilter.toPredicate(),
+                        finalSorts);
 
-        DataBlock enabledBlock =
-                dataApi.queryList(
-                        QueryReq.builder()
-                                .view(rootView)
-                                .columns(flatColumns)
-                                .filter(idInFilter.toPredicate())
-                                .sort(finalSorts)
-                                .build());
+        DataBlock enabledBlock = dataApi.queryList(listQueryReq);
 
         List<DataRow> finalRows =
                 (enabledBlock != null && enabledBlock.getRecords() != null)
@@ -501,7 +493,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                                     rawRow,
                                     moduleToMenuMap,
                                     requestedTableColumnsMap,
-                                    this::queryMenuIdQuietly));
+                                    this::queryMenuIdQuietly,
+                                    moduleTree));
                 }
             }
         }
@@ -546,20 +539,11 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                 rootModuleId,
                 table -> configApi.getTableColumnNames(AppContext.getProjectNo(), table));
         ModuleInfo rootModuleInfo = moduleTree != null ? moduleTree.getModule(rootModuleId) : null;
-        String rootView =
-                (rootModuleInfo != null
-                                && rootModuleInfo.getModuleCode() != null
-                                && !rootModuleInfo.getModuleCode().isBlank())
-                        ? rootModuleInfo.getModuleCode()
-                        : String.valueOf(rootModuleId);
+        DetailQueryReq detailQueryReq =
+                PhysicalQueryMapper.buildDetailQueryViewTree(
+                        moduleTree, checkedFieldIds, flatColumns, id);
 
-        DataBlock dataBlock =
-                dataApi.getDetail(
-                        DetailQueryReq.builder()
-                                .view(rootView)
-                                .id(id)
-                                .columns(flatColumns)
-                                .build());
+        DataBlock dataBlock = dataApi.getDetail(detailQueryReq);
 
         String rootModuleCode =
                 dataBlock != null && dataBlock.getView() != null
@@ -580,7 +564,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
                     dataBlock.getRecords(), rootModuleId, primaryTable, headerRoot);
             DataRow rawRow = dataBlock.getFirstRecord();
             if (rawRow != null) {
-                dataTree.getRecord().add(PhysicalQueryMapper.toDataRecordItem(rawRow));
+                dataTree.getRecord().add(PhysicalQueryMapper.toDataRecordItem(rawRow, moduleTree));
             }
         }
 
@@ -1240,7 +1224,8 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
             List<DataRow> rawRecords,
             Long rootModuleId,
             String primaryTable,
-            MenuHeaderColumnResp headerRoot) {
+            MenuHeaderColumnResp headerRoot,
+            ModuleTreeDTO moduleTree) {
         if (CollectionUtils.isEmpty(rawRecords)) {
             return new ArrayList<>();
         }
@@ -1249,7 +1234,7 @@ public class CommonAggregateServiceImpl implements CommonAggregateService {
         List<DataRecordItem> items = new ArrayList<>(rawRecords.size());
         for (DataRow rawRow : rawRecords) {
             if (rawRow != null) {
-                items.add(PhysicalQueryMapper.toDataRecordItem(rawRow));
+                items.add(PhysicalQueryMapper.toDataRecordItem(rawRow, moduleTree));
             }
         }
         return items;

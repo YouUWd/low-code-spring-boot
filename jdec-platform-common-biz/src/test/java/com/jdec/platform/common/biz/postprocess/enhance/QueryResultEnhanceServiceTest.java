@@ -34,8 +34,8 @@ class QueryResultEnhanceServiceTest {
     }
 
     @Test
-    @DisplayName("enhanceDataRows: 能够批量增强主表与子区块中的 created_by 与 business_status 字段")
-    void testEnhanceDataRows_UserAndStatusAndChildren() {
+    @DisplayName("enhanceDataRows: 仅处理第一层数据行增强，不递归处理子区块")
+    void testEnhanceDataRows_OnlyFirstLayer() {
         // 准备 Mock
         SysUserPageResp userResp = new SysUserPageResp();
         userResp.setUserId(1001L);
@@ -68,7 +68,7 @@ class QueryResultEnhanceServiceTest {
 
         enhanceService.enhanceDataRows(List.of(parentRow), 100L, "company");
 
-        // 验证主表增强
+        // 验证第一层主表增强
         Object parentUser = parentRow.getValue("company", "created_by");
         assertInstanceOf(UserSimpleResp.class, parentUser);
         assertEquals("张三", ((UserSimpleResp) parentUser).getUserName());
@@ -77,10 +77,9 @@ class QueryResultEnhanceServiceTest {
         assertInstanceOf(StatusSimpleResp.class, parentStatus);
         assertEquals("审批中", ((StatusSimpleResp) parentStatus).getTitle());
 
-        // 验证子区块增强
+        // 验证子区块不被递归处理，保持原值
         Object childUser = childRow.getValue("company", "created_by");
-        assertInstanceOf(UserSimpleResp.class, childUser);
-        assertEquals("张三", ((UserSimpleResp) childUser).getUserName());
+        assertEquals(1001L, childUser);
     }
 
     @Test

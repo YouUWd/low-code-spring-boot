@@ -530,8 +530,21 @@ class CompanyMenuQueryContractTest {
                         "financial_account.account_no"),
                 actualFields,
                 "应收集根模块 + 1:1 模块 + 命中的 1010 财务账户，剔除 1003/1004 高管成员");
+        PageQueryReq pageReq = captor.getValue();
+        assertNull(pageReq.getFilter(), "根节点不应包含子模块过滤条件");
+        assertNotNull(pageReq.getChildren(), "应当生成子视图节点");
+        com.jdec.platform.data.api.dto.request.QueryReq accountChildReq =
+                pageReq.getChildren().stream()
+                        .filter(
+                                c ->
+                                        "1010".equals(c.getView())
+                                                || "financial_account".equals(c.getView()))
+                        .findFirst()
+                        .orElse(null);
+        assertNotNull(accountChildReq, "应当包含 1010 财务账户子视图节点");
+        assertNotNull(accountChildReq.getFilter(), "子视图节点必须携带对应的子表过滤条件");
         List<FilterItem> capturedFilters =
-                FilterItem.fromPredicateToList(captor.getValue().getFilter());
+                FilterItem.fromPredicateToList(accountChildReq.getFilter());
         assertEquals(1, capturedFilters.size());
         assertEquals("financial_account", capturedFilters.get(0).getTableName());
         assertEquals("account_no", capturedFilters.get(0).getColumnName());
@@ -918,11 +931,21 @@ class CompanyMenuQueryContractTest {
         assertEquals("account_no", captor.getValue().getSorts().get(0).getColumnName());
     }
 
-    private static List<String> flattenPhysicalFields(PageQueryReq req) {
-        if (req != null && req.getColumns() != null) {
-            return new ArrayList<>(req.getColumns());
+    private static List<String> flattenPhysicalFields(
+            com.jdec.platform.data.api.dto.request.QueryReq req) {
+        if (req == null) {
+            return Collections.emptyList();
         }
-        return Collections.emptyList();
+        List<String> fields = new ArrayList<>();
+        if (req.getColumns() != null) {
+            fields.addAll(req.getColumns());
+        }
+        if (req.getChildren() != null) {
+            for (com.jdec.platform.data.api.dto.request.QueryReq child : req.getChildren()) {
+                fields.addAll(flattenPhysicalFields(child));
+            }
+        }
+        return fields;
     }
 
     @Test

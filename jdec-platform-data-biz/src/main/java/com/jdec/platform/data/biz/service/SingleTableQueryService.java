@@ -99,14 +99,7 @@ public class SingleTableQueryService {
         String tableName = req.getTableName().trim();
         Table<?> table = DSL.table(DSL.name(tableName));
 
-        List<Field<?>> selectFields = new ArrayList<>();
-        if (req.getColumns() != null && !req.getColumns().isEmpty()) {
-            for (String col : req.getColumns()) {
-                if (col != null && !col.isBlank()) {
-                    selectFields.add(DSL.field(DSL.name(col.trim())));
-                }
-            }
-        }
+        List<Field<?>> selectFields = buildSingleTableSelectFields(req.getColumns(), tableName);
 
         boolean isDistinct = Boolean.TRUE.equals(req.getDistinct());
         SelectSelectStep<?> selectStep;
@@ -144,14 +137,7 @@ public class SingleTableQueryService {
         Table<?> table = DSL.table(DSL.name(tableName));
 
         // 1. 构建投影字段
-        List<Field<?>> selectFields = new ArrayList<>();
-        if (req.getColumns() != null && !req.getColumns().isEmpty()) {
-            for (String col : req.getColumns()) {
-                if (col != null && !col.isBlank()) {
-                    selectFields.add(DSL.field(DSL.name(col.trim())));
-                }
-            }
-        }
+        List<Field<?>> selectFields = buildSingleTableSelectFields(req.getColumns(), tableName);
 
         boolean isDistinct = Boolean.TRUE.equals(req.getDistinct());
         SelectSelectStep<?> selectStep;
@@ -192,11 +178,12 @@ public class SingleTableQueryService {
         if (targetCol == null || targetCol.isBlank()) {
             targetCol = "id";
         }
+        String cleanCol = stripTablePrefix(targetCol);
 
         DSLContext dsl = jooqDataContextFactory.getContext();
         String tableName = req.getTableName().trim();
         Table<?> table = DSL.table(DSL.name(tableName));
-        Field<T> field = DSL.field(DSL.name(targetCol.trim()), targetType);
+        Field<T> field = DSL.field(DSL.name(cleanCol), targetType);
 
         boolean isDistinct = Boolean.TRUE.equals(req.getDistinct());
         var query =
@@ -280,6 +267,34 @@ public class SingleTableQueryService {
                                 .and(fVerNo.eq(DSL.field(DSL.name("mv", "max_v"), Integer.class))))
                 .where(baseCond)
                 .fetch(fId);
+    }
+
+    private List<Field<?>> buildSingleTableSelectFields(
+            List<String> requestedColumns, String tableName) {
+        List<Field<?>> selectFields = new ArrayList<>();
+        if (requestedColumns != null && !requestedColumns.isEmpty()) {
+            for (String col : requestedColumns) {
+                if (col != null && !col.isBlank()) {
+                    String trimmed = col.trim();
+                    if ("*".equals(trimmed) || trimmed.endsWith(".*")) {
+                        return Collections.emptyList();
+                    }
+                    selectFields.add(DSL.field(DSL.name(stripTablePrefix(trimmed))));
+                }
+            }
+        }
+        return selectFields;
+    }
+
+    private static String stripTablePrefix(String column) {
+        if (column == null) {
+            return "";
+        }
+        String trimmed = column.trim();
+        if (trimmed.contains(".")) {
+            return trimmed.substring(trimmed.lastIndexOf('.') + 1).trim();
+        }
+        return trimmed;
     }
 
     private Condition compileFilters(List<FilterItem> filters, String tableName) {

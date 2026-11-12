@@ -5,14 +5,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.config.api.SysMenuApi;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
+import com.jdec.platform.config.api.dto.response.SysFieldResp;
 import com.jdec.platform.config.api.dto.response.SysMenuResp;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
+import com.jdec.platform.dataengine.api.dto.model.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
-import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.operatelog.dto.ActionChangeLogDTO;
 import com.jdec.platform.dataengine.biz.operatelog.dto.ChangeLogStructure;
 import com.jdec.platform.dataengine.biz.operatelog.dto.ColumnChangeLogDTO;
+import com.jdec.platform.dataengine.biz.operatelog.dto.ColumnValueWithUnitDTO;
 import com.jdec.platform.dataengine.biz.operatelog.dto.ModuleChangeLogDTO;
 import com.jdec.platform.dataengine.biz.operatelog.dto.OperateLogRemarkDTO;
 import com.jdec.platform.dataengine.biz.operatelog.dto.RowChangeLogDTO;
@@ -83,6 +85,22 @@ public class OperateLogRemarkConverter {
             NestedModuleDataDTO newData,
             Map<Long, SysModuleCombineInfo> moduleCacheMap,
             Long menuId) {
+        return convert(oldData, newData, moduleCacheMap, menuId, null);
+    }
+
+    /**
+     * 指定匹配字段生成 remark：行的新增/更新/删除判定不再依赖主键 {@code id}，而是按调用方指定的通用字段值匹配。
+     *
+     * <p>例如根据业务唯一编码（而非数据库自增 id）判断两条记录是否为同一行，从而正确识别新增/更新/删除。 所有模块（含子模块中的列表）统一沿用同一 {@code keyField}。
+     *
+     * @param keyField 用于行匹配的通用字段（列名，取自主表）；为空时退化为按主键 id 匹配（保持原有行为）
+     */
+    public OperateLogRemarkDTO convert(
+            NestedModuleDataDTO oldData,
+            NestedModuleDataDTO newData,
+            Map<Long, SysModuleCombineInfo> moduleCacheMap,
+            Long menuId,
+            String keyField) {
 
         ChangeLogStructure change = null;
         if (newData != null
@@ -90,7 +108,8 @@ public class OperateLogRemarkConverter {
                 && CollectionUtil.isNotEmpty(moduleCacheMap)) {
             // 顶层模块即主模块：其自身字段变更平铺到 main；其下所有平级子模块提取为 sub 数组
             ModuleChangeLogDTO root =
-                    buildModuleChange(oldData, newData, moduleCacheMap, menuId, new HashMap<>());
+                    buildModuleChange(
+                            oldData, newData, moduleCacheMap, menuId, keyField, new HashMap<>());
             if (root != null) {
                 change =
                         ChangeLogStructure.builder()
@@ -163,6 +182,7 @@ public class OperateLogRemarkConverter {
             NestedModuleDataDTO newNode,
             Map<Long, SysModuleCombineInfo> moduleCacheMap,
             Long menuId,
+            String keyField,
             Map<Long, String> menuNameCache) {
 
         Long moduleId = newNode.getModuleId();
@@ -182,31 +202,29 @@ public class OperateLogRemarkConverter {
         // 虚模块（无主表）不做行级对比，仅递归子模块
         if (StringUtils.isBlank(primaryTable)) {
             buildVirtualModuleChanges(
-                    oldNode, newNode, moduleCacheMap, menuId, menuNameCache, actions);
+                    oldNode, newNode, moduleCacheMap, menuId, keyField, menuNameCache, actions);
             return finalizeModule(moduleId, module, menuId, menuNameCache, actions);
         }
 
         List<String> uniqueFields = module.getUniqueNameFields();
 
-        // 旧数据按主键索引
-        Map<Long, RecordDataDTO> oldById = new HashMap<>();
+        // 旧数据按匹配键索引：未指定 keyField 时按主键 id；指定时按该字段值匹配
+        Map<String, RecordDataDTO> oldByKey = new HashMap<>();
         if (oldNode != null && CollectionUtil.isNotEmpty(oldNode.getRecord())) {
             for (RecordDataDTO oldRec : oldNode.getRecord()) {
-                Long id =
-                        DataPersistenceUtil.getTableRowIdWithTabName(oldRec.getRow(), primaryTable);
-                if (id != null) {
-                    oldById.put(id, oldRec);
+                String key = computeMatchKey(oldRec, primaryTable, keyField);
+                if (key != null) {
+                    oldByKey.put(key, oldRec);
                 }
             }
         }
 
         if (CollectionUtil.isNotEmpty(newNode.getRecord())) {
             for (RecordDataDTO newRec : newNode.getRecord()) {
-                Long id =
-                        DataPersistenceUtil.getTableRowIdWithTabName(newRec.getRow(), primaryTable);
-                if (id != null && oldById.containsKey(id)) {
+                String key = computeMatchKey(newRec, primaryTable, keyField);
+                if (key != null && oldByKey.containsKey(key)) {
                     // 更新
-                    RecordDataDTO oldRec = oldById.remove(id);
+                    RecordDataDTO oldRec = oldByKey.remove(key);
                     RowChangeLogDTO rowLog =
                             buildPreserveUpdateRow(oldRec, newRec, module, uniqueFields);
                     List<ModuleChangeLogDTO> children =
@@ -215,6 +233,7 @@ public class OperateLogRemarkConverter {
                                     newRec.getChildren(),
                                     moduleCacheMap,
                                     menuId,
+                                    keyField,
                                     menuNameCache);
                     if (rowLog != null) {
                         if (!children.isEmpty()) {
@@ -243,6 +262,7 @@ public class OperateLogRemarkConverter {
                                     newRec.getChildren(),
                                     moduleCacheMap,
                                     menuId,
+                                    keyField,
                                     menuNameCache);
                     if (rowLog == null) {
                         rowLog =
@@ -264,12 +284,61 @@ public class OperateLogRemarkConverter {
             }
         }
 
-        // 删除：旧数据中未被匹配的主键，只记录唯一标识字段
-        for (RecordDataDTO oldRec : oldById.values()) {
+        // 删除：旧数据中未被匹配的行，只记录唯一标识字段
+        for (RecordDataDTO oldRec : oldByKey.values()) {
             actions.getD().add(buildDeleteRow(oldRec, module, primaryTable, uniqueFields));
         }
 
         return finalizeModule(moduleId, module, menuId, menuNameCache, actions);
+    }
+
+    /**
+     * 计算数据行的匹配键：用于判定新旧数据中的两条记录是否为同一行。
+     *
+     * <p>未指定 {@code keyField} 时按主键 id 计算（与历史行为一致）；指定时按主表该字段的值计算。 字段值缺失（空白）时返回 null，该行将被当作新增处理。
+     *
+     * @param rec 数据行
+     * @param primaryTable 主表名
+     * @param keyField 匹配字段（列名）；为空则退化为主键 id
+     * @return 匹配键；无法匹配时返回 null
+     */
+    private String computeMatchKey(RecordDataDTO rec, String primaryTable, String keyField) {
+        if (rec == null) {
+            return null;
+        }
+        if (StringUtils.isBlank(keyField)) {
+            Long id = DataPersistenceUtil.getTableRowIdWithTabName(rec.getRow(), primaryTable);
+            return id != null ? String.valueOf(id) : null;
+        }
+        Map<String, Object> rowMap =
+                DataPersistenceUtil.getTableRowMapFromWideRow(rec.getRow(), primaryTable);
+        if (rowMap == null) {
+            return null;
+        }
+        Object raw = rowMap.get(keyField);
+        String part = canonicalKeyPart(raw);
+        return StringUtils.isNotBlank(part) ? part : null;
+    }
+
+    /** 把字段值归一成稳定的匹配键片段：数字按数值、结构化值按 JSON；空白视为空 */
+    private String canonicalKeyPart(Object value) {
+        Object normalized = normalizeValue(value);
+        if (isBlankValue(normalized)) {
+            return "";
+        }
+        if (normalized instanceof Number number) {
+            try {
+                return toBigDecimal(number).toString();
+            } catch (NumberFormatException ignored) {
+                // 退化为文本
+            }
+        }
+        JsonNode node = toJsonNode(normalized);
+        if (node != null && !isEmptyJsonNode(node)) {
+            return node.toString();
+        }
+        String text = DataPersistenceUtil.getFieldTxtValue(normalized);
+        return StringUtils.isNotBlank(text) ? text : "";
     }
 
     /** 虚模块：无主表，仅递归子模块（旧/新记录按顺序对应） */
@@ -278,6 +347,7 @@ public class OperateLogRemarkConverter {
             NestedModuleDataDTO newNode,
             Map<Long, SysModuleCombineInfo> moduleCacheMap,
             Long menuId,
+            String keyField,
             Map<Long, String> menuNameCache,
             ActionChangeLogDTO actions) {
 
@@ -295,6 +365,7 @@ public class OperateLogRemarkConverter {
                             newRecs.get(idx).getChildren(),
                             moduleCacheMap,
                             menuId,
+                            keyField,
                             menuNameCache);
             if (!children.isEmpty()) {
                 actions.getU().add(RowChangeLogDTO.builder().children(children).build());
@@ -308,6 +379,10 @@ public class OperateLogRemarkConverter {
             Long menuId,
             Map<Long, String> menuNameCache,
             ActionChangeLogDTO actions) {
+        // 移除 columns 为空数组且不含子模块变更的数据行：若某操作的行因此全部清空，则该操作 key 不再返回
+        filterEmptyColumnRows(actions.getI());
+        filterEmptyColumnRows(actions.getU());
+        filterEmptyColumnRows(actions.getD());
         if (CollectionUtil.isEmpty(actions.getI())) {
             actions.setI(null);
         }
@@ -317,7 +392,8 @@ public class OperateLogRemarkConverter {
         if (CollectionUtil.isEmpty(actions.getD())) {
             actions.setD(null);
         }
-        if (actions.getI() == null && actions.getU() == null && actions.getD() == null) {
+        // columns 全部为空（没有任何一个 column 有值）且不含子模块变更的模块视为无对比，去掉该模块
+        if (!hasModuleContent(actions)) {
             return null;
         }
         return ModuleChangeLogDTO.builder()
@@ -325,6 +401,48 @@ public class OperateLogRemarkConverter {
                 .mId(moduleId)
                 .actions(actions)
                 .build();
+    }
+
+    /**
+     * 过滤数据行：移除 {@code columns} 为「空数组」且不含子模块变更（children 为空）的行。
+     *
+     * <p>这样当某个操作（i/u/d）下的行都因无字段变更而 columns 为空时，这些空行被剔除；若该操作因此没有任何行， 上层会将该操作 key 置为 null，从而在 remark
+     * 中不再返回（例如 {@code u} 下没有有效字段变更时，{@code u} key 不出现）。
+     *
+     * <p>仅针对空数组（{@code new ArrayList<>()}）做处理，{@code columns} 为 null 的行（如仅有子模块变更或删除行）不受影响。
+     */
+    private void filterEmptyColumnRows(List<RowChangeLogDTO> rows) {
+        if (CollectionUtil.isEmpty(rows)) {
+            return;
+        }
+        rows.removeIf(
+                row ->
+                        row.getColumns() != null
+                                && row.getColumns().isEmpty()
+                                && CollectionUtil.isEmpty(row.getChildren()));
+    }
+
+    /**
+     * 判断模块是否包含有效对比内容：任一行存在字段级变更（columns 非空）或子模块变更（children 非空）即视为有内容。 仅当所有行既无 column
+     * 值、也无子模块变更时，该模块才视为无对比、应去掉。
+     */
+    private boolean hasModuleContent(ActionChangeLogDTO actions) {
+        return hasRowContent(actions.getI())
+                || hasRowContent(actions.getU())
+                || hasRowContent(actions.getD());
+    }
+
+    private boolean hasRowContent(List<RowChangeLogDTO> rows) {
+        if (CollectionUtil.isEmpty(rows)) {
+            return false;
+        }
+        for (RowChangeLogDTO row : rows) {
+            if (CollectionUtil.isNotEmpty(row.getColumns())
+                    || CollectionUtil.isNotEmpty(row.getChildren())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** 保持原始类型生成更新行明细（数组/对象不做字符串化） */
@@ -418,17 +536,53 @@ public class OperateLogRemarkConverter {
                 continue;
             }
             ModuleFieldDTO field = fieldMap != null ? fieldMap.get(column) : null;
+            // 仅 sys_module_field 中配置的字段参与 remark 构造；未在该表登记的字段跳过，不进入变更明细
+            if (field == null) {
+                continue;
+            }
             String fullFieldName = DataPersistenceUtil.getFullFieldName(table, column);
+            // 数字带单位字段：old/newer 包装为 {value, unit}，单位取自 sys_field.unit_column_name 同表列
+            SysFieldResp fieldResp =
+                    module.getAllFields() != null ? module.getAllFields().get(fullFieldName) : null;
+            Object oldObj;
+            Object newerObj;
+            if (fieldResp != null && StringUtils.isNotBlank(fieldResp.getUnitColumnName())) {
+                String unitColumn = resolveUnitColumn(fieldResp.getUnitColumnName());
+                Object oldUnit = oldRow != null ? normalizeValue(oldRow.get(unitColumn)) : null;
+                Object newUnit = newRow != null ? normalizeValue(newRow.get(unitColumn)) : null;
+                oldObj =
+                        ColumnValueWithUnitDTO.builder()
+                                .value(nullToPlaceholder(oldValue))
+                                .unit(oldUnit)
+                                .build();
+                newerObj = ColumnValueWithUnitDTO.builder().value(newerValue).unit(newUnit).build();
+            } else {
+                oldObj = nullToPlaceholder(oldValue);
+                newerObj = newerValue;
+            }
             columns.add(
                     ColumnChangeLogDTO.builder()
                             .name(field != null ? field.getDisplayName() : null)
-                            .old(nullToPlaceholder(oldValue))
-                            .newer(newerValue)
+                            .old(oldObj)
+                            .newer(newerObj)
                             .field(fullFieldName)
                             .fieldId(fieldIdByFullName(module, fullFieldName))
                             .build());
         }
         return columns;
+    }
+
+    /**
+     * 解析单位列名：sys_field.unit_column_name 可能带表名前缀（如 {@code basic_info.insured_count_unit}）， 行数据 map
+     * 以纯列名为键，故存在表名前缀时仅取末段列名。
+     *
+     * @param unitColumnName 配置的单位列名
+     * @return 纯列名
+     */
+    private String resolveUnitColumn(String unitColumnName) {
+        String raw = unitColumnName.trim();
+        int dot = raw.lastIndexOf('.');
+        return dot >= 0 ? raw.substring(dot + 1) : raw;
     }
 
     /** 归一化字段值：jOOQ JSON / JSON 字符串转为结构化对象，其余保持原样 */
@@ -709,6 +863,7 @@ public class OperateLogRemarkConverter {
             List<NestedModuleDataDTO> newChildren,
             Map<Long, SysModuleCombineInfo> moduleCacheMap,
             Long menuId,
+            String keyField,
             Map<Long, String> menuNameCache) {
         List<ModuleChangeLogDTO> result = new ArrayList<>();
         if (CollectionUtil.isEmpty(newChildren)) {
@@ -717,7 +872,8 @@ public class OperateLogRemarkConverter {
         for (NestedModuleDataDTO newChild : newChildren) {
             NestedModuleDataDTO oldChild = findChild(oldChildren, newChild.getModuleId());
             ModuleChangeLogDTO child =
-                    buildModuleChange(oldChild, newChild, moduleCacheMap, menuId, menuNameCache);
+                    buildModuleChange(
+                            oldChild, newChild, moduleCacheMap, menuId, keyField, menuNameCache);
             if (child != null) {
                 result.add(child);
             }

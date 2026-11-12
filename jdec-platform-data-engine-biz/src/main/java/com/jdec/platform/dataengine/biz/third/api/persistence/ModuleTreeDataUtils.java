@@ -1,16 +1,14 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence;
 
-import static net.sf.jsqlparser.util.validation.metadata.NamedObject.table;
-
 import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.collection.ListUtil;
 import cn.hutool.core.util.IdUtil;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
 import com.jdec.platform.dataengine.api.dto.model.RecordDataDTO;
+import com.jdec.platform.dataengine.api.dto.model.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.dto.ChangeItemDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleRowNodeDataDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleTreeNodeDataDTO;
-import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;

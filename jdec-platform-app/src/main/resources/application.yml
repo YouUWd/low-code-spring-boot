@@ -62,3 +62,11 @@ wechat:
   work:
     api-base-url: https://qyapi.weixin.qq.com
     token-cache-seconds: 7000
+
+# ===== 日志全局基础配置 =====
+logging:
+  file:
+    path: ${LOG_PATH:./logs}
+  level:
+    com.jdec.platform.data: DEBUG
+    org.jooq.tools.LoggerListener: DEBUG

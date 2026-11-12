@@ -2,6 +2,7 @@ package com.jdec.platform.config.api;
 
 import com.jdec.platform.config.api.dto.request.SaveMenuReq;
 import com.jdec.platform.config.api.dto.request.SysMenuDragReq;
+import com.jdec.platform.config.api.dto.response.SysMenuOptionResp;
 import com.jdec.platform.config.api.dto.response.SysMenuResp;
 import com.jdec.platform.config.api.dto.response.SysMenuTreeResp;
 import java.util.List;
@@ -21,6 +22,13 @@ public interface SysMenuApi {
      * @param category 菜单分类.1:业务菜单 2:系统菜单（可选，为null时返回所有菜单）
      */
     List<SysMenuResp> list(Integer category);
+
+    /**
+     * 查询页面类型菜单的下拉选项（菜单类型为「页面」），供按钮关联菜单多选使用。
+     *
+     * <p>返回两级树：一级为菜单分类（业务菜单/系统菜单），二级为当前主体、应用下 menuType=2（页面）的菜单叶子。
+     */
+    List<SysMenuOptionResp> listMenuOptions();
 
     /**
      * 根据Id查询菜单

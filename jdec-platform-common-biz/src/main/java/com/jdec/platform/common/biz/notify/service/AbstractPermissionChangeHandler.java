@@ -64,17 +64,6 @@ public abstract class AbstractPermissionChangeHandler implements PermissionChang
         List<ClientSession> sessions =
                 resolveSessions(roleIds, userIds, subjectIds, channelSubjectId);
 
-        // 角色删除场景：彻底排除操作人本人（含 roleId 匹配路径），自己删除/编辑角色时不通知自己
-        if (strategy() == Strategy.ROLE_REMOVE) {
-            Long operatorUserId = toLong(payload == null ? null : payload.get("operatorUserId"));
-            if (operatorUserId != null) {
-                sessions =
-                        sessions.stream()
-                                .filter(s -> !operatorUserId.equals(s.getUserId()))
-                                .toList();
-            }
-        }
-
         ConfigChangeNotifyEvent event = buildEvent(message, changeType);
         log.info("配置变更 {} 匹配到 {} 个 SSE 会话，准备推送", changeType.getCode(), sessions.size());
         sendMessage(sessions, event);

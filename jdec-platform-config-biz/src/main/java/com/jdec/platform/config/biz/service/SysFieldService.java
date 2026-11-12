@@ -30,6 +30,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.StringUtils;
@@ -97,6 +98,7 @@ public class SysFieldService implements SysFieldApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<TableInfoResp> getAllTablesWithColumns(String projectNo, Long subjectId) {
         log.debug("查询项目 {} 主体 {} 的所有表及其列信息", projectNo, subjectId);
 
@@ -276,6 +278,7 @@ public class SysFieldService implements SysFieldApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<SysFieldResp> querySimpleSysFields(
             String projectNo, Long subjectId, String tableName, String columnName) {
         return querySysFieldsInternal(projectNo, subjectId, tableName, columnName, false);
@@ -582,7 +585,7 @@ public class SysFieldService implements SysFieldApi {
     }
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public SysFieldResp saveSysField(
             String projectNo, Long subjectId, String tableName, SysFieldSaveReq req) {
         log.info(
@@ -1148,6 +1151,7 @@ public class SysFieldService implements SysFieldApi {
     }
 
     @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public List<SysFieldResp> getValidSysFields(
             String projectNo, Long subjectId, String tableName) {
         log.debug("查询项目 {} 主体 {} 的有效字段配置 (tableName={})", projectNo, subjectId, tableName);

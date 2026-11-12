@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.extension.activerecord.Model;
+import com.baomidou.mybatisplus.extension.handlers.JacksonTypeHandler;
 import java.io.Serializable;
 import java.time.LocalDateTime;
 import lombok.Getter;
@@ -22,7 +23,7 @@ import lombok.experimental.Accessors;
 @Setter
 @ToString
 @Accessors(chain = true)
-@TableName("member_contact")
+@TableName(value = "member_contact", autoResultMap = true)
 public class MemberContact extends Model<MemberContact> {
 
     private static final long serialVersionUID = 1L;
@@ -47,9 +48,9 @@ public class MemberContact extends Model<MemberContact> {
     @TableField("member_id")
     private Long memberId;
 
-    /** 联系方式类型（手机/座机/工作邮箱等） */
-    @TableField("contact_type")
-    private String contactType;
+    /** 联系方式类型（手机/座机/工作邮箱等，存储为JSON结构） */
+    @TableField(value = "contact_type", typeHandler = JacksonTypeHandler.class)
+    private Object contactType;
 
     /** 具体电话号码或邮箱地址 */
     @TableField("contact_value")

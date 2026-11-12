@@ -153,7 +153,7 @@ class InteractionActionServiceTest {
     }
 
     @Test
-    @DisplayName("测试1001模块真实定制组件：edit_company_reg_status仅在启用(99)与取消(-99)状态下按行展示")
+    @DisplayName("测试1001模块真实定制组件：edit_company_reg_status仅在启用(99)与停用(-2)状态下按行展示")
     void testCompanyModule1001CustomInteractionButtons() {
         RoleInteractionPermissionByModuleResp permResp = buildTestPermissions();
 
@@ -176,8 +176,8 @@ class InteractionActionServiceTest {
 
         // 构造4行不同业务状态的数据行
         DataRow rowActive = createDataRow(101L, "CR-ACTIVE", 99); // 启用状态 (99) -> 应该展示
-        DataRow rowCancel = createDataRow(102L, "CR-CANCEL", -99); // 取消状态 (-99) -> 应该展示
-        DataRow rowDeactive = createDataRow(103L, "CR-DEACTIVE", 11); // 停用状态 (11) -> 不应该展示
+        DataRow rowInactive = createDataRow(102L, "CR-INACTIVE", -2); // 停用状态 (-2) -> 应该展示
+        DataRow rowCancel = createDataRow(103L, "CR-CANCEL", -99); // 取消状态 (-99) -> 不应该展示
         DataRow rowDraft = createDataRow(104L, "CR-DRAFT", 1); // 待审核/草稿状态 (1) -> 不应该展示
 
         // 注册通用默认 Provider 与真实定制的 CompanyInteractionButtonProvider
@@ -201,7 +201,7 @@ class InteractionActionServiceTest {
 
         // 2. 验证纯行级项 (仅 101L 与 102L 满足状态条件，103L 与 104L 不产生操作)
         List<ActionRowItem> rowActions =
-                service.buildRowActions(List.of(rowActive, rowCancel, rowDeactive, rowDraft), ctx);
+                service.buildRowActions(List.of(rowActive, rowInactive, rowCancel, rowDraft), ctx);
         assertNotNull(rowActions);
         assertEquals(2, rowActions.size());
 
@@ -213,13 +213,13 @@ class InteractionActionServiceTest {
         assertEquals(1, activeBtns.size());
         assertEquals("edit_company_reg_status", activeBtns.get(0).getButtonKey());
 
-        // 2.2 验证取消状态行 (102L)
-        ActionRowItem cancelAction = rowActions.get(1);
-        assertEquals(102L, cancelAction.getRow().getId());
-        assertEquals("CR-CANCEL", cancelAction.getRow().getBusinessNo());
-        List<ActionButtonDTO> cancelBtns = cancelAction.getRow().getBtnList();
-        assertEquals(1, cancelBtns.size());
-        assertEquals("edit_company_reg_status", cancelBtns.get(0).getButtonKey());
+        // 2.2 验证停用状态行 (102L)
+        ActionRowItem inactiveAction = rowActions.get(1);
+        assertEquals(102L, inactiveAction.getRow().getId());
+        assertEquals("CR-INACTIVE", inactiveAction.getRow().getBusinessNo());
+        List<ActionButtonDTO> inactiveBtns = inactiveAction.getRow().getBtnList();
+        assertEquals(1, inactiveBtns.size());
+        assertEquals("edit_company_reg_status", inactiveBtns.get(0).getButtonKey());
     }
 
     @Test

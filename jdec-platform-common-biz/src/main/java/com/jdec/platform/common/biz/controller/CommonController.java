@@ -76,11 +76,12 @@ public class CommonController {
         }
     }
 
-    @PostMapping("/business/submit")
+    @PostMapping("/business/{menuId}/submit")
     @Operation(summary = "提交数据", description = "提交数据")
-    public ApiResponse<Long> businessSubmit(@RequestBody DynamicSaveReq req) {
+    public ApiResponse<Map<String, Object>> businessSubmit(
+            @PathVariable Long menuId, @RequestBody DynamicSaveReq req) {
         try {
-            return ApiResponse.success(commonApprovalService.businessSubmit(req));
+            return ApiResponse.success(commonApprovalService.businessSubmit(menuId, req));
         } catch (Exception ex) {
             log.error(
                     "Common DataEngine save failed: moduleId={},err={}",

@@ -8,11 +8,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.LinkedHashMap;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.jooq.Condition;
@@ -115,7 +111,6 @@ public class ExternalObjectSnapshotRepository {
                         infoRecord.get("subject_id", Long.class),
                         infoRecord.get("source_id", Long.class),
                         infoRecord.get("company_name", String.class),
-                        infoRecord.get("parent_id", Long.class),
                         infoRecord.get("nature", String.class),
                         infoRecord.get("reg_status", String.class),
                         infoRecord.get("cooperation_types", String.class),
@@ -138,65 +133,30 @@ public class ExternalObjectSnapshotRepository {
     /**
      * 收集参与查重的已保存外部对象主档。
      *
-     * <p>范围为 {@code active=1} 的记录；业务状态不是 99/-99（尚未终结）的记录，再补充同业务编号下最后一个启用版本（业务状态 99、
-     * 版本号最大）。查询失败时记录日志并返回空列表，不阻断提交校验。
+     * <p>范围为未删除的记录中：正在走流程（{@code active=1} 且 business_status 非 99/-99，业务状态为空亦视为在流程中）
+     * 与最后启用（business_status=99 且 {@code active=1}，即当前生效的启用记录）。business_status=-99（已终结/作废）与
+     * business_status=99 但 {@code active=0}（已不再生效的上一启用版本）不参与查重。查询失败时记录日志并返回空列表，不阻断提交校验。
      *
      * @param subjectId 主体ID；为空时不按主体过滤
      */
     public List<ExternalObjectSnapshot.InfoBrief> findDuplicateInfos(Long subjectId) {
         try {
             DSLContext dsl = dsl();
-            var activeRecords = dsl.selectFrom(INFO).where(activeInfoCondition(subjectId)).fetch();
-
-            Map<Long, ExternalObjectSnapshot.InfoBrief> result = new LinkedHashMap<>();
-            Set<String> unfinishedBusinessNos = new LinkedHashSet<>();
-            for (Record record : activeRecords) {
-                Long id = record.get("id", Long.class);
-                String businessNo = record.get("business_no", String.class);
-                Integer businessStatus = record.get("business_status", Integer.class);
-                result.put(
-                        id,
-                        new ExternalObjectSnapshot.InfoBrief(
-                                id, businessNo, record.get("company_name", String.class)));
-                boolean terminal =
-                        businessStatus != null && (businessStatus == 99 || businessStatus == -99);
-                if (!terminal && businessNo != null && !businessNo.isBlank()) {
-                    unfinishedBusinessNos.add(businessNo);
-                }
-            }
-            if (unfinishedBusinessNos.isEmpty()) {
-                return new ArrayList<>(result.values());
-            }
-
-            Condition enabledCondition =
-                    intField("info", "business_status")
-                            .eq(99)
-                            .and(intField("info", "deleted").eq(0))
-                            .and(textField("info", "business_no").in(unfinishedBusinessNos));
+            Condition condition = inProcessInfoCondition().or(lastEnabledInfoCondition());
+            condition = condition.and(intField("info", "deleted").eq(0));
             if (subjectId != null && subjectId > 0) {
-                enabledCondition =
-                        enabledCondition.and(longField("info", "subject_id").eq(subjectId));
+                condition = condition.and(longField("info", "subject_id").eq(subjectId));
             }
-            var enabledRecords =
-                    dsl.selectFrom(INFO)
-                            .where(enabledCondition)
-                            .orderBy(
-                                    textField("info", "business_no").asc(),
-                                    intField("info", "version_no").desc())
-                            .fetch();
-            Set<String> visitedBusinessNos = new LinkedHashSet<>();
-            for (Record record : enabledRecords) {
-                String businessNo = record.get("business_no", String.class);
-                if (!visitedBusinessNos.add(businessNo)) {
-                    continue;
-                }
-                Long id = record.get("id", Long.class);
-                result.putIfAbsent(
-                        id,
+            var records = dsl.selectFrom(INFO).where(condition).fetch();
+            List<ExternalObjectSnapshot.InfoBrief> result = new ArrayList<>();
+            for (Record record : records) {
+                result.add(
                         new ExternalObjectSnapshot.InfoBrief(
-                                id, businessNo, record.get("company_name", String.class)));
+                                record.get("id", Long.class),
+                                record.get("business_no", String.class),
+                                record.get("company_name", String.class)));
             }
-            return new ArrayList<>(result.values());
+            return result;
         } catch (Exception e) {
             log.warn("外部对象查重范围查询失败，已跳过查重", e);
             return List.of();
@@ -422,13 +382,19 @@ public class ExternalObjectSnapshotRepository {
                 record.get("internal_level", String.class), record.get("qcc_score", String.class));
     }
 
-    private static Condition activeInfoCondition(Long subjectId) {
-        Condition condition =
-                intField("info", "active").eq(1).and(intField("info", "deleted").eq(0));
-        if (subjectId != null && subjectId > 0) {
-            condition = condition.and(longField("info", "subject_id").eq(subjectId));
-        }
-        return condition;
+    /** 正在走流程：active=1 且 business_status 不是 99/-99（business_status 为空也视为在流程中）。 */
+    private static Condition inProcessInfoCondition() {
+        return intField("info", "active")
+                .eq(1)
+                .and(
+                        intField("info", "business_status")
+                                .isNull()
+                                .or(intField("info", "business_status").notIn(99, -99)));
+    }
+
+    /** 最后启用：business_status=99 且 active=1（当前生效的启用记录）。 */
+    private static Condition lastEnabledInfoCondition() {
+        return intField("info", "business_status").eq(99).and(intField("info", "active").eq(1));
     }
 
     private static Table<?> table(String name) {

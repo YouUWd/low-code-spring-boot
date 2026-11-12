@@ -4,8 +4,13 @@ import cn.hutool.core.collection.CollectionUtil;
 import cn.hutool.core.collection.ListUtil;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.jdec.platform.config.api.dto.common.ModuleInfo;
+import com.jdec.platform.dataengine.api.ModuleBizDataService;
+import com.jdec.platform.dataengine.api.ModuleMetaDataService;
 import com.jdec.platform.dataengine.api.dto.enums.ApiResponseCodeEnum;
+import com.jdec.platform.dataengine.api.dto.model.ModuleDetailQueryContext;
+import com.jdec.platform.dataengine.api.dto.model.ModuleQueryContext;
 import com.jdec.platform.dataengine.api.dto.model.NestedModuleDataDTO;
+import com.jdec.platform.dataengine.api.dto.model.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.api.dto.request.BusinessFormStatusReq;
 import com.jdec.platform.dataengine.api.dto.request.DynamicSaveReq;
 import com.jdec.platform.dataengine.api.dto.response.ChangeApplySaveResp;
@@ -15,13 +20,8 @@ import com.jdec.platform.dataengine.biz.decoupleprocess.event.ModuleDataSaveChan
 import com.jdec.platform.dataengine.biz.dto.BasicSaveModel;
 import com.jdec.platform.dataengine.biz.dto.ChangeItemDTO;
 import com.jdec.platform.dataengine.biz.dto.ModuleDataStoreDTO;
-import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
-import com.jdec.platform.dataengine.biz.dto.context.ModuleDetailQueryContext;
-import com.jdec.platform.dataengine.biz.dto.context.ModuleQueryContext;
 import com.jdec.platform.dataengine.biz.enums.PermissionType;
 import com.jdec.platform.dataengine.biz.enums.SaveType;
-import com.jdec.platform.dataengine.biz.service.ModuleBizDataService;
-import com.jdec.platform.dataengine.biz.service.ModuleMetaDataService;
 import com.jdec.platform.dataengine.biz.third.api.persistence.*;
 import com.jdec.platform.dataengine.biz.util.JsonUtil;
 import com.jdec.platform.shared.context.AppContext;
@@ -72,7 +72,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                                 .moduleId(structureRootModuleId)
                                 .projectNo(AppContext.getProjectNo())
                                 .subjectId(AppContext.getSubjectId())
-                                .roleId(UserContext.getRoleId())
+                                .loginUser(UserContext.getLoginUser())
                                 .isBuildFieldPermission(true)
                                 .isBuildFieldPro(true)
                                 .build());
@@ -146,7 +146,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                 // todo 校验字段权限是否可编辑可写入
                 // 计算使用编辑权限还是使用申请权限
                 moduleDataPreCheckService.prePermissionCheck(
-                        nestedSaveData, detailData, permissionType, moduleCacheMap);
+                        nestedSaveData, detailData, permissionType, saveType, moduleCacheMap);
                 // 全局插入
                 if (isOverallInsert) {
                     Integer versionNo = 1;
@@ -189,7 +189,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                 }
                 // todo 校验字段权限是否可编辑可写入
                 moduleDataPreCheckService.prePermissionCheck(
-                        nestedSaveData, detailData, permissionType, moduleCacheMap);
+                        nestedSaveData, detailData, permissionType, saveType, moduleCacheMap);
 
                 // 全局更新数据,先从主表拿出 版本号
                 String businessNo =
@@ -209,7 +209,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
             case APPROVAL_CHANGE -> {
                 // todo 校验字段权限是否可编辑可写入
                 moduleDataPreCheckService.prePermissionCheck(
-                        nestedSaveData, detailData, PermissionType.APPLY, moduleCacheMap);
+                        nestedSaveData, detailData, PermissionType.APPLY, saveType, moduleCacheMap);
                 // 变更插入 根模块 主表的业务编号
                 String businessNo =
                         DataPersistenceUtil.getTableRowBusinessNoWithTabName(
@@ -360,7 +360,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                                 .moduleId(req.getModuleId())
                                 .projectNo(AppContext.getProjectNo())
                                 .subjectId(AppContext.getSubjectId())
-                                .roleId(UserContext.getRoleId())
+                                .loginUser(UserContext.getLoginUser())
                                 .build());
         String rootMainTable =
                 moduleCacheMap
@@ -418,7 +418,7 @@ public class ModuleDataStoreServiceImpl implements ModuleDataStoreService {
                                 .moduleId(structureRootModuleId)
                                 .projectNo(AppContext.getProjectNo())
                                 .subjectId(AppContext.getSubjectId())
-                                .roleId(UserContext.getRoleId())
+                                .loginUser(UserContext.getLoginUser())
                                 .isBuildFieldPermission(false)
                                 .isBuildFieldPro(false)
                                 .build());

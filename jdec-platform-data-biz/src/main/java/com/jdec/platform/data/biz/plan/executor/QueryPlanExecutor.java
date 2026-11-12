@@ -21,6 +21,7 @@ import org.jooq.Record;
 import org.jooq.Result;
 import org.jooq.SelectConditionStep;
 import org.jooq.SelectJoinStep;
+import org.jooq.conf.ParamType;
 import org.jooq.impl.DSL;
 import org.springframework.stereotype.Component;
 
@@ -61,7 +62,18 @@ public class QueryPlanExecutor {
                         dsl.selectCount().from(DSL.table(DSL.name(primaryTable))),
                         rootPlan.getAttachedJoins());
 
-        Long total = countStep.where(rootPlan.getCondition()).fetchOne(0, Long.class);
+        var countQuery = countStep.where(rootPlan.getCondition());
+        long start = System.currentTimeMillis();
+        Long total = countQuery.fetchOne(0, Long.class);
+        long cost = System.currentTimeMillis() - start;
+        if (log.isDebugEnabled()) {
+            log.debug(
+                    "[SQL-ANALYSIS] [COUNT] 主表: {}, 耗时: {}ms, 统计记录数: {}\nSQL: {}",
+                    primaryTable,
+                    cost,
+                    total != null ? total : 0L,
+                    countQuery.getSQL(ParamType.INLINED));
+        }
         return total != null ? total : 0L;
     }
 
@@ -150,10 +162,26 @@ public class QueryPlanExecutor {
                 selectStep.where(rootPlan.getCondition()).orderBy(rootPlan.getOrderFields());
 
         Result<Record> records;
+        long start = System.currentTimeMillis();
+        String sql;
         if (limit != null && limit > 0) {
-            records = whereStep.limit(limit).offset(offset != null ? offset : 0).fetch();
+            var pagedQuery = whereStep.limit(limit).offset(offset != null ? offset : 0);
+            sql = pagedQuery.getSQL(ParamType.INLINED);
+            records = pagedQuery.fetch();
         } else {
+            sql = whereStep.getSQL(ParamType.INLINED);
             records = whereStep.fetch();
+        }
+        long cost = System.currentTimeMillis() - start;
+        if (log.isDebugEnabled()) {
+            log.debug(
+                    "[SQL-ANALYSIS] [ROOT-QUERY] 根表: {}, limit: {}, offset: {}, 耗时: {}ms, 命中记录数: {}\nSQL: {}",
+                    primaryTable,
+                    limit,
+                    offset,
+                    cost,
+                    records.size(),
+                    sql);
         }
 
         List<Long> primaryIds = new ArrayList<>();
@@ -303,7 +331,22 @@ public class QueryPlanExecutor {
                     query = query.and(DSL.field(DSL.name(childTable, "deleted")).eq((byte) 0));
                 }
 
-                Result<Record> childRecords = query.orderBy(childPlan.getOrderFields()).fetch();
+                var orderedQuery = query.orderBy(childPlan.getOrderFields());
+                long childStart = System.currentTimeMillis();
+                Result<Record> childRecords = orderedQuery.fetch();
+                long childCost = System.currentTimeMillis() - childStart;
+                if (log.isDebugEnabled()) {
+                    log.debug(
+                            "[SQL-ANALYSIS] [CHILD-BATCH] 视图: {}, 从表: {}, 外键: {}, batch: {}/{}, 耗时: {}ms, 命中记录数: {}\nSQL: {}",
+                            childPlan.getView(),
+                            childTable,
+                            fkField,
+                            (i / batchSize) + 1,
+                            (parentIds.size() + batchSize - 1) / batchSize,
+                            childCost,
+                            childRecords.size(),
+                            orderedQuery.getSQL(ParamType.INLINED));
+                }
                 for (Record r : childRecords) {
                     DataRow crow =
                             extractRow(
@@ -510,13 +553,29 @@ public class QueryPlanExecutor {
 
         SelectConditionStep<?> conditionStep = selectStep.where(combinedCond);
         Result<?> records;
+        long start = System.currentTimeMillis();
+        String sql;
         if (direction != null && !direction.isBlank()) {
-            records =
+            var orderedStep =
                     "DESC".equalsIgnoreCase(direction.trim())
-                            ? conditionStep.orderBy(distinctField.desc()).fetch()
-                            : conditionStep.orderBy(distinctField.asc()).fetch();
+                            ? conditionStep.orderBy(distinctField.desc())
+                            : conditionStep.orderBy(distinctField.asc());
+            sql = orderedStep.getSQL(ParamType.INLINED);
+            records = orderedStep.fetch();
         } else {
+            sql = conditionStep.getSQL(ParamType.INLINED);
             records = conditionStep.fetch();
+        }
+        long cost = System.currentTimeMillis() - start;
+        if (log.isDebugEnabled()) {
+            log.debug(
+                    "[SQL-ANALYSIS] [DISTINCT] 物理表: {}, 列名: {}, direction: {}, 耗时: {}ms, 候选值数: {}\nSQL: {}",
+                    targetTable,
+                    column,
+                    direction,
+                    cost,
+                    records.size(),
+                    sql);
         }
         return extractDistinctOptionValues(records, direction);
     }

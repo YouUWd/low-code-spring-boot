@@ -226,9 +226,9 @@ public class MonitorLogEnrichService {
         }
     }
 
-    /** 按数据源名称取 jOOQ 上下文（显式指定数据源，不依赖当前线程的数据源路由） */
+    /** 按数据源名称取 jOOQ 上下文（绑定物理连接池，绕过事务路由，跨库补全不受调用方事务影响） */
     private DSLContext dsl(String dsName) {
-        return dataSourceResolver.getDSLContext(dsName);
+        return dataSourceResolver.getDSLContextPhysical(dsName);
     }
 
     private boolean isNotBlank(String value) {

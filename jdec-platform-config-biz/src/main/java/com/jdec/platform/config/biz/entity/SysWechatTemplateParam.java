@@ -29,15 +29,19 @@ public class SysWechatTemplateParam {
     private String templateParamDesc;
 
     /** 关联模块 ID */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long moduleId;
 
     /** 关联字段 ID */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Long fieldId;
 
     /** 是否需要转换: 0-否, 1-是 */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private Integer convertFlag;
 
     /** 转换方法 */
+    @TableField(updateStrategy = FieldStrategy.ALWAYS)
     private String templateParamConvertMethod;
 
     /** 创建人 ID */

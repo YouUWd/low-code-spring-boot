@@ -319,10 +319,6 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                                     if (button != null) {
                                                         buttonDetail.setButtonTitle(
                                                                 button.getTitle());
-                                                        buttonDetail.setButtonAlias(
-                                                                button.getAlias());
-                                                        buttonDetail.setButtonDescription(
-                                                                button.getDescription());
                                                         buttonDetail.setDefaultBgColor(
                                                                 button.getDefaultBgColor());
                                                         buttonDetail.setDefaultFontColor(
@@ -335,10 +331,6 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                                                 button.getSelectedBgColor());
                                                         buttonDetail.setSelectedFontColor(
                                                                 button.getSelectedFontColor());
-                                                        buttonDetail.setButtonSortOrder(
-                                                                button.getSortOrder());
-                                                        buttonDetail.setButtonShowed(
-                                                                button.getShowed());
                                                         buttonDetail.setButtonEnabled(
                                                                 button.getEnabled());
                                                     }
@@ -774,13 +766,6 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                                                             detail.setButtonTitle(
                                                                                     button
                                                                                             .getTitle());
-                                                                            detail.setButtonAlias(
-                                                                                    button
-                                                                                            .getAlias());
-                                                                            detail
-                                                                                    .setButtonDescription(
-                                                                                            button
-                                                                                                    .getDescription());
                                                                             detail
                                                                                     .setDefaultBgColor(
                                                                                             button
@@ -805,13 +790,6 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                                                                                     .setSelectedFontColor(
                                                                                             button
                                                                                                     .getSelectedFontColor());
-                                                                            detail
-                                                                                    .setButtonSortOrder(
-                                                                                            button
-                                                                                                    .getSortOrder());
-                                                                            detail.setButtonShowed(
-                                                                                    button
-                                                                                            .getShowed());
                                                                             detail.setButtonEnabled(
                                                                                     button
                                                                                             .getEnabled());
@@ -1350,16 +1328,12 @@ public class SysApprovalChainConfigService implements SysApprovalChainConfigApi 
                 if (btn.getButtonId() != null) {
                     SysButton button = sysButtonMapper.selectById(btn.getButtonId());
                     btndetail.setButtonTitle(button.getTitle());
-                    btndetail.setButtonAlias(button.getAlias());
-                    btndetail.setButtonDescription(button.getDescription());
                     btndetail.setDefaultBgColor(button.getDefaultBgColor());
                     btndetail.setDefaultFontColor(button.getDefaultFontColor());
                     btndetail.setLevitateBgColor(button.getLevitateBgColor());
                     btndetail.setLevitateFontColor(button.getLevitateFontColor());
                     btndetail.setSelectedBgColor(button.getSelectedBgColor());
                     btndetail.setSelectedFontColor(button.getSelectedFontColor());
-                    btndetail.setButtonSortOrder(button.getSortOrder());
-                    btndetail.setButtonShowed(button.getShowed());
                     btndetail.setButtonEnabled(button.getEnabled());
                 }
                 result.getButtonList().add(btndetail);

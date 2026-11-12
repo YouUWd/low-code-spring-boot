@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.jdec.platform.approval.api.IApprovalEngine;
 import com.jdec.platform.approval.api.event.ApprovalEvent;
 import com.jdec.platform.common.api.CommonBusinessApi;
+import com.jdec.platform.common.api.MonitorLogApi;
 import com.jdec.platform.common.api.dto.request.ApprovalReq;
 import com.jdec.platform.common.biz.preprocess.SavePrepositionProcessorService;
 import com.jdec.platform.common.biz.service.CommonApprovalService;
@@ -57,6 +58,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
     private final ConfigApi configApi;
     private final SubmitCheckRouter submitCheckRouter;
     private final SavePrepositionProcessorService savePrepositionProcessorService;
+    private final MonitorLogApi monitorLogApi;
 
     // 审批单据
     @Override
@@ -123,14 +125,9 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         savePrepositionProcessorService.preProcess(req.getNestedModuleData());
         // 保存前校验：无审批链保存，以及有审批链的新增保存（主单ID没有值），落库前基于前端提交的参数执行
         //        checkSaveBeforeStore(req);
-        DynamicSaveResp result = dataEngineApi.save(req);
+        DynamicSaveResp result = approvalSave(req);
         if (Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save"))
             return result.getChildDataId();
-        ApprovalReq approvalReq = new ApprovalReq();
-        approvalReq.setRecordId(result.getDataId());
-        approvalReq.setBusinessNumber(result.getBusinessNo());
-        approvalReq.setButton("save");
-        approvalSave(result.getModuleId(), approvalReq);
         return result.getDataId();
     }
 
@@ -226,8 +223,8 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
 
     // 提交单据
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public Long businessSubmit(DynamicSaveReq req) {
+    public Map<String, Object> businessSubmit(Long menuId, DynamicSaveReq req) {
+        Map<String, Object> result = new HashMap<>();
         savePrepositionProcessorService.preProcess(req.getNestedModuleData());
         boolean realTimeSave =
                 Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save");
@@ -251,21 +248,33 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
                             : moduleTree.getRootModuleId();
             submitCheckRouter.checkOnSubmit(rootModuleId, req.getNestedModuleData());
         }
-        DynamicSaveResp result = dataEngineApi.save(req);
-        if (realTimeSave) return result.getDataId();
+        DynamicSaveResp resp = approvalSave(req);
+        if (realTimeSave) {
+            result.put("recordId", resp.getDataId());
+            result.put("submitStatus", 0);
+        }
         if (mainRecordExists && !changeSubmit) {
             submitCheckRouter.check(
-                    result.getModuleId(),
-                    result.getDataId(),
-                    result.getBusinessNo(),
-                    result.getVersionNo());
+                    resp.getModuleId(),
+                    resp.getDataId(),
+                    resp.getBusinessNo(),
+                    resp.getVersionNo());
         }
-        ApprovalReq approvalReq = new ApprovalReq();
-        approvalReq.setRecordId(result.getDataId());
-        approvalReq.setBusinessNumber(result.getBusinessNo());
-        approvalReq.setButton("submit");
-        approvalSave(result.getModuleId(), approvalReq);
-        return result.getDataId();
+        try {
+            ApprovalReq approvalReq = new ApprovalReq();
+            approvalReq.setMenuId(menuId);
+            approvalReq.setRecordId(resp.getDataId());
+            approvalReq.setBusinessNumber(resp.getBusinessNo());
+            approvalReq.setButton("submit");
+            approvalSave(resp.getModuleId(), approvalReq);
+            result.put("recordId", resp.getDataId());
+            result.put("submitStatus", 1);
+        } catch (Exception e) {
+            log.error(e.getMessage());
+            result.put("recordId", resp.getDataId());
+            result.put("submitStatus", 0);
+        }
+        return result;
     }
 
     // 保存变更申请单
@@ -304,6 +313,23 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
                 rootModuleId, nestedModuleData, mainRecordId(moduleTree, nestedModuleData));
     }
 
+    @Transactional(rollbackFor = Exception.class)
+    public DynamicSaveResp approvalSave(DynamicSaveReq req) {
+        savePrepositionProcessorService.preProcess(req.getNestedModuleData());
+        // 保存前校验：无审批链保存，以及有审批链的新增保存（主单ID没有值），落库前基于前端提交的参数执行
+        //        checkSaveBeforeStore(req);
+        DynamicSaveResp result = dataEngineApi.save(req);
+        if (Objects.nonNull(req.getBtnType()) && req.getBtnType().equals("realTime_save"))
+            return result;
+        ApprovalReq approvalReq = new ApprovalReq();
+        approvalReq.setRecordId(result.getDataId());
+        approvalReq.setBusinessNumber(result.getBusinessNo());
+        approvalReq.setButton("save");
+        approvalReq.setMenuId(0L);
+        approvalSave(result.getModuleId(), approvalReq);
+        return result;
+    }
+
     public void approvalSave(Long moduleId, ApprovalReq req) {
         ApprovalEvent approvalEvent = new ApprovalEvent();
         BeanUtils.copyProperties(req, approvalEvent);
@@ -316,6 +342,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         approvalEvent.setSubjectId(AppContext.getSubjectId());
         approvalEvent.setModuleId(moduleId);
         approvalEvent.setOldRecordId(req.getRecordId());
+        approvalEvent.setMenuId(req.getMenuId());
         approvalEngine.handleApproval(approvalEvent);
     }
 
@@ -334,6 +361,22 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         boolean approvalEnable = sysApprovalChainConfigApi.getApprovalStatus(List.of(rootModuleId));
         if (recordId == 0) {
             result.put("approvalEnable", approvalEnable);
+            result.put("showSaveBtn", true);
+            if (approvalEnable) {
+                ModuleApprovalChainConfigResp.StatusNode statusNode =
+                        sysStatusApi.getStatusByValue(1, rootModuleId);
+                statusNode = sysStatusApi.getStatusByValue(1, rootModuleId);
+                if (Objects.isNull(statusNode)) {
+                    throw new BusinessException(601, "模块状态配置异常");
+                }
+                Map<String, Object> approvalStatus = new HashMap<>();
+                approvalStatus.put("id", statusNode.getId());
+                approvalStatus.put("statusValue", statusNode.getStatusValue());
+                approvalStatus.put("title", statusNode.getTitle());
+                approvalStatus.put("statusBackground", statusNode.getStatusBackground());
+                approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
+                result.put("approvalStatus", approvalStatus);
+            }
             return result;
         }
         result.put("approvalEnable", approvalEnable);
@@ -341,7 +384,7 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         if (Objects.isNull(recordData)) {
             throw new BusinessException(608, "业务记录异常");
         }
-        boolean approvalChainStatus = approvalEngine.getApprovalChainStatus(rootModuleId, recordId);
+        boolean approvalChainStatus = monitorLogApi.existsOperateLog(menuId, recordId);
         // 单据编号
         result.put("businessNumber", recordData.get("business_no"));
         // 创建人
@@ -423,6 +466,14 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
                 result.put("btnList", null);
                 result.put("canEdit", 0);
             }
+            Integer canEdit = (Integer) result.get("canEdit");
+            if (Objects.isNull(canEdit)) canEdit = 0;
+            boolean showSaveBtn =
+                    canEdit.equals(1)
+                            && (!approvalChainStatus
+                                    || btnType.equals("change")
+                                    || btnType.equals("change-change"));
+            result.put("showSaveBtn", showSaveBtn);
         }
         return result;
     }

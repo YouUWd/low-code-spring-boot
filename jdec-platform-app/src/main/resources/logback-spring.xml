@@ -3,9 +3,10 @@
     <include resource="org/springframework/boot/logging/logback/defaults.xml" />
     <include resource="org/springframework/boot/logging/logback/console-appender.xml" />
 
-    <!-- 性能打点日志输出路径 -->
+    <!-- 日志根路径 -->
     <springProperty scope="context" name="LOG_DIR" source="logging.file.path" defaultValue="./logs" />
     <property name="PERF_LOG_PATH" value="${LOG_DIR}/perf" />
+    <property name="DATA_LOG_PATH" value="${LOG_DIR}/data" />
 
     <!-- 专用性能日志 RollingFileAppender -->
     <appender name="PERF_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
@@ -21,9 +22,35 @@
         </encoder>
     </appender>
 
+    <!-- 专用数据模块 (data-api, data-biz) 独立日志 RollingFileAppender -->
+    <appender name="DATA_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${DATA_LOG_PATH}/data.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+            <!-- 每日归档，按 50MB 自动分卷，保留 30 天，总上限 10GB -->
+            <fileNamePattern>${DATA_LOG_PATH}/data.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <maxFileSize>50MB</maxFileSize>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>10GB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{45} - %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
     <!-- 专用性能 Logger：additivity="false" 保证只输出到独立的性能日志文件，不污染主日志与控制台 -->
     <logger name="COMMON_PERF_LOGGER" level="INFO" additivity="false">
         <appender-ref ref="PERF_FILE" />
+    </logger>
+
+    <!-- data-api 与 data-biz 模块独立日志输出 (包含控制器、计划编译、执行器、SQL 分析打点) -->
+    <logger name="com.jdec.platform.data" level="DEBUG" additivity="true">
+        <appender-ref ref="DATA_FILE" />
+    </logger>
+
+    <!-- jOOQ 原生 SQL 执行记录器 (包含参数绑定与底层执行耗时)，同步记录至 data 独立日志 -->
+    <logger name="org.jooq.tools.LoggerListener" level="DEBUG" additivity="true">
+        <appender-ref ref="DATA_FILE" />
     </logger>
 
     <root level="INFO">

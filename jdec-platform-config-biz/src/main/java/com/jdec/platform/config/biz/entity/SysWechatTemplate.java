@@ -2,6 +2,7 @@ package com.jdec.platform.config.biz.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.jdec.platform.config.biz.reference.Reference;
 import java.time.LocalDateTime;
@@ -81,5 +82,5 @@ public class SysWechatTemplate {
     private String updatedName;
 
     /** 是否删除: 0-未删除, 1-已删除 */
-    private Integer deleted;
+    @TableLogic private Integer deleted;
 }

@@ -1,7 +1,7 @@
 package com.jdec.platform.dataengine.biz.third.api.persistence;
 
+import com.jdec.platform.dataengine.api.dto.model.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.dto.ModuleDataStoreDTO;
-import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import java.util.List;
 import java.util.Map;
 

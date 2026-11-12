@@ -1,5 +1,7 @@
 package com.jdec.platform.config.open.api;
 
+import com.jdec.platform.config.api.dto.request.SysButtonMenuQueryReq;
+import com.jdec.platform.config.api.dto.response.SysButtonMenuGroupResp;
 import com.jdec.platform.config.api.dto.response.SysButtonResp;
 import java.util.List;
 
@@ -18,4 +20,14 @@ public interface OpenButtonApi {
      * @return 按钮列表
      */
     List<SysButtonResp> listButtons();
+
+    /**
+     * 按菜单 + 类型批量查询按钮信息，并按菜单分组返回
+     *
+     * <p>数据隔离取当前请求上下文（项目编码 + 主体ID）。每个查询项包含菜单ID与按钮类型集合： 当菜单ID为空时，仅按类型匹配，并将按钮归入其自身关联的全部菜单。
+     *
+     * @param req 查询条件列表
+     * @return 按菜单分组的按钮列表
+     */
+    List<SysButtonMenuGroupResp> queryButtonsByMenu(List<SysButtonMenuQueryReq> req);
 }

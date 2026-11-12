@@ -12,7 +12,7 @@ public class VersionDataQueryContext {
 
     private String tableName;
 
-    private List<String> businessNos;
+    private Set<String> businessNos;
 
     private List<String> fields;
 

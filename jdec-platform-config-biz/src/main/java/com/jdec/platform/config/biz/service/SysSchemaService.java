@@ -2,6 +2,7 @@ package com.jdec.platform.config.biz.service;
 
 import com.jdec.platform.config.api.SysSchemaApi;
 import com.jdec.platform.config.api.dto.response.TableInfoResp;
+import com.jdec.platform.shared.context.AppContext;
 import com.jdec.platform.shared.datasource.DataSourceResolver;
 import java.sql.Connection;
 import java.util.*;
@@ -142,6 +143,45 @@ public class SysSchemaService implements SysSchemaApi {
             }
         } catch (Exception e) {
             log.error("查询数据源 [{}] 物理表 [{}] 列名集合失败: err={}", projectNo, tableName, e.getMessage());
+        }
+
+        return columnNames;
+    }
+
+    @Override
+    public Set<String> getTableJsonColumnNames(String projectNo, String tableName) {
+        if (!StringUtils.hasText(tableName)) {
+            return Collections.emptySet();
+        }
+
+        String sql =
+                """
+                SELECT COLUMN_NAME
+                FROM INFORMATION_SCHEMA.COLUMNS
+                WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ? AND LOWER(DATA_TYPE) = 'json'
+                ORDER BY ORDINAL_POSITION
+                """;
+
+        Set<String> columnNames = new LinkedHashSet<>();
+        try {
+            String resolvedProjectNo =
+                    StringUtils.hasText(projectNo) ? projectNo : AppContext.getProjectNo();
+            JdbcTemplate jdbcTemplate = dataSourceResolver.getJdbcTemplate(resolvedProjectNo);
+            String tableSchema = jdbcTemplate.execute((Connection conn) -> conn.getCatalog());
+            if (!StringUtils.hasText(tableSchema)) {
+                tableSchema = resolvedProjectNo;
+            }
+
+            List<String> rows =
+                    jdbcTemplate.queryForList(sql, String.class, tableSchema, tableName.trim());
+            for (String col : rows) {
+                if (col != null && !col.isBlank()) {
+                    columnNames.add(col.trim().toLowerCase());
+                }
+            }
+        } catch (Exception e) {
+            log.error(
+                    "查询数据源 [{}] 物理表 [{}] JSON列名集合失败: err={}", projectNo, tableName, e.getMessage());
         }
 
         return columnNames;

@@ -138,13 +138,7 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     @Override
     @Transactional
     public void deleteTemplate(Long id) {
-        SysWechatTemplate template = sysWechatTemplateMapper.selectById(id);
-        if (template != null) {
-            template.setDeleted(1);
-            sysWechatTemplateMapper.updateById(template);
-            // 记录删除审计日志并删除快照
-            wechatTemplateLogService.logDelete(template);
-        }
+        sysWechatTemplateMapper.deleteById(id);
     }
 
     @Override
@@ -415,13 +409,7 @@ public class SysWechatTemplateService implements SysWechatTemplateApi {
     @Override
     @Transactional
     public void deleteParam(Long id) {
-        SysWechatTemplateParam param = sysWechatTemplateParamMapper.selectById(id);
-        if (param != null) {
-            param.setDeleted(1);
-            sysWechatTemplateParamMapper.updateById(param);
-            // 记录删除审计日志并删除快照
-            wechatTemplateParamLogService.logDelete(param);
-        }
+        sysWechatTemplateParamMapper.deleteById(id);
     }
 
     // --- 内部辅助方法 ---

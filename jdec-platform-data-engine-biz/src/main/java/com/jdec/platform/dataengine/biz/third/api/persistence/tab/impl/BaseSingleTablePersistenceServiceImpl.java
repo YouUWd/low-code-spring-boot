@@ -6,9 +6,9 @@ import cn.hutool.core.util.StrUtil;
 import com.jdec.platform.config.api.dto.common.ModuleFieldDTO;
 import com.jdec.platform.config.api.dto.response.SysFieldResp;
 import com.jdec.platform.dataengine.api.dto.enums.ApiResponseCodeEnum;
+import com.jdec.platform.dataengine.api.dto.model.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.constants.CommonConstant;
 import com.jdec.platform.dataengine.biz.dto.DataSaveResult;
-import com.jdec.platform.dataengine.biz.dto.SysModuleCombineInfo;
 import com.jdec.platform.dataengine.biz.dto.context.RecordSaveContext;
 import com.jdec.platform.dataengine.biz.third.api.persistence.DataPersistenceUtil;
 import com.jdec.platform.dataengine.biz.third.api.persistence.fill.ModuleDataSaveNecessaryFieldFillFactoryService;
@@ -48,8 +48,7 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
                     "deleted",
                     "active",
                     "source_id",
-                    "node_id",
-                    "parent_node_id");
+                    "node_id");
 
     private final Set<String> INSERT_DEFAULT_EXCLUDE_FIELD =
             Set.of(
@@ -76,6 +75,13 @@ public class BaseSingleTablePersistenceServiceImpl implements BaseSingleTablePer
         // 设置 新增时不需要填充 的字段
         context.setDefaultExcludeFields(INSERT_DEFAULT_EXCLUDE_FIELD);
         Map<Field<Object>, Object> fieldValues = getInsertRecordFieldValues(context);
+
+        Object uuid = fieldValues.get(DSL.field(DSL.name(StrUtil.toUnderlineCase("node_id"))));
+        if (uuid == null || StrUtil.isEmpty(uuid.toString())) {
+            fieldValues.put(
+                    DSL.field(DSL.name(StrUtil.toUnderlineCase("node_id"))),
+                    UUID.randomUUID().toString());
+        }
 
         String tableName = context.getTableName();
         // 手动定义表和主键字段，标记IDENTITY

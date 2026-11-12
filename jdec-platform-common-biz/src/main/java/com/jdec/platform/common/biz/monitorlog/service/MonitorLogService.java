@@ -17,6 +17,7 @@ import com.jdec.platform.common.biz.monitorlog.handler.MonitorLogSaveHandler;
 import com.jdec.platform.config.open.api.OpenMenuApi;
 import com.jdec.platform.shared.constant.MonitorLogConstant;
 import com.jdec.platform.shared.context.AppContext;
+import com.jdec.platform.shared.datasource.DataSourceResolver;
 import com.jdec.platform.shared.datasource.JooqDataContextFactory;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.model.PageResult;
@@ -79,6 +80,7 @@ public class MonitorLogService implements MonitorLogApi {
                     DSL.field(DSL.name("created_date"), LocalDateTime.class).as("createdDate"));
 
     private final JooqDataContextFactory jooqDataContextFactory;
+    private final DataSourceResolver dataSourceResolver;
     private final ObjectMapper objectMapper;
     private final MonitorOperateIndexService monitorOperateIndexService;
     private final MonitorLogEnrichService monitorLogEnrichService;
@@ -89,6 +91,7 @@ public class MonitorLogService implements MonitorLogApi {
 
     public MonitorLogService(
             JooqDataContextFactory jooqDataContextFactory,
+            DataSourceResolver dataSourceResolver,
             ObjectMapper objectMapper,
             MonitorOperateIndexService monitorOperateIndexService,
             MonitorLogEnrichService monitorLogEnrichService,
@@ -97,6 +100,7 @@ public class MonitorLogService implements MonitorLogApi {
             OpenMenuApi openMenuApi,
             List<MonitorLogSaveHandler> handlers) {
         this.jooqDataContextFactory = jooqDataContextFactory;
+        this.dataSourceResolver = dataSourceResolver;
         this.objectMapper = objectMapper;
         this.monitorOperateIndexService = monitorOperateIndexService;
         this.monitorLogEnrichService = monitorLogEnrichService;
@@ -143,9 +147,11 @@ public class MonitorLogService implements MonitorLogApi {
         MonitorLog entity = handler.buildEntity(req);
         Map<Field<Object>, Object> values = toFieldValues(entity);
 
-        // 操作日志与其索引必须同事务落库：索引写入失败时日志一并回滚
-        jooqDataContextFactory
-                .getContext(projectNo)
+        // 操作日志与其索引必须同事务落库：索引写入失败时日志一并回滚。
+        // 注意：监控日志落在业务库，且由审计日志在事务提交阶段触发，必须使用物理数据源绕过事务路由，
+        // 否则会被路由到调用方事务已绑定的数据源（如 config_center）导致表不存在。
+        dataSourceResolver
+                .getDSLContextPhysicalByProjectNo(projectNo)
                 .transaction(
                         configuration -> {
                             DSLContext tx = DSL.using(configuration);
@@ -285,6 +291,25 @@ public class MonitorLogService implements MonitorLogApi {
                         .map(this::toResp)
                         .collect(Collectors.toList());
         return PageResult.of((long) pageNo, (long) pageSize, (long) total, records);
+    }
+
+    @Override
+    public boolean existsOperateLog(Long menuId, Long dataId) {
+        if (menuId == null || dataId == null) {
+            throw new BusinessException("菜单id与单据id不能为空");
+        }
+        Long moduleId = openMenuApi.getModuleIdByMenuId(menuId);
+        if (moduleId == null) {
+            log.warn("菜单未关联模块，操作日志存在性判断返回 false: menuId={}", menuId);
+            return false;
+        }
+        List<Long> logIds =
+                monitorOperateIndexService.listByData(moduleId, dataId).stream()
+                        .map(MonitorOperateIndexResp::getLogId)
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .collect(Collectors.toList());
+        return !logIds.isEmpty();
     }
 
     /**

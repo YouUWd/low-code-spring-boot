@@ -2,9 +2,6 @@ package com.jdec.platform.approval.biz.service.impl;
 
 import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.collection.CollectionUtil;
-import cn.hutool.core.lang.TypeReference;
-import cn.hutool.core.map.MapUtil;
-import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
@@ -20,6 +17,7 @@ import com.jdec.platform.approval.api.resp.ApprovalBusinessNoResp;
 import com.jdec.platform.approval.api.resp.ApprovalIdButtonListResp;
 import com.jdec.platform.approval.biz.entity.*;
 import com.jdec.platform.approval.biz.mapper.*;
+import com.jdec.platform.common.api.MonitorLogApi;
 import com.jdec.platform.config.api.*;
 import com.jdec.platform.config.api.dto.response.ModuleApprovalChainConfigResp;
 import com.jdec.platform.config.api.dto.response.SysButtonResp;
@@ -34,7 +32,6 @@ import com.jdec.platform.shared.enums.ChangeType;
 import com.jdec.platform.shared.exception.BusinessException;
 import com.jdec.platform.shared.service.ConfigChangeMessagePublisher;
 import com.jdec.platform.validation.SubmitCheckRouter;
-import java.lang.reflect.Type;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicReference;
@@ -70,6 +67,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
     private final DataEngineApi dataEngineApi;
     private final AsyncTaskService asyncTaskService; // 注入异步 Service
     private final SubmitCheckRouter submitCheckRouter;
+    private final MonitorLogApi monitorLogApi;
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT, fallbackExecution = true)
     public void handleApprovalEvent(ApprovalEvent event) {
@@ -167,7 +165,7 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         ApprovalVersionRecord approvalVersionRecord =
                 approvalVersionRecordMapper.selectOne(businessWrapper);
         if (Objects.isNull(approvalVersionRecord)) {
-            throw new BusinessException(601, "单据记录不存在");
+            return new HashMap<>();
         }
         if (approvalVersionRecord.getCurrentStep() > 0
                 && (Objects.isNull(req.getButton())
@@ -1426,8 +1424,17 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         backReq.setModuleId(approvalBusiness.getModuleId());
         backReq.setRegistrationTime(LocalDateTime.now());
         backReq.setIsCurrentStepFinish(true);
-        backReq.setOp("submit");
-        dataEngineApi.processApprovalStatus(backReq);
+        boolean existsLog =
+                monitorLogApi.existsOperateLog(
+                        approvalProcessDTO.getMenuId(), approvalProcessDTO.getRecordId());
+        if (existsLog) {
+            backReq.setOp("reject-submit");
+        } else {
+            backReq.setOp("change-submit");
+        }
+        ApprovalProcessResultResp resultResp = dataEngineApi.processApprovalStatus(backReq);
+        approvalProcessDTO.setReason(resultResp.getRemark());
+        approvalProcessDTO.setAutoRemark(resultResp.getReferenceDataRemark());
         approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
@@ -2278,7 +2285,11 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         // 1. 查询按钮配置
         ApprovalChainButton approvalButton = null;
         SysButtonResp modelConfigButton = null;
-        SysConfigItemResp modelConfig = null;
+        SysConfigItemResp modelConfig =
+                sysConfigCategoryApi.getConfigItemsByValue("ButtonStyle", alias);
+        if (Objects.isNull(modelConfig)) {
+            return null;
+        }
         if (Objects.nonNull(buttonId)) {
             LambdaQueryWrapper<ApprovalChainButton> approvalButtonWrapper =
                     new LambdaQueryWrapper<>();
@@ -2289,21 +2300,34 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                     .eq(ApprovalChainButton::getCurrentStep, currentStep)
                     .last("LIMIT 1");
             approvalButton = approvalChainButtonMapper.selectOne(approvalButtonWrapper);
-            modelConfigButton = sysButtonApi.getButtonById(buttonId);
-            if (Objects.isNull(modelConfigButton) || Objects.isNull(approvalButton)) {
+            if (Objects.isNull(approvalButton)) {
                 return null;
             }
             item.put("buttonKey", alias);
-            item.put("title", modelConfigButton.getTitle());
-            item.put("showTitle", modelConfigButton.getTitle());
-            Map<String, Object> property = new HashMap<>();
-            property.put("defaultBgColor", modelConfigButton.getDefaultBgColor());
-            property.put("defaultFontColor", modelConfigButton.getDefaultFontColor());
-            property.put("levitateBgColor", modelConfigButton.getLevitateBgColor());
-            property.put("levitateFontColor", modelConfigButton.getLevitateFontColor());
-            property.put("selectedBgColor", modelConfigButton.getSelectedBgColor());
-            property.put("selectedFontColor", modelConfigButton.getSelectedFontColor());
-            item.put("extraProperty", property);
+            modelConfigButton = sysButtonApi.getButtonById(buttonId);
+            if (Objects.isNull(modelConfigButton)) {
+                Map<String, Object> property = new HashMap<>();
+                property.put("defaultBgColor", "");
+                property.put("defaultFontColor", "");
+                property.put("levitateBgColor", "");
+                property.put("levitateFontColor", "");
+                property.put("selectedBgColor", "");
+                property.put("selectedFontColor", "");
+                item.put("extraProperty", property);
+                item.put("title", modelConfig.getLabel());
+                item.put("showTitle", modelConfig.getLabel());
+            } else {
+                Map<String, Object> property = new HashMap<>();
+                property.put("defaultBgColor", modelConfigButton.getDefaultBgColor());
+                property.put("defaultFontColor", modelConfigButton.getDefaultFontColor());
+                property.put("levitateBgColor", modelConfigButton.getLevitateBgColor());
+                property.put("levitateFontColor", modelConfigButton.getLevitateFontColor());
+                property.put("selectedBgColor", modelConfigButton.getSelectedBgColor());
+                property.put("selectedFontColor", modelConfigButton.getSelectedFontColor());
+                item.put("extraProperty", property);
+                item.put("title", modelConfigButton.getTitle());
+                item.put("showTitle", modelConfigButton.getTitle());
+            }
             item.put("actionIcon", approvalButton.getIcon());
             item.put("actionName", approvalButton.getLogName());
             if (alias.equals("reject")) {
@@ -2321,30 +2345,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
             }
             item.put("autoNextTaskFlag", approvalButton.getAutoNextTaskFlag());
         } else {
-            modelConfig = sysConfigCategoryApi.getConfigItemsByValue("ButtonStyle", alias);
-            if (Objects.isNull(modelConfig)) {
-                return null;
-            }
             item.put("buttonKey", alias);
-            item.put("title", modelConfig.getLabel());
-            item.put("showTitle", modelConfig.getLabel());
-            String extraPropertyStr = modelConfig.getExtra();
-            if (Objects.nonNull(extraPropertyStr) && !extraPropertyStr.isEmpty()) {
-                Type type = new TypeReference<Map<String, Object>>() {};
-                Map<String, Object> extraProperty =
-                        BeanUtil.beanToMap(JSONUtil.toBean(extraPropertyStr, type, true));
-                Map<String, Object> property = new HashMap<>();
-                property.put("defaultBgColor", MapUtil.getStr(extraProperty, "default_bg_color"));
-                property.put(
-                        "defaultFontColor", MapUtil.getStr(extraProperty, "default_font_color"));
-                property.put("levitateBgColor", MapUtil.getStr(extraProperty, "levitate_bg_color"));
-                property.put(
-                        "levitateFontColor", MapUtil.getStr(extraProperty, "levitate_font_color"));
-                property.put("selectedBgColor", MapUtil.getStr(extraProperty, "selected_bg_color"));
-                property.put(
-                        "selectedFontColor", MapUtil.getStr(extraProperty, "selected_font_color"));
-                item.put("extraProperty", property);
-            } else {
+            modelConfigButton = sysButtonApi.getButtonByType(alias);
+            if (Objects.isNull(modelConfigButton)) {
                 Map<String, Object> property = new HashMap<>();
                 property.put("defaultBgColor", "");
                 property.put("defaultFontColor", "");
@@ -2353,6 +2356,19 @@ public class ApprovalEngineImpl implements IApprovalEngine {
                 property.put("selectedBgColor", "");
                 property.put("selectedFontColor", "");
                 item.put("extraProperty", property);
+                item.put("title", modelConfig.getLabel());
+                item.put("showTitle", modelConfig.getLabel());
+            } else {
+                Map<String, Object> property = new HashMap<>();
+                property.put("defaultBgColor", modelConfigButton.getDefaultBgColor());
+                property.put("defaultFontColor", modelConfigButton.getDefaultFontColor());
+                property.put("levitateBgColor", modelConfigButton.getLevitateBgColor());
+                property.put("levitateFontColor", modelConfigButton.getLevitateFontColor());
+                property.put("selectedBgColor", modelConfigButton.getSelectedBgColor());
+                property.put("selectedFontColor", modelConfigButton.getSelectedFontColor());
+                item.put("extraProperty", property);
+                item.put("title", modelConfigButton.getTitle());
+                item.put("showTitle", modelConfigButton.getTitle());
             }
             item.put("actionIcon", modelConfig.getValue());
             item.put("actionName", "已" + modelConfig.getLabel());

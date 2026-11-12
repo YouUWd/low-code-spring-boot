@@ -3,6 +3,7 @@ package com.jdec.platform.config.biz.controller;
 import com.jdec.platform.config.api.SysMenuApi;
 import com.jdec.platform.config.api.dto.request.SaveMenuReq;
 import com.jdec.platform.config.api.dto.request.SysMenuDragReq;
+import com.jdec.platform.config.api.dto.response.SysMenuOptionResp;
 import com.jdec.platform.config.api.dto.response.SysMenuResp;
 import com.jdec.platform.config.api.dto.response.SysMenuTreeResp;
 import com.jdec.platform.shared.model.ApiResponse;
@@ -56,6 +57,15 @@ public class SysMenuController {
     public ApiResponse<SysMenuResp> getById(
             @Parameter(description = "菜单ID", example = "1") @PathVariable Long id) {
         return ApiResponse.success(sysMenuApi.getMenuById(id));
+    }
+
+    @GetMapping("/options")
+    @Operation(
+            summary = "查询页面菜单下拉选项",
+            description =
+                    "返回菜单类型为「页面」的下拉选项树：一级为菜单分类（业务菜单/系统菜单），二级为页面菜单叶子（value=菜单ID，label=菜单名称），供按钮关联菜单多选使用")
+    public ApiResponse<List<SysMenuOptionResp>> options() {
+        return ApiResponse.success(sysMenuApi.listMenuOptions());
     }
 
     @PostMapping("/save")

@@ -36,8 +36,9 @@ import org.springframework.stereotype.Service;
  *
  * <ol>
  *   <li>解析 {@code table.field}，确认字段支持查重；
- *   <li>先查顶层父模块 info：取 {@code active=1} 的记录；若其 business_status 不是 99/-99（仍在流程中），
- *       再取这条记录的上一个启用版本（同业务编号、business_status=99、version_no 小于当前版本的最大版本）；
+ *   <li>收集参与查重的主单ID：正在走流程（{@code active=1} 且 business_status 非 99/-99，业务状态为空亦视为在流程中）
+ *       与最后启用（business_status=99 且 active=1，即当前生效的启用记录）；business_status=-99 与 business_status=99 但
+ *       active=0（已不再生效的上一启用版本）的记录不参与查重；
  *   <li>用收集到的主单ID沿父表关系逐层下钻，收集字段所在表的记录ID；
  *   <li>取出这些记录后比对字段值，比较口径与保存/提交校验的查重一致（去空白，统一社会信用代码另转大写）。
  * </ol>
@@ -312,98 +313,48 @@ public class ExternalObjectDuplicateCheckService implements ExternalObjectDuplic
     /**
      * 收集顶层父模块（info）参与查重的主键ID。
      *
-     * <p>先取 {@code active=1} 且未删除的主单；其中 business_status 不是 99/-99（仍在流程中、尚未终结）的记录，
-     * 再补充它自己的“上一个启用版本”：同业务编号、business_status=99、version_no 小于当前版本号的最大版本。
+     * <p>查重范围（均为未删除）：
+     *
+     * <ul>
+     *   <li>正在走流程：{@code active=1} 且 business_status 不是 99/-99（业务状态为空的新建/草稿记录亦视为在流程中）；
+     *   <li>最后启用：{@code active=1} 且 business_status=99（当前生效的启用记录）。
+     * </ul>
+     *
+     * <p>business_status=-99（已终结/作废）与 business_status=99 但 {@code active=0}（已不再生效的上一启用版本）不参与查重。
+     * 当前外部对象自身及其同业务编号的历史版本由 {@link #excludeHistoryVersions} 排除。
      */
     private Set<Long> collectInfoIds(DSLContext dsl) {
-        var activeRecords =
-                dsl.select(
-                                ExternalObjectTable.INFO.longField("id"),
-                                ExternalObjectTable.INFO.textField("business_no"),
-                                ExternalObjectTable.INFO.intField("business_status"),
-                                ExternalObjectTable.INFO.intField("version_no"))
+        Condition scope = inProcessInfoCondition().or(lastEnabledInfoCondition());
+        List<Long> ids =
+                dsl.select(ExternalObjectTable.INFO.longField("id"))
                         .from(ExternalObjectTable.INFO.table())
-                        .where(activeInfoCondition())
-                        .fetch();
-
-        Set<Long> infoIds = new LinkedHashSet<>();
-        List<InfoVersion> unfinished = new ArrayList<>();
-        for (Record record : activeRecords) {
-            infoIds.add(record.get("id", Long.class));
-            String businessNo = record.get("business_no", String.class);
-            Integer businessStatus = record.get("business_status", Integer.class);
-            boolean terminal =
-                    businessStatus != null && (businessStatus == 99 || businessStatus == -99);
-            if (!terminal && StringUtils.isNotBlank(businessNo)) {
-                unfinished.add(
-                        new InfoVersion(businessNo, record.get("version_no", Integer.class)));
-            }
-        }
-        if (unfinished.isEmpty()) {
-            return infoIds;
-        }
-
-        Set<String> businessNos = new LinkedHashSet<>();
-        unfinished.forEach(item -> businessNos.add(item.businessNo()));
-        Map<String, Map<Integer, Long>> enabledVersions = new LinkedHashMap<>();
-        dsl.select(
-                        ExternalObjectTable.INFO.longField("id"),
-                        ExternalObjectTable.INFO.textField("business_no"),
-                        ExternalObjectTable.INFO.intField("version_no"))
-                .from(ExternalObjectTable.INFO.table())
-                .where(
-                        ExternalObjectTable.INFO
-                                .intField("business_status")
-                                .eq(99)
-                                .and(ExternalObjectTable.INFO.intField("deleted").eq(0))
-                                .and(
-                                        ExternalObjectTable.INFO
-                                                .textField("business_no")
-                                                .in(businessNos)))
-                .fetch()
-                .forEach(
-                        record ->
-                                enabledVersions
-                                        .computeIfAbsent(
-                                                record.get("business_no", String.class),
-                                                key -> new LinkedHashMap<>())
-                                        .put(
-                                                record.get("version_no", Integer.class),
-                                                record.get("id", Long.class)));
-
-        for (InfoVersion record : unfinished) {
-            Long previousId =
-                    previousEnabledId(enabledVersions.get(record.businessNo()), record.versionNo());
-            if (previousId != null) {
-                infoIds.add(previousId);
-            }
-        }
-        return infoIds;
+                        .where(scope)
+                        .and(ExternalObjectTable.INFO.intField("deleted").eq(0))
+                        .fetch(ExternalObjectTable.INFO.longField("id"), Long.class);
+        return new LinkedHashSet<>(ids);
     }
 
-    /**
-     * 上一个启用版本：版本号小于当前版本号的最大启用版本。
-     *
-     * <p>当前版本号缺失时退化为该业务编号下最大的启用版本。
-     */
-    private static Long previousEnabledId(Map<Integer, Long> enabledVersions, Integer versionNo) {
-        if (enabledVersions == null || enabledVersions.isEmpty()) {
-            return null;
-        }
-        return enabledVersions.entrySet().stream()
-                .filter(entry -> entry.getKey() != null)
-                .filter(entry -> versionNo == null || entry.getKey() < versionNo)
-                .max(Map.Entry.comparingByKey())
-                .map(Map.Entry::getValue)
-                .orElse(null);
-    }
-
-    /** info 主表的查重范围条件：启用且未删除。 */
-    private static Condition activeInfoCondition() {
+    /** 正在走流程：active=1 且 business_status 不是 99/-99（business_status 为空也视为在流程中）。 */
+    private static Condition inProcessInfoCondition() {
         return ExternalObjectTable.INFO
                 .intField("active")
                 .eq(1)
-                .and(ExternalObjectTable.INFO.intField("deleted").eq(0));
+                .and(
+                        ExternalObjectTable.INFO
+                                .intField("business_status")
+                                .isNull()
+                                .or(
+                                        ExternalObjectTable.INFO
+                                                .intField("business_status")
+                                                .notIn(99, -99)));
+    }
+
+    /** 最后启用：active=1 且 business_status=99（当前生效的启用记录）。 */
+    private static Condition lastEnabledInfoCondition() {
+        return ExternalObjectTable.INFO
+                .intField("business_status")
+                .eq(99)
+                .and(ExternalObjectTable.INFO.intField("active").eq(1));
     }
 
     /** 从 info 逐层下钻，收集字段所在表的记录ID。 */
@@ -509,12 +460,4 @@ public class ExternalObjectDuplicateCheckService implements ExternalObjectDuplic
             String column,
             String messageTemplate,
             UnaryOperator<String> normalize) {}
-
-    /**
-     * 流程中状态的 info 记录。
-     *
-     * @param businessNo 业务编号
-     * @param versionNo 版本号
-     */
-    private record InfoVersion(String businessNo, Integer versionNo) {}
 }

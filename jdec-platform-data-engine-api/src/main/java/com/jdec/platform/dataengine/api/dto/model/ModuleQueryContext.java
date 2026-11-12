@@ -1,6 +1,5 @@
-package com.jdec.platform.dataengine.biz.dto.context;
+package com.jdec.platform.dataengine.api.dto.model;
 
-import com.jdec.platform.dataengine.biz.dto.ReqParamData;
 import java.io.Serializable;
 import lombok.Data;
 import lombok.NoArgsConstructor;

@@ -26,7 +26,7 @@ import org.springframework.util.StringUtils;
  *   <li>继承自 {@link DefaultInteractionButtonProvider}，默认继承通用全局按钮能力；
  *   <li>在全局按钮中排除 {@code edit_company_reg_status}，定制业务在其本身的 Provider ({@link #addRowButtons}) 中独立处理；
  *   <li>声明 {@link #requiredRowFields()} 依赖 {@code nature} 物理列，由查询引擎在查询阶段统一补充投影并在返回前端时剥离；
- *   <li>定制业务规则：只有当前角色具备权限且单据处于【启用状态 (99)】或【取消状态 (-99)】时，且对象性质 (nature) 非【个人】时，才为该行添加修改登记状态按钮；
+ *   <li>定制业务规则：只有当前角色具备权限且单据处于【启用状态 (99)】或【停用状态 (-2)】时，且对象性质 (nature) 非【个人】时，才为该行添加修改登记状态按钮；
  *   <li>纯内存高速判定，彻底杜绝 N+1 数据库反查。
  * </ul>
  */
@@ -44,8 +44,8 @@ public class CompanyInteractionButtonProvider extends DefaultInteractionButtonPr
     /** 业务状态：启用 (99) */
     public static final int STATUS_ACTIVE = 99;
 
-    /** 业务状态：取消 (-99) */
-    public static final int STATUS_CANCEL = -99;
+    /** 业务状态：停用 (-2) */
+    public static final int STATUS_INACTIVE = -2;
 
     private final ObjectMapper objectMapper;
 
@@ -89,7 +89,7 @@ public class CompanyInteractionButtonProvider extends DefaultInteractionButtonPr
     /**
      * 定制业务在本身 Provider 中处理：
      *
-     * <p>仅当当前角色拥有权限，单据处于【启用 (99)】或【取消 (-99)】状态，且对象性质 (nature) 非【个人】时，为该行添加修改登记状态按钮。
+     * <p>仅当当前角色拥有权限，单据处于【启用 (99)】或【停用 (-2)】状态，且对象性质 (nature) 非【个人】时，为该行添加修改登记状态按钮。
      */
     @Override
     public void addRowButtons(
@@ -103,10 +103,10 @@ public class CompanyInteractionButtonProvider extends DefaultInteractionButtonPr
             return;
         }
 
-        // 2. 定制业务规则：只有处于启用 (99) 或取消 (-99) 状态的单据才允许修改登记状态
+        // 2. 定制业务规则：只有处于启用 (99) 或停用 (-2) 状态的单据才允许修改登记状态
         Integer businessStatus = extractBusinessStatus(row, ctx);
         if (businessStatus == null
-                || (businessStatus != STATUS_ACTIVE && businessStatus != STATUS_CANCEL)) {
+                || (businessStatus != STATUS_ACTIVE && businessStatus != STATUS_INACTIVE)) {
             return;
         }
 

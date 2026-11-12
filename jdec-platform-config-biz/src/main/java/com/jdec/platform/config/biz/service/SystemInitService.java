@@ -450,9 +450,7 @@ public class SystemInitService implements SystemInitApi {
             SysButton entity = new SysButton();
             entity.setId(requireId(node.getId(), "按钮", node.getTitle()));
             entity.setTitle(node.getTitle());
-            entity.setAlias(node.getAlias());
             entity.setType(node.getType());
-            entity.setDescription(node.getDescription());
             entity.setDefaultBgColor(node.getDefaultBgColor());
             entity.setDefaultFontColor(node.getDefaultFontColor());
             entity.setDefaultBorder(node.getDefaultBorder());
@@ -462,11 +460,8 @@ public class SystemInitService implements SystemInitApi {
             entity.setSelectedBgColor(node.getSelectedBgColor());
             entity.setSelectedFontColor(node.getSelectedFontColor());
             entity.setSelectedBorderColor(node.getSelectedBorderColor());
-            entity.setIcon(node.getIcon());
-            entity.setLogName(node.getLogName());
-            entity.setSortOrder(node.getSortOrder() == null ? 0 : node.getSortOrder());
-            entity.setShowed(node.getShowed() == null ? 1 : node.getShowed());
             entity.setEnabled(node.getEnabled() == null ? 1 : node.getEnabled());
+            entity.setMenuIds("[]");
             entity.setSubjectId(subjectId);
             entity.setProjectNo(projectNo);
             entity.setCreatedDate(now);

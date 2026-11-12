@@ -11,6 +11,7 @@ import com.jdec.platform.config.api.dto.common.ModuleInfo;
 import com.jdec.platform.config.api.dto.common.ModuleTreeDTO;
 import com.jdec.platform.config.api.dto.common.ProjectTableRelationsDTO;
 import com.jdec.platform.config.api.dto.response.DataRightConfigResp;
+import com.jdec.platform.config.api.dto.response.SysFieldResp;
 import com.jdec.platform.config.api.dto.response.SysModuleSimpleTreeResp;
 import com.jdec.platform.config.api.dto.response.UserDetailResp;
 import com.jdec.platform.config.open.api.ConfigApi;
@@ -32,6 +33,7 @@ import com.jdec.platform.dataengine.biz.dto.context.DataIntegrationContext;
 import com.jdec.platform.dataengine.biz.dto.context.DetailQueryContext;
 import com.jdec.platform.dataengine.biz.enums.ReferenceBizType;
 import com.jdec.platform.dataengine.biz.referencequery.*;
+import com.jdec.platform.dataengine.biz.referencequery.dto.RefField;
 import com.jdec.platform.dataengine.biz.third.api.DetailBizQueryService;
 import com.jdec.platform.dataengine.biz.third.api.data.DetailDataProcessFactory;
 import com.jdec.platform.dataengine.biz.third.api.data.impl.ModuleTreeDiffService;
@@ -81,6 +83,8 @@ public class DynamicQueryService {
     private final OpenRolePermissionApi openRolePermissionApi;
 
     private final VersionDataQueryStrategyFactory versionDataQueryStrategyFactory;
+
+    private final SysFieldApi sysFieldApi;
 
     /** 动态主子表详情查询 (顶层包含 moduleId 等标识，元数据包含 fieldNames 与 permissions) */
     public List<NestedModuleDataDTO> getDetail(DynamicDetailQueryReq dynamicDetailQueryReq) {
@@ -219,7 +223,7 @@ public class DynamicQueryService {
         String tableName = moduleInfo.getPrimaryTable();
 
         if (referenceQueryParamMap.containsKey(moduleId)) {
-            List<String> businessNos = new ArrayList<>();
+            Set<String> businessNos = new HashSet<>();
 
             // 搜集模块数据的所有business_no集合，批量查询
             for (RecordDataDTO recordDataDTO : moduleData.getRecord()) {
@@ -243,7 +247,7 @@ public class DynamicQueryService {
                 }
             }
 
-            Map<String, Object> businessNoMap;
+            Map<String, Map<String, Object>> businessNoMap;
 
             if (!CollectionUtils.isEmpty(businessNos)) {
                 VersionDataQueryContext versionDataQueryContext =
@@ -348,18 +352,99 @@ public class DynamicQueryService {
                             });
 
                     // 内部数据
-                    List<InternalRefQueryParam> internalVersionData =
+                    List<InternalRefQueryParam> internalVersionDataQueryParams =
                             referenceQueryParams.stream()
                                     .filter(ele -> ele instanceof InternalRefQueryParam)
                                     .map(item -> (InternalRefQueryParam) item)
                                     .collect(Collectors.toList());
 
                     // 将新版本数据填入对应字段 TODO 需要构造统一数据类型
-                    internalVersionData.forEach(
-                            ele ->
-                                    rowData.put(
-                                            ele.getTableName() + "." + ele.getFieldName(),
-                                            businessNoMap.get(ele.getBusinessNo())));
+                    internalVersionDataQueryParams.stream()
+                            .filter(
+                                    item ->
+                                            Objects.nonNull(item.getBusinessNo())
+                                                    && businessNoMap.containsKey(
+                                                            item.getBusinessNo())
+                                                    && Objects.nonNull(
+                                                            businessNoMap
+                                                                    .get(item.getBusinessNo())
+                                                                    .get("business_no")))
+                            .forEach(
+                                    ele -> {
+                                        RefField refField =
+                                                RefField.builder()
+                                                        .label(
+                                                                Objects.nonNull(
+                                                                                        businessNoMap
+                                                                                                .get(
+                                                                                                        ele
+                                                                                                                .getBusinessNo()))
+                                                                                && Objects.nonNull(
+                                                                                        businessNoMap
+                                                                                                .get(
+                                                                                                        ele
+                                                                                                                .getBusinessNo())
+                                                                                                .get(
+                                                                                                        ele
+                                                                                                                .getLabelFieldName()))
+                                                                        ? String.valueOf(
+                                                                                businessNoMap
+                                                                                        .get(
+                                                                                                ele
+                                                                                                        .getBusinessNo())
+                                                                                        .get(
+                                                                                                ele
+                                                                                                        .getLabelFieldName()))
+                                                                        : null)
+                                                        .value(
+                                                                Objects.nonNull(
+                                                                                        businessNoMap
+                                                                                                .get(
+                                                                                                        ele
+                                                                                                                .getBusinessNo()))
+                                                                                && Objects.nonNull(
+                                                                                        businessNoMap
+                                                                                                .get(
+                                                                                                        ele
+                                                                                                                .getBusinessNo())
+                                                                                                .get(
+                                                                                                        "business_no"))
+                                                                        ? String.valueOf(
+                                                                                businessNoMap
+                                                                                        .get(
+                                                                                                ele
+                                                                                                        .getBusinessNo())
+                                                                                        .get(
+                                                                                                "business_no"))
+                                                                        : null)
+                                                        .version_no(
+                                                                Objects.nonNull(
+                                                                                        businessNoMap
+                                                                                                .get(
+                                                                                                        ele
+                                                                                                                .getBusinessNo()))
+                                                                                && Objects.nonNull(
+                                                                                        businessNoMap
+                                                                                                .get(
+                                                                                                        ele
+                                                                                                                .getBusinessNo())
+                                                                                                .get(
+                                                                                                        "version_no"))
+                                                                        ? Integer.parseInt(
+                                                                                String.valueOf(
+                                                                                        businessNoMap
+                                                                                                .get(
+                                                                                                        ele
+                                                                                                                .getBusinessNo())
+                                                                                                .get(
+                                                                                                        "version_no")))
+                                                                        : null)
+                                                        .extra_data(new HashMap<String, Object>())
+                                                        .build();
+                                        rowData.put(
+                                                ele.getTableName() + "." + ele.getFieldName(),
+                                                refField);
+                                    });
                 }
 
                 // 处理子模块数据
@@ -582,6 +667,17 @@ public class DynamicQueryService {
 
         Map<Long, Map<Long, List<ReferenceQueryParam>>> referenceQueryParamMap = new HashMap<>();
 
+        List<SysFieldResp> sysFieldResps =
+                sysFieldApi.getValidSysFields(
+                        AppContext.getProjectNo(), AppContext.getSubjectId(), null);
+
+        Map<String, SysFieldResp> sysFieldMap =
+                sysFieldResps.stream()
+                        .collect(
+                                Collectors.toMap(
+                                        item -> item.getTableName() + "." + item.getColumnName(),
+                                        v -> v));
+
         List<FieldWordCloudDTO> wordCloudConfigs =
                 configApi.getWordCloudFields(AppContext.getProjectNo(), AppContext.getSubjectId());
 
@@ -605,7 +701,8 @@ public class DynamicQueryService {
                         moduleTreeDTO,
                         referenceQueryParamMap,
                         nameToWorldConfMap,
-                        projectTableRelationsDTO);
+                        projectTableRelationsDTO,
+                        sysFieldMap);
 
         // 更新引用为最新版本
         Boolean hasApproval =
@@ -750,7 +847,8 @@ public class DynamicQueryService {
             ModuleTreeDTO moduleTreeDTO,
             Map<Long, Map<Long, List<ReferenceQueryParam>>> referenceQueryParamMap,
             Map<String, FieldWordCloudDTO> nameToWorldConfMap,
-            ProjectTableRelationsDTO projectTableRelationsDTO) {
+            ProjectTableRelationsDTO projectTableRelationsDTO,
+            Map<String, SysFieldResp> sysFieldMap) {
         NestedModuleDataDTO.NestedModuleDataDTOBuilder builder = NestedModuleDataDTO.builder();
 
         // 非顶层模块查询，需要设置关联键作为查询条件
@@ -861,7 +959,8 @@ public class DynamicQueryService {
                             moduleTreeDTO,
                             referenceQueryParamMap,
                             nameToWorldConfMap,
-                            projectTableRelationsDTO);
+                            projectTableRelationsDTO,
+                            sysFieldMap);
 
             // 根据子模块是否有数据，决定父模块是否返回
             //            if (CollectionUtils.isEmpty(childResultList.getRecord())) {
@@ -979,44 +1078,69 @@ public class DynamicQueryService {
                                 });
 
                 // 内部引用参数构造
+                row.keySet().stream()
+                        .filter(
+                                key ->
+                                        sysFieldMap.containsKey(key)
+                                                && Objects.nonNull(sysFieldMap.get(key).getRefer())
+                                                && sysFieldMap.get(key).getRefer() == 1)
+                        .forEach(
+                                ele -> {
+                                    if (Objects.nonNull(row.get(ele))
+                                            && row.get(ele) instanceof JsonNode
+                                            && !((JsonNode) row.get(ele)).isEmpty()) {
+                                        JsonNode parentObject = (JsonNode) row.get(ele);
+                                        if (Objects.nonNull(parentObject)) {
+                                            if (parentObject.hasNonNull("value")) {
+                                                ReferenceQueryParam referenceQueryParam =
+                                                        InternalRefQueryParam.builder()
+                                                                .bizType(
+                                                                        ReferenceBizType
+                                                                                .INTERNAL_REF
+                                                                                .getType())
+                                                                .businessNo(
+                                                                        parentObject.hasNonNull(
+                                                                                                "value")
+                                                                                        && parentObject
+                                                                                                .get(
+                                                                                                        "value")
+                                                                                                .isTextual()
+                                                                                ? String.valueOf(
+                                                                                        parentObject
+                                                                                                .get(
+                                                                                                        "value")
+                                                                                                .asText())
+                                                                                : null)
+                                                                .versionNo(
+                                                                        parentObject.hasNonNull(
+                                                                                                "version_no")
+                                                                                        && parentObject
+                                                                                                .get(
+                                                                                                        "version_no")
+                                                                                                .isInt()
+                                                                                ? parentObject
+                                                                                        .get(
+                                                                                                "version_no")
+                                                                                        .asInt()
+                                                                                : null)
+                                                                .labelFieldName("company_name")
+                                                                .tableName(
+                                                                        moduleInfo
+                                                                                .getPrimaryTable())
+                                                                .fieldName(ele.split("\\.")[1])
+                                                                .build();
 
-                /*row.keySet().stream()
-                .filter(key -> key.equals(moduleInfo.getPrimaryTable() + "." + "parent_id"))
-                .forEach(
-                        ele -> {
-                            if (Objects.nonNull(row.get(ele))) {
-                                List<Map<String, Object>> parentObject = new ArrayList<>();
-                                //                                        List<Map<String,
-                                // Object>> parentObject =
-                                //
-                                // (List<Map<String, Object>>) row.get(ele);
-                                if (!CollectionUtils.isEmpty(parentObject)) {
-
-                                    Map<String, Object> parentDataMap = parentObject.get(0);
-
-                                    ReferenceQueryParam referenceQueryParam =
-                                            InternalRefQueryParam.builder()
-                                                    .bizType(
-                                                            ReferenceBizType.INTERNAL_REF
-                                                                    .getType())
-                                                    .businessNo(
-                                                            String.valueOf(
-                                                                    parentDataMap.get(
-                                                                            "business_no")))
-                                                    .tableName(moduleInfo.getPrimaryTable())
-                                                    .fieldName(ele.split("\\.")[1])
-                                                    .build();
-
-                                    referenceQueryParamMap
-                                            .computeIfAbsent(
-                                                    moduleNode.getId(),
-                                                    k -> new HashMap<>())
-                                            .computeIfAbsent(
-                                                    primaryId, v -> new ArrayList<>())
-                                            .add(referenceQueryParam);
-                                }
-                            }
-                        });*/
+                                                referenceQueryParamMap
+                                                        .computeIfAbsent(
+                                                                moduleNode.getId(),
+                                                                k -> new HashMap<>())
+                                                        .computeIfAbsent(
+                                                                primaryId, v -> new ArrayList<>())
+                                                        .add(referenceQueryParam);
+                                            }
+                                        }
+                                    }
+                                });
             }
         }
 

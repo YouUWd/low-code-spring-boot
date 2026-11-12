@@ -16,9 +16,10 @@ import org.springframework.stereotype.Component;
  *
  * <p>本层在必填校验与业务规则校验全部通过后执行，只有已填写值的字段参与查重：空值已在必填层提示， 不会再当作重复值比对，避免“字段没填却提示重复”。
  *
- * <p>查重范围：{@code active=1} 的外部对象；尚未终结的业务编号再补充最后一个启用版本（由 {@link
- * ExternalObjectSnapshotRepository#findDuplicateInfos(Long)} 负责收集）。当前外部对象按主键、来源主键、业务编号排除（含历史版本）；
- * 变更申请单保存时，另外排除本次变更的原单据（{@code excludeCompanyId}）及其同业务编号的其它版本。
+ * <p>查重范围：未删除的记录中，正在走流程（{@code active=1} 且 business_status 非 99/-99）与最后启用（business_status=99 且
+ * {@code active=1}，即当前生效的启用记录）；business_status=-99 与 business_status=99 但 {@code
+ * active=0}（已不再生效的上一启用版本）不参与查重（由 {@link ExternalObjectSnapshotRepository#findDuplicateInfos(Long)}
+ * 负责收集）。当前外部对象按主键、来源主键、业务编号排除（含历史版本）； 变更申请单保存时，另外排除本次变更的原单据（{@code excludeCompanyId}）及其同业务编号的其它版本。
  *
  * <p>查重项与提示：
  *
