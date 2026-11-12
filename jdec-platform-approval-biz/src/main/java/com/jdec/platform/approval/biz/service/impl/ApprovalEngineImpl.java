@@ -1432,7 +1432,9 @@ public class ApprovalEngineImpl implements IApprovalEngine {
         } else {
             backReq.setOp("change-submit");
         }
-        dataEngineApi.processApprovalStatus(backReq);
+        ApprovalProcessResultResp resultResp = dataEngineApi.processApprovalStatus(backReq);
+        approvalProcessDTO.setReason(resultResp.getRemark());
+        approvalProcessDTO.setAutoRemark(resultResp.getReferenceDataRemark());
         approvalProcessDTO.setVersionNo(approvalBusiness.getVersionNo());
         // 写入日志
         asyncTaskService.saveAuditLogAsync(AppContext.getProjectNo(), approvalProcessDTO);
