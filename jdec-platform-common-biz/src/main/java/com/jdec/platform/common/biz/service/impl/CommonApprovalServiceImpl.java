@@ -359,6 +359,22 @@ public class CommonApprovalServiceImpl implements CommonApprovalService, CommonB
         boolean approvalEnable = sysApprovalChainConfigApi.getApprovalStatus(List.of(rootModuleId));
         if (recordId == 0) {
             result.put("approvalEnable", approvalEnable);
+            result.put("showSaveBtn", true);
+            if (approvalEnable) {
+                ModuleApprovalChainConfigResp.StatusNode statusNode =
+                        sysStatusApi.getStatusByValue(1, rootModuleId);
+                statusNode = sysStatusApi.getStatusByValue(1, rootModuleId);
+                if (Objects.isNull(statusNode)) {
+                    throw new BusinessException(601, "模块状态配置异常");
+                }
+                Map<String, Object> approvalStatus = new HashMap<>();
+                approvalStatus.put("id", statusNode.getId());
+                approvalStatus.put("statusValue", statusNode.getStatusValue());
+                approvalStatus.put("title", statusNode.getTitle());
+                approvalStatus.put("statusBackground", statusNode.getStatusBackground());
+                approvalStatus.put("statusFontColor", statusNode.getStatusFontColor());
+                result.put("approvalStatus", approvalStatus);
+            }
             return result;
         }
         result.put("approvalEnable", approvalEnable);
