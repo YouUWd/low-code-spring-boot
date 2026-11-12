@@ -17,7 +17,9 @@ import org.springframework.stereotype.Component;
  * <p>约定：
  *
  * <ul>
- *   <li>对象性质本身最先校验；对象性质无值时，依赖对象性质的必填项按“不适用”处理；
+ *   <li>对象性质与登记状态按“数据来源”分场景必填：前端提交的数据（保存校验、无主单ID的提交校验）必须填写；
+ *       数据库整单校验（按主单ID/业务编号加载的历史数据）跳过这两项，避免阻断存量数据提交；
+ *   <li>对象性质无值时，依赖对象性质的必填项按“不适用”处理；
  *   <li>一对多子表（member、company_contact、financial_account、digital_account）没有记录时不参与必填校验，
  *       存在记录时逐行校验行内必填项；
  *   <li>人员构成按类型判断校验字段（与对象性质无关）：公司节点行（组织架构根节点，代表外部对象自身）不是人员行、不参与校验，部门行只校验部门名称，员工行（类型为空按默认员工，或显式
@@ -94,7 +96,8 @@ public class ExternalObjectRequiredValidator {
      */
     public void validate(
             ExternalObjectSnapshot snapshot, ExternalObjectValidationMessages messages) {
-        validateOnSave(snapshot, ALL_TABLES, false, messages);
+        // 数据库整单校验：对象性质、登记状态允许为空（历史/默认数据），不做必填强制
+        validateOnSave(snapshot, ALL_TABLES, false, false, messages);
     }
 
     /**
@@ -114,11 +117,12 @@ public class ExternalObjectRequiredValidator {
     public void validateOnSubmit(
             ExternalObjectSnapshot snapshot,
             boolean basicInfoAbsentOnCreate,
+            boolean fromFrontend,
             ExternalObjectValidationMessages messages) {
         ExternalObjectSnapshot.InfoRow info = snapshot.info();
         NatureFlags flags = NatureFlags.of(info.nature());
 
-        collectInfo(info, flags, messages);
+        collectInfo(info, flags, fromFrontend, messages);
         if (basicInfoAbsentOnCreate) {
             collectAbsentBasicInfo(info.nature(), flags, messages);
         } else {
@@ -162,12 +166,13 @@ public class ExternalObjectRequiredValidator {
             ExternalObjectSnapshot snapshot,
             Set<String> tables,
             boolean basicInfoAbsentOnCreate,
+            boolean fromFrontend,
             ExternalObjectValidationMessages messages) {
         ExternalObjectSnapshot.InfoRow info = snapshot.info();
         NatureFlags flags = NatureFlags.of(info.nature());
 
         if (tables.contains(INFO_TABLE)) {
-            collectInfo(info, flags, messages);
+            collectInfo(info, flags, fromFrontend, messages);
         }
         if (basicInfoAbsentOnCreate) {
             collectAbsentBasicInfo(info.nature(), flags, messages);
@@ -198,9 +203,16 @@ public class ExternalObjectRequiredValidator {
     private void collectInfo(
             ExternalObjectSnapshot.InfoRow info,
             NatureFlags flags,
+            boolean fromFrontend,
             ExternalObjectValidationMessages messages) {
         requireText(info.companyName(), "外部对象全称", messages);
-        // 对象性质、登记状态不再必填（前端会给默认值），故移除此处校验。
+        // 对象性质、登记状态：仅前端提交的数据必填；数据库整单校验（历史/默认数据）跳过，避免阻断存量数据提交
+        if (fromFrontend) {
+            requireJson(info.nature(), "对象性质", messages);
+            if (!flags.individual()) {
+                requireJson(info.regStatus(), "登记状态", messages);
+            }
+        }
         if (flags.individual()) {
             requireText(info.gender(), "性别", messages);
         }

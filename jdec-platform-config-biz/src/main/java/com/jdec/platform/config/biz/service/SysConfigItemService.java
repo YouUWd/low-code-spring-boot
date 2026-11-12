@@ -22,6 +22,7 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.CollectionUtils;
+import org.springframework.util.StringUtils;
 
 /** 配置项 Service 实现 */
 @Service
@@ -328,7 +329,12 @@ public class SysConfigItemService {
                         .eq(SysConfigItem::getProjectNo, projectNo)
                         .orderByAsc(SysConfigItem::getSort)
                         .orderByAsc(SysConfigItem::getId);
-        return itemMapper.selectList(wrapper);
+        return itemMapper.selectList(wrapper).stream()
+                .filter(
+                        item ->
+                                StringUtils.hasText(item.getCategoryAlias())
+                                        && StringUtils.hasText(item.getValue()))
+                .collect(Collectors.toList());
     }
 
     private List<SysConfigItemTreeResp> buildTree(List<SysConfigItem> list) {
